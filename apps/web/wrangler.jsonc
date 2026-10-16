@@ -10,6 +10,17 @@
     "assets": {
         "directory": ".open-next/assets",
         "binding": "ASSETS"
-    }
-    // 后续接：vars（NEXT_PUBLIC_*）、hyperdrive 绑定、r2_buckets、kv_namespaces、ai 等
+    },
+    "hyperdrive": [
+        {
+            "binding": "HYPERDRIVE",
+            "id": "797e790ce60448298d7a5502a6ea15fb"
+        }
+    ],
+    "r2_buckets": [
+        {
+            "binding": "MEDIA",
+            "bucket_name": "onestarry-media"
+        }
+    ]
 }
