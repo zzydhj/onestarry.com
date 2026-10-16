@@ -1,0 +1,25 @@
+{
+    "extends": "@onestarry/config/tsconfig/next",
+    "compilerOptions": {
+        "baseUrl": ".",
+        "paths": {
+            "@/*": [
+                "./*"
+            ]
+        },
+        "types": [
+            "node"
+        ]
+    },
+    "include": [
+        "**/*.ts",
+        "**/*.tsx",
+        ".next/types/**/*.ts",
+        "next-env.d.ts",
+        "cloudflare-env.d.ts"
+    ],
+    "exclude": [
+        "node_modules",
+        ".open-next"
+    ]
+}
