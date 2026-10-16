@@ -1,0 +1,33 @@
+{
+    "name": "@onestarry/db",
+    "version": "0.0.0",
+    "private": true,
+    "type": "module",
+    "exports": {
+        ".": "./src/index.ts",
+        "./schema": "./src/schema/index.ts",
+        "./client": "./src/client.ts",
+        "./uuid7": "./src/uuid7.ts"
+    },
+    "scripts": {
+        "db:generate": "drizzle-kit generate",
+        "db:migrate": "drizzle-kit migrate",
+        "db:push": "drizzle-kit push",
+        "db:studio": "drizzle-kit studio",
+        "lint": "eslint .",
+        "typecheck": "tsc --noEmit"
+    },
+    "dependencies": {
+        "@neondatabase/serverless": "^0.10.4",
+        "drizzle-orm": "^0.38.3",
+        "postgres": "^3.4.5"
+    },
+    "devDependencies": {
+        "@onestarry/config": "workspace:*",
+        "@types/node": "^22.10.5",
+        "dotenv": "^18.0.8",
+        "drizzle-kit": "^0.30.1",
+        "tsx": "^4.19.2",
+        "typescript": "^5.7.2"
+    }
+}

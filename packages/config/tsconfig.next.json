@@ -1,0 +1,21 @@
+{
+    "$schema": "https://json.schemastore.org/tsconfig",
+    "extends": "./tsconfig.base.json",
+    "compilerOptions": {
+        "lib": [
+            "ES2022",
+            "DOM",
+            "DOM.Iterable"
+        ],
+        "jsx": "preserve",
+        "allowJs": true,
+        "noEmit": true,
+        "incremental": true,
+        "moduleResolution": "Bundler",
+        "plugins": [
+            {
+                "name": "next"
+            }
+        ]
+    }
+}

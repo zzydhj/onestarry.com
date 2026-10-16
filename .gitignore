@@ -1,0 +1,31 @@
+# deps
+node_modules/
+.pnpm-store/
+
+# builds
+.next/
+dist/
+build/
+out/
+
+# turbo
+.turbo/
+
+# env
+.env
+.env.local
+.env.*.local
+!.env.example
+
+# misc
+.DS_Store
+*.log
+coverage/
+.vercel/
+.wrangler/
+
+# editor
+.idea/
+.vscode/*
+!.vscode/extensions.json
+.neon
