@@ -24,13 +24,7 @@ import {
     primaryKey,
 } from "drizzle-orm/pg-core";
 import { relations } from "drizzle-orm";
-import { uuidv7 } from "../uuid7";
-
-const id = () => uuid("id").primaryKey().$defaultFn(() => uuidv7());
-const timestamps = () => ({
-    createdAt: timestamp("created_at", { withTimezone: true, mode: "date" }).notNull().defaultNow(),
-    updatedAt: timestamp("updated_at", { withTimezone: true, mode: "date" }).notNull().defaultNow(),
-});
+import { id, timestamps } from "./columns";
 
 /* ------------------------------- 枚举 ------------------------------- */
 export const entityScopeEnum = pgEnum("entity_scope", ["country", "region"]);

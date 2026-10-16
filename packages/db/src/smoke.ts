@@ -14,15 +14,17 @@ async function main() {
     if (!url) throw new Error("DATABASE_URL_UNPOOLED 未设置（先跑 neon env pull）");
     const db = createDb(url);
 
-    const [{ c: tableCount }] = await db.execute<{ c: number }>(
+    const tableRows = await db.execute<{ c: number }>(
         sql`select count(*)::int as c from information_schema.tables where table_schema = 'public'`,
     );
+    const tableCount = tableRows[0]?.c ?? 0;
     console.log(`public schema 表数量: ${tableCount}`);
 
-    const [inserted] = await db
+    const inserted = (await db
         .insert(legalEntities)
         .values({ jurisdiction: "US", displayName: "Smoke Test LLC" })
-        .returning();
+        .returning())[0];
+    if (!inserted) throw new Error("insert 未返回行");
     console.log(`插入 legal_entity: id=${inserted.id} functionalCurrency=${inserted.functionalCurrency} status=${inserted.status}`);
 
     const rows = await db.select({ id: legalEntities.id, name: legalEntities.displayName }).from(legalEntities).where(sql`${legalEntities.id} = ${inserted.id}`);

@@ -8,6 +8,13 @@
       "when": 1792155208751,
       "tag": "0000_volatile_legion",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1792157484870,
+      "tag": "0001_fearless_beast",
+      "breakpoints": true
     }
   ]
 }
