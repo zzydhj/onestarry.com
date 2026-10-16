@@ -16,6 +16,9 @@ out/
 .env.local
 .env.*.local
 !.env.example
+.dev.vars
+.dev.vars.local
+!.dev.vars.example
 
 # misc
 .DS_Store
