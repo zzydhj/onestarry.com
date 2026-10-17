@@ -3,14 +3,17 @@ import { createCustomerAuth } from "@onestarry/auth";
 
 /**
  * Better Auth（customer 实例）catch-all 路由。
- * Workers 无常驻 db：每请求用 env.HYPERDRIVE 构造实例，交给 auth.handler。
- * 需 Worker secret BETTER_AUTH_SECRET（wrangler secret put / .dev.vars 本地）。
- *
- * ⚠️ 临时调试壳：捕获异常并以 JSON 返回，便于线上定位 500 根因；定位后移除。
+ * ⚠️ 临时调试壳：捕获异常 + 回显 env 诊断（只报键是否存在/长度，绝不回显密钥值）；定位后移除。
  */
 async function handle(req: Request): Promise<Response> {
+  let diag: Record<string, unknown> = {};
   try {
     const { env } = getCloudflareContext();
+    diag = {
+      hasHyperdrive: !!env?.HYPERDRIVE?.connectionString,
+      secretType: typeof env?.BETTER_AUTH_SECRET,
+      secretLen: env?.BETTER_AUTH_SECRET?.length ?? null,
+    };
     const auth = createCustomerAuth({
       connString: env.HYPERDRIVE.connectionString,
       baseURL: new URL(req.url).origin,
@@ -20,12 +23,7 @@ async function handle(req: Request): Promise<Response> {
   } catch (e) {
     const err = e as Error;
     return new Response(
-      JSON.stringify({
-        debug: true,
-        message: err?.message ?? String(e),
-        name: err?.name,
-        stack: err?.stack,
-      }),
+      JSON.stringify({ debug: true, diag, message: err?.message ?? String(e) }),
       { status: 500, headers: { "content-type": "application/json" } },
     );
   }
