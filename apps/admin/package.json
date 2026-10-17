@@ -1,0 +1,33 @@
+{
+    "name": "@onestarry/admin",
+    "version": "0.0.0",
+    "private": true,
+    "type": "module",
+    "scripts": {
+        "dev": "next dev",
+        "build": "next build",
+        "start": "next start",
+        "preview": "opennextjs-cloudflare build && opennextjs-cloudflare preview",
+        "deploy": "opennextjs-cloudflare build && opennextjs-cloudflare deploy",
+        "typecheck": "tsc --noEmit"
+    },
+    "dependencies": {
+        "next": "^15.5.4",
+        "react": "^19.0.0",
+        "react-dom": "^19.0.0",
+        "@onestarry/db": "workspace:*",
+        "@onestarry/auth": "workspace:*",
+        "@onestarry/core": "workspace:*",
+        "@opennextjs/cloudflare": "^1.5.3",
+        "drizzle-orm": "^0.45.2",
+        "postgres": "^3.4.5"
+    },
+    "devDependencies": {
+        "@onestarry/config": "workspace:*",
+        "wrangler": "^4.28.1",
+        "@types/node": "^22.10.5",
+        "@types/react": "^19.0.2",
+        "@types/react-dom": "^19.0.2",
+        "typescript": "^5.7.2"
+    }
+}

@@ -1,0 +1,21 @@
+{
+    "$schema": "./node_modules/wrangler/config-schema.json",
+    "name": "onestarry-admin",
+    "main": ".open-next/worker.js",
+    "compatibility_date": "2026-01-01",
+    "compatibility_flags": [
+        "nodejs_compat",
+        "global_fetch_strictly_public"
+    ],
+    "assets": {
+        "directory": ".open-next/assets",
+        "binding": "ASSETS"
+    },
+    "hyperdrive": [
+        {
+            "binding": "HYPERDRIVE",
+            "id": "797e790ce60448298d7a5502a6ea15fb",
+            "localConnectionString": "postgresql://postgres:postgres@127.0.0.1:5432/postgres"
+        }
+    ]
+}
