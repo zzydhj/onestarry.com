@@ -55,6 +55,9 @@ importers:
       '@onestarry/auth':
         specifier: workspace:*
         version: link:../../packages/auth
+      '@onestarry/core':
+        specifier: workspace:*
+        version: link:../../packages/core
       '@onestarry/db':
         specifier: workspace:*
         version: link:../../packages/db

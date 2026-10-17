@@ -9,7 +9,7 @@
     "scripts": {
         "lint": "eslint .",
         "typecheck": "tsc --noEmit",
-        "test": "tsx --test src/sellability.test.ts src/pricing.test.ts src/shipping.test.ts"
+        "test": "tsx --test src/sellability.test.ts src/pricing.test.ts src/shipping.test.ts src/payments.test.ts"
     },
     "devDependencies": {
         "@onestarry/config": "workspace:*",
