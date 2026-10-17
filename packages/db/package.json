@@ -24,6 +24,7 @@
         "smoke:payments": "tsx src/smoke-payments.ts",
         "smoke:payments-posting": "tsx src/smoke-payments-posting.ts",
         "smoke:shipment": "tsx src/smoke-shipment.ts",
+        "seed:demo": "tsx src/seed-demo.ts",
         "lint": "eslint .",
         "typecheck": "tsc --noEmit"
     },
