@@ -18,12 +18,7 @@
             // localConnectionString 仅供本地 `wrangler dev` / CI 的 getPlatformProxy 模拟用；
             // 生产运行时按 id 使用真实 Hyperdrive（此值不参与线上连接）。
             // 本地开发请建 apps/web/.dev.vars 设 CLOUDFLARE_HYPERDRIVE_LOCAL_CONNECTION_STRING_HYPERDRIVE=<Neon 直连串>。
-            "localConnectionString": "postgresql://postgres:postgres@127.0.0.1:5432/postgres",
-            // 开启 Hyperdrive 查询结果缓存（只读 SELECT 在边缘缓存，省跨国 DB 往返）。
-            // 实际 TTL(max_age/stale) 在 Hyperdrive 资源配置里设（控制台 Hyperdrive → Caching）。
-            "caching": {
-                "enabled": true
-            }
+            "localConnectionString": "postgresql://postgres:postgres@127.0.0.1:5432/postgres"
         }
     ],
     "r2_buckets": [
