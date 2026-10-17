@@ -19,6 +19,7 @@
         "smoke:inventory": "tsx src/smoke-inventory.ts",
         "smoke:pricing": "tsx src/smoke-pricing.ts",
         "smoke:outbox": "tsx src/smoke-outbox.ts",
+        "smoke:orders": "tsx src/smoke-orders.ts",
         "lint": "eslint .",
         "typecheck": "tsc --noEmit"
     },
