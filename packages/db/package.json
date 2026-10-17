@@ -20,6 +20,7 @@
         "smoke:pricing": "tsx src/smoke-pricing.ts",
         "smoke:outbox": "tsx src/smoke-outbox.ts",
         "smoke:orders": "tsx src/smoke-orders.ts",
+        "smoke:create-order": "tsx src/smoke-create-order.ts",
         "lint": "eslint .",
         "typecheck": "tsc --noEmit"
     },
