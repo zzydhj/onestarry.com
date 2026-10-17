@@ -36,6 +36,13 @@
       "when": 1792208626131,
       "tag": "0004_pretty_hulk",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1792208852702,
+      "tag": "0005_glorious_chat",
+      "breakpoints": true
     }
   ]
 }
