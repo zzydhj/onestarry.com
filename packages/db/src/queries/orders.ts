@@ -166,3 +166,11 @@ export async function createOrder(db: Db | Tx, input: CreateOrderInput): Promise
 
     return { orderId: order.id, orderNumber: order.orderNumber, totalCents: total };
 }
+
+/** 按单号读订单 + 明细行（前台确认页用）。 */
+export async function getOrderByNumber(db: Db | Tx, orderNumber: string) {
+    const order = (await db.select().from(orders).where(eq(orders.orderNumber, orderNumber)).limit(1))[0];
+    if (!order) return null;
+    const lines = await db.select().from(orderLines).where(eq(orderLines.orderId, order.id));
+    return { order, lines };
+}
