@@ -1,0 +1,4 @@
+# Cloudflare Workers Static Assets 头（构建产物随 public/ 一起进 .open-next/assets）
+# 带 hash 的 Next 静态资源：浏览器 + 边缘永久缓存，避免每次回源校验。
+/_next/static/*
+  Cache-Control: public, max-age=31536000, immutable
