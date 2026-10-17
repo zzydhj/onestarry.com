@@ -12,5 +12,6 @@ interface Hyperdrive {
 
 interface CloudflareEnv {
     HYPERDRIVE: Hyperdrive;
+    BETTER_AUTH_SECRET: string;
     // MEDIA: R2Bucket; // 需要 @cloudflare/workers-types，接图片上传时再补
 }

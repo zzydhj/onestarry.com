@@ -24,6 +24,9 @@ importers:
 
   apps/web:
     dependencies:
+      '@onestarry/auth':
+        specifier: workspace:*
+        version: link:../../packages/auth
       '@onestarry/db':
         specifier: workspace:*
         version: link:../../packages/db
