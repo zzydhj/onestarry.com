@@ -147,6 +147,8 @@ export const productVariants = pgTable(
         countryOfOrigin: text("country_of_origin"),
         customsDescription: text("customs_description"),
         costCents: bigint("cost_cents", { mode: "number" }), // 参考成本；COGS 以 stock_movements 移动平均为准
+        basePriceCents: bigint("base_price_cents", { mode: "number" }), // 售价真源（自营单一基价）；null=未定价→不可售
+        baseCurrency: text("base_currency").notNull().default("USD"), // 基价币种，按市场汇率折算为市场币种
         weightG: integer("weight_g"),
         dimensionsMm: jsonb("dimensions_mm"),
         availabilityPolicy: availabilityPolicyEnum("availability_policy").notNull().default("in_stock_only"),

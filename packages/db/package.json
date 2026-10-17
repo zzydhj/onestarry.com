@@ -17,11 +17,13 @@
         "smoke": "tsx src/smoke.ts",
         "smoke:catalog": "tsx src/smoke-catalog.ts",
         "smoke:inventory": "tsx src/smoke-inventory.ts",
+        "smoke:pricing": "tsx src/smoke-pricing.ts",
         "lint": "eslint .",
         "typecheck": "tsc --noEmit"
     },
     "dependencies": {
         "@neondatabase/serverless": "^0.10.4",
+        "@onestarry/core": "workspace:*",
         "drizzle-orm": "^0.45.2",
         "postgres": "^3.4.5"
     },

@@ -122,6 +122,9 @@ importers:
       '@neondatabase/serverless':
         specifier: ^0.10.4
         version: 0.10.4
+      '@onestarry/core':
+        specifier: workspace:*
+        version: link:../core
       drizzle-orm:
         specifier: ^0.45.2
         version: 0.45.4(@neondatabase/serverless@0.10.4)(@types/pg@8.11.6)(gel@2.2.1)(kysely@0.29.6)(postgres@3.4.9)
