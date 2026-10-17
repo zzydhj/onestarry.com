@@ -102,6 +102,21 @@ importers:
         specifier: ^8.18.2
         version: 8.71.2(eslint@9.39.5(jiti@2.7.0))(typescript@5.9.3)
 
+  packages/core:
+    devDependencies:
+      '@onestarry/config':
+        specifier: workspace:*
+        version: link:../config
+      '@types/node':
+        specifier: ^22.10.5
+        version: 22.20.5
+      tsx:
+        specifier: ^4.19.2
+        version: 4.23.15
+      typescript:
+        specifier: ^5.7.2
+        version: 5.9.3
+
   packages/db:
     dependencies:
       '@neondatabase/serverless':

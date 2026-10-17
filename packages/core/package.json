@@ -1,0 +1,20 @@
+{
+    "name": "@onestarry/core",
+    "version": "0.0.0",
+    "private": true,
+    "type": "module",
+    "exports": {
+        ".": "./src/index.ts"
+    },
+    "scripts": {
+        "lint": "eslint .",
+        "typecheck": "tsc --noEmit",
+        "test": "tsx --test src/sellability.test.ts"
+    },
+    "devDependencies": {
+        "@onestarry/config": "workspace:*",
+        "@types/node": "^22.10.5",
+        "tsx": "^4.19.2",
+        "typescript": "^5.7.2"
+    }
+}
