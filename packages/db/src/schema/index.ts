@@ -6,3 +6,4 @@ export * from "./authz";
 export * from "./auth";
 export * from "./outbox";
 export * from "./orders";
+export * from "./payments";

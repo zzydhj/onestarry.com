@@ -21,6 +21,7 @@
         "smoke:outbox": "tsx src/smoke-outbox.ts",
         "smoke:orders": "tsx src/smoke-orders.ts",
         "smoke:create-order": "tsx src/smoke-create-order.ts",
+        "smoke:payments": "tsx src/smoke-payments.ts",
         "lint": "eslint .",
         "typecheck": "tsc --noEmit"
     },
