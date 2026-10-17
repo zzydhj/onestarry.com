@@ -1,0 +1,24 @@
+{
+    "$schema": "node_modules/wrangler/config-schema.json",
+    "name": "onestarry-jobs",
+    "main": "index.ts",
+    "compatibility_date": "2026-01-01",
+    "compatibility_flags": [
+        "nodejs_compat"
+    ],
+    "vars": {
+        "RELAY_BATCH_LIMIT": "500"
+    },
+    "hyperdrive": [
+        {
+            "binding": "HYPERDRIVE",
+            "id": "797e790ce60448298d7a5502a6ea15fb",
+            "localConnectionString": "postgresql://postgres:postgres@127.0.0.1:5432/postgres"
+        }
+    ],
+    "triggers": {
+        "crons": [
+            "* * * * *"
+        ]
+    }
+}
