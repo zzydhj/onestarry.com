@@ -1,4 +1,4 @@
-import { and, eq } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 import { addresses, idempotencyKeys, orderItems, orderLines, orders, variantMarketPrices } from "../schema";
 import { emitEvent } from "./outbox";
 import type { Db, Tx } from "../client";
@@ -91,14 +91,16 @@ export async function createOrder(db: Db | Tx, input: CreateOrderInput): Promise
     let duty = 0;
     const built: { variantId: string; quantity: number; unitPriceCents: number; snapshot: Record<string, unknown> }[] = [];
 
+    // 批量取价（一次查询代替 N 次跨国往返）
+    const variantIds = input.items.map((i) => i.variantId);
+    const prices = await db
+        .select()
+        .from(variantMarketPrices)
+        .where(and(inArray(variantMarketPrices.variantId, variantIds), eq(variantMarketPrices.marketId, input.marketId)));
+    const priceMap = new Map(prices.map((p) => [p.variantId, p]));
+
     for (const it of input.items) {
-        const price = (
-            await db
-                .select()
-                .from(variantMarketPrices)
-                .where(and(eq(variantMarketPrices.variantId, it.variantId), eq(variantMarketPrices.marketId, input.marketId)))
-                .limit(1)
-        )[0];
+        const price = priceMap.get(it.variantId);
         if (!price || price.blocked) throw new Error(`NOT_SELLABLE:${it.variantId}`);
         subtotal += price.goodsCents * it.quantity;
         tax += price.taxCents * it.quantity;
@@ -136,25 +138,29 @@ export async function createOrder(db: Db | Tx, input: CreateOrderInput): Promise
         .returning();
     if (!order) throw new Error("order insert failed");
 
-    for (const b of built) {
-        const [oi] = await db
-            .insert(orderItems)
-            .values({
+    const insertedItems = await db
+        .insert(orderItems)
+        .values(
+            built.map((b) => ({
                 orderId: order.id,
                 variantId: b.variantId,
                 quantity: b.quantity,
                 unitPriceCents: b.unitPriceCents,
                 snapshot: b.snapshot,
-            })
-            .returning();
-        if (oi) {
-            await db.insert(orderLines).values({ orderId: order.id, orderItemId: oi.id, type: "item", amountCents: b.unitPriceCents * b.quantity });
-        }
-    }
-    if (shipping) await db.insert(orderLines).values({ orderId: order.id, type: "shipping", amountCents: shipping });
-    if (tax) await db.insert(orderLines).values({ orderId: order.id, type: "tax", amountCents: tax });
-    if (duty) await db.insert(orderLines).values({ orderId: order.id, type: "duty", amountCents: duty });
-    if (discount) await db.insert(orderLines).values({ orderId: order.id, type: "discount", amountCents: -discount });
+            })),
+        )
+        .returning({ id: orderItems.id });
+
+    const lines: { orderId: string; orderItemId?: string; type: "item" | "shipping" | "tax" | "duty" | "discount"; amountCents: number }[] = [];
+    built.forEach((b, i) => {
+        const oi = insertedItems[i];
+        if (oi) lines.push({ orderId: order.id, orderItemId: oi.id, type: "item", amountCents: b.unitPriceCents * b.quantity });
+    });
+    if (shipping) lines.push({ orderId: order.id, type: "shipping", amountCents: shipping });
+    if (tax) lines.push({ orderId: order.id, type: "tax", amountCents: tax });
+    if (duty) lines.push({ orderId: order.id, type: "duty", amountCents: duty });
+    if (discount) lines.push({ orderId: order.id, type: "discount", amountCents: -discount });
+    if (lines.length) await db.insert(orderLines).values(lines);
 
     // 首个真实写侧发 outbox 事件（cron relay 会消费）
     await emitEvent(db, {
