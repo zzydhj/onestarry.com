@@ -71,6 +71,13 @@
       "when": 1792241800276,
       "tag": "0009_flat_namorita",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1792244233484,
+      "tag": "0010_greedy_thor",
+      "breakpoints": true
     }
   ]
 }

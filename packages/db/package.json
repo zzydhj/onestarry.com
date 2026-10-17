@@ -23,6 +23,7 @@
         "smoke:create-order": "tsx src/smoke-create-order.ts",
         "smoke:payments": "tsx src/smoke-payments.ts",
         "smoke:payments-posting": "tsx src/smoke-payments-posting.ts",
+        "smoke:shipment": "tsx src/smoke-shipment.ts",
         "lint": "eslint .",
         "typecheck": "tsc --noEmit"
     },

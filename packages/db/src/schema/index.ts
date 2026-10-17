@@ -7,3 +7,4 @@ export * from "./auth";
 export * from "./outbox";
 export * from "./orders";
 export * from "./payments";
+export * from "./shipments";
