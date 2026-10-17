@@ -1,0 +1,26 @@
+{
+    "name": "@onestarry/jobs",
+    "version": "0.0.0",
+    "private": true,
+    "type": "module",
+    "exports": {
+        ".": "./src/index.ts"
+    },
+    "scripts": {
+        "lint": "eslint .",
+        "typecheck": "tsc --noEmit",
+        "smoke": "tsx src/relay.smoke.ts"
+    },
+    "dependencies": {
+        "@onestarry/core": "workspace:*",
+        "@onestarry/db": "workspace:*",
+        "drizzle-orm": "^0.45.2"
+    },
+    "devDependencies": {
+        "@onestarry/config": "workspace:*",
+        "@types/node": "^22.10.5",
+        "dotenv": "^18.0.8",
+        "tsx": "^4.19.2",
+        "typescript": "^5.7.2"
+    }
+}

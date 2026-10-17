@@ -6,7 +6,7 @@ export interface OutboxEventInput {
     aggregateType: string;
     aggregateId: string;
     eventType: string;
-    payload?: Record<string, unknown>;
+    payload?: object;
 }
 
 /**
@@ -18,7 +18,7 @@ export async function emitEvent(db: Db | Tx, e: OutboxEventInput): Promise<void>
         aggregateType: e.aggregateType,
         aggregateId: e.aggregateId,
         eventType: e.eventType,
-        payload: e.payload ?? {},
+        payload: (e.payload ?? {}) as Record<string, unknown>,
     });
 }
 
