@@ -8,13 +8,13 @@ import { createCustomerAuth } from "@onestarry/auth";
  * 注意 Workers Builds 每次部署会清掉 Dashboard 设的变量，只有 secret put 写入的会保留）。
  */
 async function handle(req: Request): Promise<Response> {
-  const { env } = getCloudflareContext();
-  const auth = createCustomerAuth({
-    connString: env.HYPERDRIVE.connectionString,
-    baseURL: new URL(req.url).origin,
-    secret: env.BETTER_AUTH_SECRET,
-  });
-  return auth.handler(req);
+    const { env } = getCloudflareContext();
+    const auth = createCustomerAuth({
+        connString: env.HYPERDRIVE.connectionString,
+        baseURL: new URL(req.url).origin,
+        secret: env.BETTER_AUTH_SECRET,
+    });
+    return auth.handler(req);
 }
 
 export const dynamic = "force-dynamic";

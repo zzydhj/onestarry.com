@@ -27,6 +27,10 @@ coverage/
 .vercel/
 .wrangler/
 
+# e2e/test artifacts
+.e2e-*
+*.e2e.png
+
 # editor
 .idea/
 .vscode/*
