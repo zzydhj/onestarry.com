@@ -1,0 +1,13 @@
+/* apps/admin 全局样式：仅放后台通用/编辑器样式，业务样式随组件。 */
+
+/* Tiptap 编辑器：图片不撑破编辑区 */
+.ProseMirror {
+    outline: none;
+}
+
+.ProseMirror img {
+    max-width: 100%;
+    height: auto;
+    display: block;
+    margin: 8px 0;
+}
