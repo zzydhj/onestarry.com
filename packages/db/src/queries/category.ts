@@ -8,6 +8,33 @@ export async function listCategoryChildren(db: Db | Tx, parentId: string | null)
     return db.select().from(categories).where(where).orderBy(asc(categories.name));
 }
 
+/** 全部类目（扁平，后台按 level/name 排序，前端用 parentId 拼树）。 */
+export async function listAllCategories(db: Db | Tx) {
+    return db
+        .select({ id: categories.id, name: categories.name, parentId: categories.parentId, level: categories.level })
+        .from(categories)
+        .orderBy(asc(categories.level), asc(categories.name));
+}
+
+/** 新建类目：传 parentId 则为其子级，level 自动 = 父.level+1。 */
+export async function createCategory(db: Db | Tx, input: { name: string; parentId?: string | null }): Promise<{ id: string }> {
+    let level = 1;
+    if (input.parentId) {
+        const p = (await db.select({ level: categories.level }).from(categories).where(eq(categories.id, input.parentId)).limit(1))[0];
+        level = (p?.level ?? 1) + 1;
+    }
+    const [row] = await db
+        .insert(categories)
+        .values({ name: input.name, parentId: input.parentId ?? null, level })
+        .returning({ id: categories.id });
+    return { id: row!.id };
+}
+
+/** 重命名类目。 */
+export async function renameCategory(db: Db | Tx, input: { id: string; name: string }): Promise<void> {
+    await db.update(categories).set({ name: input.name, updatedAt: new Date() }).where(eq(categories.id, input.id));
+}
+
 /**
  * 取某类目配置的动态属性（category_attribute_sets ⨝ attribute_definitions）。
  * super_admin 后台增删属性即时生效，不改表结构（§3.2 / §14）。
