@@ -5,7 +5,7 @@ import { eq } from "drizzle-orm";
 import { getCloudflareContext } from "@opennextjs/cloudflare";
 import { createAdminAuth } from "@onestarry/auth";
 import { createDb, productTranslations, productVariants, products } from "@onestarry/db";
-import { updateBasePriceAction } from "./actions";
+import { setProductStatusAction, updateBasePriceAction } from "./actions";
 
 export const dynamic = "force-dynamic";
 
@@ -40,6 +40,17 @@ export default async function AdminProductDetail({ params }: { params: Promise<{
             <p><Link href="/products">← 返回商品列表</Link></p>
             <h1 style={{ fontSize: 22 }}>{title?.title ?? "（无标题）"}</h1>
             <p style={{ color: "#888", fontSize: 13 }}>状态：{product.status} · ID：{product.id}</p>
+
+            <form action={setProductStatusAction} style={{ display: "flex", gap: 8, alignItems: "center", margin: "12px 0" }}>
+                <input type="hidden" name="productId" value={product.id} />
+                <span>上架状态：</span>
+                <select name="status" defaultValue={product.status}>
+                    <option value="draft">草稿（下架）</option>
+                    <option value="active">已上架</option>
+                    <option value="archived">已归档</option>
+                </select>
+                <button type="submit">更新状态</button>
+            </form>
 
             <h2 style={{ fontSize: 16, marginTop: 24 }}>变体与基价（改价会触发全包价重算）</h2>
             <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 14 }}>

@@ -3,9 +3,10 @@
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
+import { eq } from "drizzle-orm";
 import { getCloudflareContext } from "@opennextjs/cloudflare";
 import { createAdminAuth } from "@onestarry/auth";
-import { createDb, updateVariantBasePrice } from "@onestarry/db";
+import { createDb, products, updateVariantBasePrice } from "@onestarry/db";
 import { runRelayBatch, relayHandlers } from "@onestarry/jobs";
 
 /**
@@ -37,4 +38,35 @@ export async function updateBasePriceAction(formData: FormData): Promise<void> {
     ctx.waitUntil(runRelayBatch(db, relayHandlers, { limit: 50 }));
 
     if (productId) revalidatePath(`/products/${productId}`);
+}
+
+const STATUSES = ["draft", "active", "archived"] as const;
+type ProductStatus = (typeof STATUSES)[number];
+
+/**
+ * 上架/下架：改 products.status。可售性在读取时由 computeSellability 现算，
+ * 故无需发事件——前台下次请求自动跟随（draft/archived 不可售）。
+ */
+export async function setProductStatusAction(formData: FormData): Promise<void> {
+    const { env } = getCloudflareContext();
+    const h = await headers();
+    const auth = createAdminAuth({
+        connString: env.HYPERDRIVE.connectionString,
+        baseURL: `https://${h.get("host") ?? "localhost"}`,
+        secret: env.BETTER_AUTH_SECRET,
+    });
+    const session = await auth.api.getSession({ headers: h });
+    if (!session?.user) redirect("/signin");
+
+    const productId = String(formData.get("productId") ?? "");
+    const status = String(formData.get("status") ?? "");
+    if (!productId || !(STATUSES as readonly string[]).includes(status)) return;
+
+    const db = createDb(env.HYPERDRIVE.connectionString);
+    await db
+        .update(products)
+        .set({ status: status as ProductStatus, updatedAt: new Date() })
+        .where(eq(products.id, productId));
+
+    revalidatePath(`/products/${productId}`);
 }
