@@ -1,6 +1,7 @@
 import { and, eq } from "drizzle-orm";
 import { computeLandedPrice, hashInputs } from "@onestarry/core";
-import { priceHistory, variantMarketPrices } from "../schema";
+import { markets, priceHistory, productVariants, variantMarketPrices } from "../schema";
+import { emitEvent } from "./outbox";
 import type { Db, Tx } from "../client";
 
 export interface RecomputeInput {
@@ -125,4 +126,53 @@ export async function recomputeVariantMarketPrice(db: Db | Tx, input: RecomputeI
     }
 
     return { changed: true, blocked: landed.blocked, allInCents: landed.allInCents, listPriceCents: landed.displayedPriceCents };
+}
+
+export interface UpdateBasePriceInput {
+    variantId: string;
+    basePriceCents: number;
+    changedBy?: string | null;
+}
+
+/**
+ * 改某变体的售价真源 basePriceCents，并对所有市场发出 price.recompute 事件（与主写同事务）。
+ * 事件 payload 即完整 RecomputeInput（与 seed 一致：MVP 单币种、税/关/运费 provider 未接入 → 0/1 占位）。
+ * 调用方负责：包在事务里 + 提交后 ctx.waitUntil(runRelayBatch(...)) 即时派发（Cron 每分钟兜底）。
+ */
+export async function updateVariantBasePrice(db: Db | Tx, input: UpdateBasePriceInput): Promise<{ emitted: number }> {
+    const variant = (await db.select().from(productVariants).where(eq(productVariants.id, input.variantId)).limit(1))[0];
+    if (!variant) throw new Error(`variant ${input.variantId} 不存在`);
+
+    await db
+        .update(productVariants)
+        .set({ basePriceCents: input.basePriceCents, updatedAt: new Date() })
+        .where(eq(productVariants.id, input.variantId));
+
+    const allMarkets = await db.select().from(markets);
+    for (const m of allMarkets) {
+        const payload: RecomputeInput = {
+            variantId: variant.id,
+            marketId: m.id,
+            basePriceCents: input.basePriceCents,
+            baseCurrency: variant.baseCurrency,
+            fxRate: 1, // MVP：基价币种==市场币种；FX provider 待接
+            marketCurrency: m.currency,
+            shippingCents: 0, // ShippingProvider 待接
+            taxRate: 0, // TaxProvider 待接
+            dutyRate: 0, // DutyProvider 待接
+            pricingMode: m.pricingMode,
+            dutyPresentation: m.dutyPresentation,
+            thresholdCents: null, // deMinimis provider 待接
+            overThresholdPolicy: m.overThresholdPolicy,
+            reason: "manual",
+            changedBy: input.changedBy ?? null,
+        };
+        await emitEvent(db, {
+            aggregateType: "variant",
+            aggregateId: variant.id,
+            eventType: "price.recompute",
+            payload,
+        });
+    }
+    return { emitted: allMarkets.length };
 }

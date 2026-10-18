@@ -36,3 +36,5 @@ coverage/
 .vscode/*
 !.vscode/extensions.json
 .neon
+
+*.tsbuildinfo

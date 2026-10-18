@@ -9,7 +9,8 @@
     "scripts": {
         "lint": "eslint .",
         "typecheck": "tsc --noEmit",
-        "smoke": "tsx src/relay.smoke.ts"
+        "smoke": "tsx src/relay.smoke.ts",
+        "smoke:pricing": "tsx src/smoke-admin-pricing.ts"
     },
     "dependencies": {
         "@onestarry/core": "workspace:*",
