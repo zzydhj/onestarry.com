@@ -23,4 +23,5 @@ interface R2Bucket {
         value: ArrayBuffer | Uint8Array | string,
         options?: { httpMetadata?: { contentType?: string; cacheControl?: string } },
     ): Promise<unknown>;
+    delete(key: string): Promise<unknown>;
 }

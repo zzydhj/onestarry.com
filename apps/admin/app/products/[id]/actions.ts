@@ -7,7 +7,7 @@ import { eq } from "drizzle-orm";
 import { getCloudflareContext } from "@opennextjs/cloudflare";
 import { createAdminAuth } from "@onestarry/auth";
 import { mediaUrl } from "@onestarry/core";
-import { createDb, attachProductImage, products, setProductRichBody, setVariantOnHand, updateVariantBasePrice } from "@onestarry/db";
+import { createDb, attachProductImage, deleteProductImage, moveProductImage, products, setProductRichBody, setVariantOnHand, updateVariantBasePrice } from "@onestarry/db";
 import { runRelayBatch, relayHandlers } from "@onestarry/jobs";
 
 /**
@@ -186,4 +186,54 @@ export async function uploadRichImageAction(formData: FormData): Promise<{ url: 
         httpMetadata: { contentType: type, cacheControl: "public, max-age=31536000, immutable" },
     });
     return { url: mediaUrl(key) };
+}
+
+/** 删除一张商品图：解除关联 + 删 media_assets + 尽力删 R2 对象。 */
+export async function deleteProductImageAction(formData: FormData): Promise<void> {
+    const { env } = getCloudflareContext();
+    const h = await headers();
+    const auth = createAdminAuth({
+        connString: env.HYPERDRIVE.connectionString,
+        baseURL: `https://${h.get("host") ?? "localhost"}`,
+        secret: env.BETTER_AUTH_SECRET,
+    });
+    const session = await auth.api.getSession({ headers: h });
+    if (!session?.user) redirect("/signin");
+
+    const productId = String(formData.get("productId") ?? "");
+    const mediaId = String(formData.get("mediaId") ?? "");
+    if (!productId || !mediaId) return;
+
+    const db = createDb(env.HYPERDRIVE.connectionString);
+    const { r2Key } = await deleteProductImage(db, { productId, mediaId });
+    if (r2Key) {
+        try {
+            await env.MEDIA.delete(r2Key);
+        } catch {
+            // 忽略：DB 已解除关联，孤儿对象可后续清理
+        }
+    }
+    revalidatePath(`/products/${productId}`);
+}
+
+/** 上移/下移一张商品图。 */
+export async function moveProductImageAction(formData: FormData): Promise<void> {
+    const { env } = getCloudflareContext();
+    const h = await headers();
+    const auth = createAdminAuth({
+        connString: env.HYPERDRIVE.connectionString,
+        baseURL: `https://${h.get("host") ?? "localhost"}`,
+        secret: env.BETTER_AUTH_SECRET,
+    });
+    const session = await auth.api.getSession({ headers: h });
+    if (!session?.user) redirect("/signin");
+
+    const productId = String(formData.get("productId") ?? "");
+    const mediaId = String(formData.get("mediaId") ?? "");
+    const dir = String(formData.get("dir") ?? "") === "up" ? "up" : "down";
+    if (!productId || !mediaId) return;
+
+    const db = createDb(env.HYPERDRIVE.connectionString);
+    await moveProductImage(db, { productId, mediaId, dir });
+    revalidatePath(`/products/${productId}`);
 }

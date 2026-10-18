@@ -3,7 +3,7 @@
 import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { downscaleImage } from "@/lib/image";
-import { uploadProductImageAction } from "./actions";
+import { deleteProductImageAction, moveProductImageAction, uploadProductImageAction } from "./actions";
 
 export function ImageUploader({
     productId,
@@ -38,20 +38,44 @@ export function ImageUploader({
         }
     }
 
+    async function move(mediaId: string, dir: "up" | "down") {
+        const fd = new FormData();
+        fd.set("productId", productId);
+        fd.set("mediaId", mediaId);
+        fd.set("dir", dir);
+        await moveProductImageAction(fd);
+        router.refresh();
+    }
+
+    async function remove(mediaId: string) {
+        if (!window.confirm("删除这张图？")) return;
+        const fd = new FormData();
+        fd.set("productId", productId);
+        fd.set("mediaId", mediaId);
+        await deleteProductImageAction(fd);
+        router.refresh();
+    }
+
     return (
         <div>
-            <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 10 }}>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 10, marginBottom: 10 }}>
                 {images.length === 0 && <span style={{ color: "#999", fontSize: 13 }}>暂无图片</span>}
-                {images.map((img) => (
-                    <img
-                        key={img.mediaId}
-                        src={img.url}
-                        alt=""
-                        loading="lazy"
-                        width={96}
-                        height={96}
-                        style={{ width: 96, height: 96, objectFit: "cover", border: "1px solid #ddd", borderRadius: 4 }}
-                    />
+                {images.map((img, i) => (
+                    <div key={img.mediaId} style={{ width: 100 }}>
+                        <img
+                            src={img.url}
+                            alt=""
+                            loading="lazy"
+                            width={96}
+                            height={96}
+                            style={{ width: 96, height: 96, objectFit: "cover", border: "1px solid #ddd", borderRadius: 4 }}
+                        />
+                        <div style={{ display: "flex", gap: 2, marginTop: 2 }}>
+                            <button type="button" disabled={i === 0} onClick={() => move(img.mediaId, "up")}>↑</button>
+                            <button type="button" disabled={i === images.length - 1} onClick={() => move(img.mediaId, "down")}>↓</button>
+                            <button type="button" onClick={() => remove(img.mediaId)}>✕</button>
+                        </div>
+                    </div>
                 ))}
             </div>
             <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
