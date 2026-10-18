@@ -51,7 +51,7 @@ export const principalRoles = pgTable(
     {
         ...timestamps(),
         id: id(),
-        subjectId: uuid("subject_id").notNull(), // Better Auth 用户 id
+        subjectId: text("subject_id").notNull(), // Better Auth 用户 id（text/nanoid，非 uuid）
         kind: principalKindEnum("kind").notNull(),
         roleId: uuid("role_id").notNull().references(() => roles.id),
     },
@@ -63,7 +63,7 @@ export const customerProfiles = pgTable(
     {
         ...timestamps(),
         id: id(),
-        userId: uuid("user_id").notNull(), // Better Auth customer 用户 id
+        userId: text("user_id").notNull(), // Better Auth customer 用户 id（text/nanoid，非 uuid）
         preferredLocale: text("preferred_locale").notNull().default("en"),
         preferredMarketId: uuid("preferred_market_id").references(() => markets.id),
         marketingOptInRef: text("marketing_opt_in_ref"), // 指向 consents 记录

@@ -9,6 +9,7 @@
         "start": "next start",
         "preview": "opennextjs-cloudflare build && opennextjs-cloudflare preview",
         "deploy": "opennextjs-cloudflare build && opennextjs-cloudflare deploy",
+        "seed:admin": "tsx scripts/seed-admin.ts",
         "typecheck": "tsc --noEmit"
     },
     "dependencies": {
@@ -24,6 +25,8 @@
     },
     "devDependencies": {
         "@onestarry/config": "workspace:*",
+        "dotenv": "^18.0.8",
+        "tsx": "^4.19.2",
         "wrangler": "^4.28.1",
         "@types/node": "^22.10.5",
         "@types/react": "^19.0.2",

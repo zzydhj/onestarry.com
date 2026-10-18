@@ -22,6 +22,7 @@ export default async function AdminHome() {
             {session?.user ? (
                 <>
                     <p>已登录：<strong>{session.user.email}</strong></p>
+                    <p><Link href="/products">→ 商品管理</Link></p>
                     <p style={{ color: "#666" }}>后台功能（商品/改价/类目/市场/库存/批量导入）将在此逐步接入。</p>
                 </>
             ) : (
