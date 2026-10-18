@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { getCloudflareContext } from "@opennextjs/cloudflare";
+import { mediaUrl } from "@onestarry/core";
 import { createDb, listProductsForMarket } from "@onestarry/db";
 
 export const dynamic = "force-dynamic";
@@ -23,6 +24,18 @@ export default async function Home() {
                     {items.map((it) => (
                         <li key={it.productId} style={{ border: "1px solid #eee", borderRadius: 10, padding: 16 }}>
                             <Link href={`/products/${it.slug}`} style={{ textDecoration: "none", color: "inherit" }}>
+                                {it.imageUrl ? (
+                                    <img
+                                        src={mediaUrl(it.imageUrl)}
+                                        alt={it.title}
+                                        loading="lazy"
+                                        width={240}
+                                        height={160}
+                                        style={{ width: "100%", aspectRatio: "3 / 2", objectFit: "cover", borderRadius: 8, marginBottom: 10, background: "#f3f4f6" }}
+                                    />
+                                ) : (
+                                    <div style={{ width: "100%", aspectRatio: "3 / 2", background: "#f3f4f6", borderRadius: 8, marginBottom: 10, display: "flex", alignItems: "center", justifyContent: "center", color: "#bbb", fontSize: 13 }}>无图</div>
+                                )}
                                 <h2 style={{ fontSize: 16, margin: "0 0 6px" }}>{it.title}</h2>
                                 <p style={{ margin: "0 0 10px", color: "#666", fontSize: 13 }}>{it.description}</p>
                                 <div style={{ fontWeight: 600 }}>{money(it.priceCents, it.currency)}</div>
