@@ -42,7 +42,7 @@ export default async function Home() {
                                 <div className="p-3">
                                     <h2 className="truncate text-sm font-medium">{it.title}</h2>
                                     <p className="mt-1 line-clamp-1 text-xs text-muted">{it.description}</p>
-                                    <div className="mt-2 text-sm font-semibold text-brand">{money(it.priceCents, it.currency)}</div>
+                                    <div className="mt-2 text-sm font-semibold text-accent">{money(it.priceCents, it.currency)}</div>
                                 </div>
                             </Link>
                         </li>

@@ -9,13 +9,13 @@ export function SiteHeader() {
                     onestarry
                 </Link>
                 <nav className="flex items-center gap-5 text-sm text-muted">
-                    <Link href="/" className="transition hover:text-brand">
+                    <Link href="/" className="transition hover:text-accent">
                         全部商品
                     </Link>
-                    <Link href="/cart" className="transition hover:text-brand">
+                    <Link href="/cart" className="transition hover:text-accent">
                         购物车
                     </Link>
-                    <Link href="/account/orders" className="transition hover:text-brand">
+                    <Link href="/account/orders" className="transition hover:text-accent">
                         我的订单
                     </Link>
                 </nav>
