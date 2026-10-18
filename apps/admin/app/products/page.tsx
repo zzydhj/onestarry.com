@@ -38,7 +38,7 @@ export default async function AdminProducts() {
     return (
         <main style={{ maxWidth: 960, margin: "0 auto", padding: "2rem 1rem", fontFamily: "system-ui" }}>
             <h1 style={{ fontSize: 22 }}>商品 <span style={{ fontSize: 13, color: "#888" }}>（{rows.length}）</span></h1>
-            <p><Link href="/">← 返回后台首页</Link> · <Link href="/products/new">＋ 新建商品</Link></p>
+            <p><Link href="/">← 返回后台首页</Link> · <Link href="/products/new">＋ 新建商品</Link> · <Link href="/products/import">⇪ 批量导入</Link></p>
             <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 14 }}>
                 <thead>
                     <tr style={{ textAlign: "left", borderBottom: "1px solid #ddd" }}>
