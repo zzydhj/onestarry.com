@@ -1,4 +1,5 @@
 import { headers } from "next/headers";
+import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { eq } from "drizzle-orm";
 import { getCloudflareContext } from "@opennextjs/cloudflare";
@@ -36,7 +37,7 @@ export default async function AdminProductDetail({ params }: { params: Promise<{
 
     return (
         <main style={{ maxWidth: 860, margin: "0 auto", padding: "2rem 1rem", fontFamily: "system-ui" }}>
-            <p><a href="/products">← 返回商品列表</a></p>
+            <p><Link href="/products">← 返回商品列表</Link></p>
             <h1 style={{ fontSize: 22 }}>{title?.title ?? "（无标题）"}</h1>
             <p style={{ color: "#888", fontSize: 13 }}>状态：{product.status} · ID：{product.id}</p>
 
