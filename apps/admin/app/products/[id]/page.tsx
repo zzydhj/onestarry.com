@@ -4,8 +4,10 @@ import { notFound, redirect } from "next/navigation";
 import { eq, inArray } from "drizzle-orm";
 import { getCloudflareContext } from "@opennextjs/cloudflare";
 import { createAdminAuth } from "@onestarry/auth";
-import { createDb, inventory, productTranslations, productVariants, products } from "@onestarry/db";
+import { mediaUrl } from "@onestarry/core";
+import { createDb, inventory, listProductImages, productTranslations, productVariants, products } from "@onestarry/db";
 import { setProductStatusAction, updateBasePriceAction, updateInventoryAction } from "./actions";
+import { ImageUploader } from "./ImageUploader";
 
 export const dynamic = "force-dynamic";
 
@@ -38,6 +40,7 @@ export default async function AdminProductDetail({ params }: { params: Promise<{
         ? await db.select().from(inventory).where(inArray(inventory.variantId, variants.map((v) => v.id)))
         : [];
     const stockMap = new Map(invRows.map((r) => [r.variantId, { onHand: r.onHand, available: r.available ?? 0 }]));
+    const images = await listProductImages(db, id);
 
     return (
         <main style={{ maxWidth: 860, margin: "0 auto", padding: "2rem 1rem", fontFamily: "system-ui" }}>
@@ -55,6 +58,12 @@ export default async function AdminProductDetail({ params }: { params: Promise<{
                 </select>
                 <button type="submit">更新状态</button>
             </form>
+
+            <h2 style={{ fontSize: 16, marginTop: 24 }}>商品图片</h2>
+            <ImageUploader
+                productId={product.id}
+                images={images.map((im) => ({ mediaId: im.mediaId, url: mediaUrl(im.r2Key) }))}
+            />
 
             <h2 style={{ fontSize: 16, marginTop: 24 }}>变体、基价与库存（改价会触发全包价重算）</h2>
             <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 14 }}>
