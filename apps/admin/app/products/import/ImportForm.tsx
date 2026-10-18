@@ -39,8 +39,16 @@ export function ImportForm() {
                     <div>
                         共 <strong>{summary.total}</strong> 行 · 新建 <strong style={{ color: "#187a30" }}>{summary.created}</strong> ·
                         更新 <strong style={{ color: "#0366d6" }}>{summary.updated}</strong> ·
+                        抓图 <strong style={{ color: "#187a30" }}>{summary.imagesImported}</strong> ·
                         失败 <strong style={{ color: summary.failed.length ? "#b00000" : "#666" }}>{summary.failed.length}</strong>
                     </div>
+                    {summary.imageFailed.length > 0 && (
+                        <ul style={{ margin: "6px 0 0", paddingLeft: 20, color: "#b58900", fontSize: 13 }}>
+                            {summary.imageFailed.slice(0, 20).map((f, i) => (
+                                <li key={i}>图片 <code>{f.sku}</code>：{f.reason}</li>
+                            ))}
+                        </ul>
+                    )}
                     {summary.failed.length > 0 && (
                         <ul style={{ margin: "8px 0 0", paddingLeft: 20, color: "#b00000" }}>
                             {summary.failed.slice(0, 50).map((f, i) => (

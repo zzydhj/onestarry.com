@@ -25,8 +25,8 @@ export default async function ImportPage() {
             <h1 style={{ fontSize: 22 }}>批量导入商品（CSV）</h1>
             <p style={{ fontSize: 13, color: "#666", lineHeight: 1.7 }}>
                 第一行为表头。按 <code>sku</code> 匹配：存在则更新、不存在则新建。<br />
-                列：<code>sku, slug, title, description, basePrice, cost, weight, onHand, status</code><br />
-                价格/成本填美元（如 <code>19.99</code>），重量克，库存整数，status 取 <code>draft/active/archived</code>；留空的列不改动。
+                列：<code>sku, slug, title, description, basePrice, cost, weight, onHand, status, imageUrl</code><br />
+                价格/成本填美元（如 <code>19.99</code>），重量克，库存整数，status 取 <code>draft/active/archived</code>；<code>imageUrl</code> 会下载存进 R2 并挂为商品图；留空的列不改动。
             </p>
             <ImportForm />
         </main>
