@@ -1,5 +1,7 @@
 import type { Metadata } from "next";
 import type { ReactNode } from "react";
+import "./globals.css";
+import { SiteHeader } from "@/components/SiteHeader";
 
 export const metadata: Metadata = {
     title: "onestarry.com",
@@ -9,7 +11,10 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: { children: ReactNode }) {
     return (
         <html lang="en">
-            <body style={{ fontFamily: "system-ui, sans-serif", margin: 0 }}>{children}</body>
+            <body className="min-h-screen bg-white text-fg antialiased">
+                <SiteHeader />
+                {children}
+            </body>
         </html>
     );
 }

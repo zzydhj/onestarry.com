@@ -15,40 +15,40 @@ export default async function Home() {
     const items = await listProductsForMarket(db, "us", "en");
 
     return (
-        <main style={{ maxWidth: 900, margin: "0 auto", padding: "2rem 1rem", fontFamily: "system-ui" }}>
-            <h1 style={{ fontSize: 24 }}>onestarry · 商品（US 市场）</h1>
-            <p style={{ fontSize: 14 }}>
-                <Link href="/cart" style={{ color: "#0366d6", textDecoration: "none" }}>🛒 购物车</Link>
-                {" · "}
-                <Link href="/account/orders" style={{ color: "#0366d6", textDecoration: "none" }}>我的订单</Link>
-            </p>
+        <div className="mx-auto max-w-5xl px-4 py-8">
+            <h1 className="mb-6 text-2xl font-semibold tracking-tight text-brand">全部商品</h1>
             {items.length === 0 ? (
-                <p style={{ color: "#888" }}>暂无商品。请先运行 <code>pnpm --filter @onestarry/db seed:demo</code>。</p>
+                <p className="text-muted">暂无商品。</p>
             ) : (
-                <ul style={{ listStyle: "none", padding: 0, display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))", gap: 16 }}>
+                <ul className="grid grid-cols-2 gap-5 sm:grid-cols-3 lg:grid-cols-4">
                     {items.map((it) => (
-                        <li key={it.productId} style={{ border: "1px solid #eee", borderRadius: 10, padding: 16 }}>
-                            <Link href={`/products/${it.slug}`} style={{ textDecoration: "none", color: "inherit" }}>
-                                {it.imageUrl ? (
-                                    <img
-                                        src={mediaUrl(it.imageUrl)}
-                                        alt={it.title}
-                                        loading="lazy"
-                                        width={240}
-                                        height={160}
-                                        style={{ width: "100%", aspectRatio: "3 / 2", objectFit: "cover", borderRadius: 8, marginBottom: 10, background: "#f3f4f6" }}
-                                    />
-                                ) : (
-                                    <div style={{ width: "100%", aspectRatio: "3 / 2", background: "#f3f4f6", borderRadius: 8, marginBottom: 10, display: "flex", alignItems: "center", justifyContent: "center", color: "#bbb", fontSize: 13 }}>无图</div>
-                                )}
-                                <h2 style={{ fontSize: 16, margin: "0 0 6px" }}>{it.title}</h2>
-                                <p style={{ margin: "0 0 10px", color: "#666", fontSize: 13 }}>{it.description}</p>
-                                <div style={{ fontWeight: 600 }}>{money(it.priceCents, it.currency)}</div>
+                        <li key={it.productId}>
+                            <Link
+                                href={`/products/${it.slug}`}
+                                className="group block overflow-hidden rounded-xl border border-line bg-white transition hover:shadow-md"
+                            >
+                                <div className="aspect-square w-full overflow-hidden bg-surface">
+                                    {it.imageUrl ? (
+                                        <img
+                                            src={mediaUrl(it.imageUrl)}
+                                            alt={it.title}
+                                            loading="lazy"
+                                            className="h-full w-full object-cover transition duration-300 group-hover:scale-105"
+                                        />
+                                    ) : (
+                                        <div className="flex h-full w-full items-center justify-center text-sm text-muted">无图</div>
+                                    )}
+                                </div>
+                                <div className="p-3">
+                                    <h2 className="truncate text-sm font-medium">{it.title}</h2>
+                                    <p className="mt-1 line-clamp-1 text-xs text-muted">{it.description}</p>
+                                    <div className="mt-2 text-sm font-semibold text-brand">{money(it.priceCents, it.currency)}</div>
+                                </div>
                             </Link>
                         </li>
                     ))}
                 </ul>
             )}
-        </main>
+        </div>
     );
 }
