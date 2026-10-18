@@ -6,6 +6,7 @@ import { revalidatePath } from "next/cache";
 import { eq } from "drizzle-orm";
 import { getCloudflareContext } from "@opennextjs/cloudflare";
 import { createAdminAuth } from "@onestarry/auth";
+import { mediaUrl } from "@onestarry/core";
 import { createDb, attachProductImage, products, setProductRichBody, setVariantOnHand, updateVariantBasePrice } from "@onestarry/db";
 import { runRelayBatch, relayHandlers } from "@onestarry/jobs";
 
@@ -158,4 +159,31 @@ export async function saveRichBodyAction(formData: FormData): Promise<void> {
     await setProductRichBody(db, { productId, richBody: parsed });
 
     revalidatePath(`/products/${productId}`);
+}
+
+/** 富文本内插图：上传到 R2（products/{id}/content/…）→ 返回可访问 URL，供编辑器插入。 */
+export async function uploadRichImageAction(formData: FormData): Promise<{ url: string; error?: string }> {
+    const { env } = getCloudflareContext();
+    const h = await headers();
+    const auth = createAdminAuth({
+        connString: env.HYPERDRIVE.connectionString,
+        baseURL: `https://${h.get("host") ?? "localhost"}`,
+        secret: env.BETTER_AUTH_SECRET,
+    });
+    const session = await auth.api.getSession({ headers: h });
+    if (!session?.user) return { url: "", error: "未登录" };
+
+    const productId = String(formData.get("productId") ?? "");
+    const file = formData.get("image");
+    if (!productId || !(file instanceof File) || file.size === 0) return { url: "", error: "无效文件" };
+    const type = file.type;
+    if (!type.startsWith("image/") || file.size > MAX_UPLOAD_BYTES) return { url: "", error: "图片类型或大小不符" };
+
+    const ext = type === "image/png" ? "png" : type === "image/webp" ? "webp" : type === "image/gif" ? "gif" : "jpg";
+    const key = `products/${productId}/content/${crypto.randomUUID()}.${ext}`;
+    const bytes = await file.arrayBuffer();
+    await env.MEDIA.put(key, bytes, {
+        httpMetadata: { contentType: type, cacheControl: "public, max-age=31536000, immutable" },
+    });
+    return { url: mediaUrl(key) };
 }

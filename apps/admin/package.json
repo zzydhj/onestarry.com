@@ -23,6 +23,7 @@
         "@opennextjs/cloudflare": "^1.5.3",
         "@tiptap/react": "^2.11.0",
         "@tiptap/starter-kit": "^2.11.0",
+        "@tiptap/extension-image": "^2.11.0",
         "@tiptap/pm": "^2.11.0",
         "drizzle-orm": "^0.45.2",
         "postgres": "^3.4.5"

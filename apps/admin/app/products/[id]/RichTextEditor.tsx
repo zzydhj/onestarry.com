@@ -1,9 +1,11 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useEditor, EditorContent } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
-import { saveRichBodyAction } from "./actions";
+import Image from "@tiptap/extension-image";
+import { downscaleImage } from "@/lib/image";
+import { saveRichBodyAction, uploadRichImageAction } from "./actions";
 
 /** 图文详情编辑器（Tiptap StarterKit）。保存 → 存 ProseMirror JSON（非 HTML）。 */
 export function RichTextEditor({
@@ -15,8 +17,9 @@ export function RichTextEditor({
 }) {
     const [saving, setSaving] = useState(false);
     const [msg, setMsg] = useState("");
+    const imgRef = useRef<HTMLInputElement>(null);
     const editor = useEditor({
-        extensions: [StarterKit],
+        extensions: [StarterKit, Image],
         content: initial ?? undefined,
         editorProps: { attributes: { style: "min-height:180px; outline:none; padding:8px; line-height:1.6" } },
     });
@@ -36,6 +39,29 @@ export function RichTextEditor({
             setMsg(`失败：${e instanceof Error ? e.message : String(e)}`);
         } finally {
             setSaving(false);
+        }
+    }
+
+    async function onPickImage() {
+        const file = imgRef.current?.files?.[0];
+        if (!file || !editor) return;
+        setMsg("插入图片中…");
+        try {
+            const blob = await downscaleImage(file);
+            const fd = new FormData();
+            fd.set("productId", productId);
+            fd.set("image", new File([blob], "image.webp", { type: "image/webp" }));
+            const res = await uploadRichImageAction(fd);
+            if (res.error || !res.url) {
+                setMsg(`插入失败：${res.error ?? "未知错误"}`);
+                return;
+            }
+            editor.chain().focus().setImage({ src: res.url }).run();
+            setMsg("图片已插入，记得点保存");
+        } catch (e) {
+            setMsg(`插入失败：${e instanceof Error ? e.message : String(e)}`);
+        } finally {
+            if (imgRef.current) imgRef.current.value = "";
         }
     }
 
@@ -69,6 +95,8 @@ export function RichTextEditor({
                 {btn("1. 列表", () => editor.chain().focus().toggleOrderedList().run(), editor.isActive("orderedList"))}
                 {btn("引用", () => editor.chain().focus().toggleBlockquote().run(), editor.isActive("blockquote"))}
                 {btn("分隔", () => editor.chain().focus().setHorizontalRule().run())}
+                {btn("🖼 图片", () => imgRef.current?.click())}
+                <input ref={imgRef} type="file" accept="image/*" style={{ display: "none" }} onChange={onPickImage} />
             </div>
             <EditorContent editor={editor} />
             <div style={{ padding: 8, borderTop: "1px solid #eee" }}>
