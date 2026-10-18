@@ -4,3 +4,4 @@ export * from "./shipping";
 export * from "./shippingProvider";
 export * from "./payments";
 export * from "./hash";
+export * from "./media";

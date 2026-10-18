@@ -6,7 +6,7 @@ import { revalidatePath } from "next/cache";
 import { eq } from "drizzle-orm";
 import { getCloudflareContext } from "@opennextjs/cloudflare";
 import { createAdminAuth } from "@onestarry/auth";
-import { createDb, products, setVariantOnHand, updateVariantBasePrice } from "@onestarry/db";
+import { createDb, attachProductImage, products, setVariantOnHand, updateVariantBasePrice } from "@onestarry/db";
 import { runRelayBatch, relayHandlers } from "@onestarry/jobs";
 
 /**
@@ -97,4 +97,37 @@ export async function updateInventoryAction(formData: FormData): Promise<void> {
     });
 
     if (productId) revalidatePath(`/products/${productId}`);
+}
+
+const MAX_UPLOAD_BYTES = 8 * 1024 * 1024; // 8MB 上限（前端已压图，服务端双保险）
+
+/** 上传一张商品图：校验 → 存 R2（按 §10.3 key）→ 登记 media_assets + product_images。 */
+export async function uploadProductImageAction(formData: FormData): Promise<void> {
+    const { env } = getCloudflareContext();
+    const h = await headers();
+    const auth = createAdminAuth({
+        connString: env.HYPERDRIVE.connectionString,
+        baseURL: `https://${h.get("host") ?? "localhost"}`,
+        secret: env.BETTER_AUTH_SECRET,
+    });
+    const session = await auth.api.getSession({ headers: h });
+    if (!session?.user) redirect("/signin");
+
+    const productId = String(formData.get("productId") ?? "");
+    const file = formData.get("image");
+    if (!productId || !(file instanceof File) || file.size === 0) return;
+    const type = file.type;
+    if (!type.startsWith("image/") || file.size > MAX_UPLOAD_BYTES) return;
+
+    const ext = type === "image/png" ? "png" : type === "image/webp" ? "webp" : type === "image/gif" ? "gif" : "jpg";
+    const key = `products/${productId}/${crypto.randomUUID()}.${ext}`;
+    const bytes = await file.arrayBuffer();
+    await env.MEDIA.put(key, bytes, {
+        httpMetadata: { contentType: type, cacheControl: "public, max-age=31536000, immutable" },
+    });
+
+    const db = createDb(env.HYPERDRIVE.connectionString);
+    await attachProductImage(db, { productId, r2Key: key, mimeType: type, sizeBytes: file.size });
+
+    revalidatePath(`/products/${productId}`);
 }
