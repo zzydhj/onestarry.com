@@ -4,7 +4,7 @@ config({ path: "../../.env.local" });
 import { eq } from "drizzle-orm";
 import { createDb } from "./client";
 import { inventory, legalEntities, markets, productTranslations, products, productVariants, slugs } from "./schema";
-import { recomputeVariantMarketPrice, type RecomputeInput } from "./queries";
+import { recomputeVariantMarketPrice, seedLedgerAccounts, type RecomputeInput } from "./queries";
 
 /**
  * 演示数据 seed（MVP-0 纵切用，真实提交、非回滚）。幂等：已存在 us 市场则跳过。
@@ -28,6 +28,7 @@ async function main() {
     }
 
     const [le] = await db.insert(legalEntities).values({ jurisdiction: "US", displayName: "OneStarry LLC (demo)" }).returning();
+    await seedLedgerAccounts(db, le!.id); // 预置标准账本科目（否则支付/发货落账会 LEDGER_ACCOUNT_MISSING）
     const [mk] = await db
         .insert(markets)
         .values({ code: "us", name: "United States", currency: "USD", legalEntityId: le!.id, pricingMode: "net_plus_tax", dutyPresentation: "separate_line" })
