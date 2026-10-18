@@ -52,6 +52,7 @@ export interface ProductDetail {
     sku: string;
     title: string;
     description: string | null;
+    richBody: Record<string, unknown> | null;
     priceCents: number;
     allInCents: number;
     currency: string;
@@ -71,6 +72,7 @@ export async function getProductById(db: Db | Tx, productId: string, marketCode:
                 sku: productVariants.sku,
                 title: productTranslations.title,
                 description: productTranslations.description,
+                richBody: productTranslations.richBody,
                 priceCents: variantMarketPrices.listPriceCents,
                 allInCents: variantMarketPrices.allInCents,
                 currency: variantMarketPrices.currency,
@@ -85,5 +87,5 @@ export async function getProductById(db: Db | Tx, productId: string, marketCode:
             .limit(1)
     )[0];
     if (!row) return null;
-    return { ...row, available: row.available ?? 0 };
+    return { ...row, available: row.available ?? 0, richBody: (row.richBody as Record<string, unknown> | null) ?? null };
 }

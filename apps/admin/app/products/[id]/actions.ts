@@ -6,7 +6,7 @@ import { revalidatePath } from "next/cache";
 import { eq } from "drizzle-orm";
 import { getCloudflareContext } from "@opennextjs/cloudflare";
 import { createAdminAuth } from "@onestarry/auth";
-import { createDb, attachProductImage, products, setVariantOnHand, updateVariantBasePrice } from "@onestarry/db";
+import { createDb, attachProductImage, products, setProductRichBody, setVariantOnHand, updateVariantBasePrice } from "@onestarry/db";
 import { runRelayBatch, relayHandlers } from "@onestarry/jobs";
 
 /**
@@ -128,6 +128,34 @@ export async function uploadProductImageAction(formData: FormData): Promise<void
 
     const db = createDb(env.HYPERDRIVE.connectionString);
     await attachProductImage(db, { productId, r2Key: key, mimeType: type, sizeBytes: file.size });
+
+    revalidatePath(`/products/${productId}`);
+}
+
+/** 保存图文详情（前端 Tiptap 传 JSON 字符串）→ 写 product_translations.rich_body。 */
+export async function saveRichBodyAction(formData: FormData): Promise<void> {
+    const { env } = getCloudflareContext();
+    const h = await headers();
+    const auth = createAdminAuth({
+        connString: env.HYPERDRIVE.connectionString,
+        baseURL: `https://${h.get("host") ?? "localhost"}`,
+        secret: env.BETTER_AUTH_SECRET,
+    });
+    const session = await auth.api.getSession({ headers: h });
+    if (!session?.user) redirect("/signin");
+
+    const productId = String(formData.get("productId") ?? "");
+    const raw = String(formData.get("body") ?? "");
+    if (!productId) return;
+    let parsed: Record<string, unknown> | null = null;
+    try {
+        parsed = raw ? (JSON.parse(raw) as Record<string, unknown>) : null;
+    } catch {
+        return; // JSON 不合法：忽略
+    }
+
+    const db = createDb(env.HYPERDRIVE.connectionString);
+    await setProductRichBody(db, { productId, richBody: parsed });
 
     revalidatePath(`/products/${productId}`);
 }

@@ -4,6 +4,7 @@ import { getCloudflareContext } from "@opennextjs/cloudflare";
 import { mediaUrl } from "@onestarry/core";
 import { createDb, getProductById, listProductImages, resolveSlug } from "@onestarry/db";
 import { placeOrder } from "./actions";
+import { RichBody } from "./RichBody";
 
 export const dynamic = "force-dynamic";
 
@@ -67,6 +68,13 @@ export default async function ProductPage({ params }: { params: Promise<{ slug: 
                 {p.available > 0 ? `有货 · 库存 ${p.available}` : "暂时缺货"}
             </p>
             <p style={{ fontSize: 12, color: "#999", marginTop: 24 }}>SKU: {p.sku}</p>
+
+            {p.richBody && (
+                <section style={{ marginTop: 20, borderTop: "1px solid #eee", paddingTop: 16 }}>
+                    <h2 style={{ fontSize: 16 }}>商品详情</h2>
+                    <RichBody doc={p.richBody} />
+                </section>
+            )}
 
             <form action={placeOrder} style={{ marginTop: 20, display: "grid", gap: 10, maxWidth: 320 }}>
                 <input type="hidden" name="variantId" value={p.variantId} />

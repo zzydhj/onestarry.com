@@ -8,6 +8,7 @@ import { mediaUrl } from "@onestarry/core";
 import { createDb, inventory, listProductImages, productTranslations, productVariants, products } from "@onestarry/db";
 import { setProductStatusAction, updateBasePriceAction, updateInventoryAction } from "./actions";
 import { ImageUploader } from "./ImageUploader";
+import { RichTextEditor } from "./RichTextEditor";
 
 export const dynamic = "force-dynamic";
 
@@ -28,7 +29,7 @@ export default async function AdminProductDetail({ params }: { params: Promise<{
     const product = (await db.select().from(products).where(eq(products.id, id)).limit(1))[0];
     if (!product) notFound();
     const [title] = await db
-        .select({ title: productTranslations.title })
+        .select({ title: productTranslations.title, richBody: productTranslations.richBody })
         .from(productTranslations)
         .where(eq(productTranslations.productId, id))
         .limit(1);
@@ -112,6 +113,9 @@ export default async function AdminProductDetail({ params }: { params: Promise<{
                     ))}
                 </tbody>
             </table>
+
+            <h2 style={{ fontSize: 16, marginTop: 24 }}>图文详情（富文本，存结构化 JSON）</h2>
+            <RichTextEditor productId={product.id} initial={(title?.richBody as Record<string, unknown> | null) ?? null} />
         </main>
     );
 }

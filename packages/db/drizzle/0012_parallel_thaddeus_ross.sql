@@ -1,0 +1,1 @@
+ALTER TABLE "product_translations" ADD COLUMN "rich_body" jsonb;

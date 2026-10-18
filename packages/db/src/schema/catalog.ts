@@ -212,6 +212,7 @@ export const productTranslations = pgTable(
         title: text("title").notNull(),
         description: text("description"),
         bulletPoints: jsonb("bullet_points"),
+        richBody: jsonb("rich_body"), // 图文详情：ProseMirror JSON（Tiptap），结构化非 HTML
         aiGenerated: boolean("ai_generated").notNull().default(false),
         manualOverride: boolean("manual_override").notNull().default(false),
     },

@@ -1,3 +1,4 @@
+import { and, eq } from "drizzle-orm";
 import { inventory, productTranslations, productVariants, products, slugs } from "../schema";
 import { emitPriceRecomputeForAllMarkets } from "./pricing";
 import type { Db, Tx } from "../client";
@@ -60,4 +61,16 @@ export async function createProductWithVariant(db: Db | Tx, input: CreateProduct
     });
 
     return { productId: prod!.id, variantId: variant!.id };
+}
+
+/** 保存商品的图文详情（ProseMirror JSON）到指定语言译文行（行必存在，由新建时创建）。 */
+export async function setProductRichBody(
+    db: Db | Tx,
+    input: { productId: string; richBody: Record<string, unknown> | null; locale?: string },
+): Promise<void> {
+    const locale = input.locale ?? "en";
+    await db
+        .update(productTranslations)
+        .set({ richBody: input.richBody, updatedAt: new Date() })
+        .where(and(eq(productTranslations.productId, input.productId), eq(productTranslations.locale, locale)));
 }
