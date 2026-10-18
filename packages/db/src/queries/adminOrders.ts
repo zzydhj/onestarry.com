@@ -20,6 +20,24 @@ export async function listRecentOrders(db: Db | Tx, limit = 100) {
         .limit(limit);
 }
 
+/** 某客户的订单（前台“我的订单”用，按创建时间倒序）。 */
+export async function listOrdersByCustomer(db: Db | Tx, customerId: string, limit = 50) {
+    return db
+        .select({
+            id: orders.id,
+            orderNumber: orders.orderNumber,
+            currency: orders.currency,
+            totalCents: orders.totalCents,
+            paymentStatus: orders.paymentStatus,
+            fulfillmentStatus: orders.fulfillmentStatus,
+            createdAt: orders.createdAt,
+        })
+        .from(orders)
+        .where(eq(orders.customerId, customerId))
+        .orderBy(desc(orders.createdAt))
+        .limit(limit);
+}
+
 /** 订单详情：主单 + 明细（带 SKU）+ 行 + 发货单（若有）。 */
 export async function getOrderDetail(db: Db | Tx, orderId: string) {
     const order = (await db.select().from(orders).where(eq(orders.id, orderId)).limit(1))[0];

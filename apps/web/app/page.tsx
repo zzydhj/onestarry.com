@@ -17,6 +17,11 @@ export default async function Home() {
     return (
         <main style={{ maxWidth: 900, margin: "0 auto", padding: "2rem 1rem", fontFamily: "system-ui" }}>
             <h1 style={{ fontSize: 24 }}>onestarry · 商品（US 市场）</h1>
+            <p style={{ fontSize: 14 }}>
+                <Link href="/cart" style={{ color: "#0366d6", textDecoration: "none" }}>🛒 购物车</Link>
+                {" · "}
+                <Link href="/account/orders" style={{ color: "#0366d6", textDecoration: "none" }}>我的订单</Link>
+            </p>
             {items.length === 0 ? (
                 <p style={{ color: "#888" }}>暂无商品。请先运行 <code>pnpm --filter @onestarry/db seed:demo</code>。</p>
             ) : (

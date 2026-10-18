@@ -1,8 +1,10 @@
 "use server";
 
 import { eq } from "drizzle-orm";
+import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { getCloudflareContext } from "@opennextjs/cloudflare";
+import { createCustomerAuth } from "@onestarry/auth";
 import { createDb, createOrder, markets } from "@onestarry/db";
 import { readCart, writeCart } from "@/lib/cart";
 
@@ -10,7 +12,17 @@ const SHIPPING_CENTS = 500; // MVP 占位运费（真实 computeShipping 待接�
 
 /** 结账：读购物车 → 多商品 createOrder（真实地址）→ 清空购物车 → 跳确认页。 */
 export async function checkoutAction(formData: FormData): Promise<void> {
-    const email = String(formData.get("email") ?? "").trim();
+    const { env } = getCloudflareContext();
+    const h = await headers();
+    const auth = createCustomerAuth({
+        connString: env.HYPERDRIVE.connectionString,
+        baseURL: `https://${h.get("host") ?? "localhost"}`,
+        secret: env.BETTER_AUTH_SECRET,
+    });
+    const session = await auth.api.getSession({ headers: h });
+    const customerId = session?.user?.id ?? null;
+
+    const email = String(formData.get("email") ?? "").trim() || (session?.user?.email ?? "");
     const recipient = String(formData.get("recipient") ?? "").trim();
     const line1 = String(formData.get("line1") ?? "").trim();
     const country = String(formData.get("country") ?? "").trim() || "US";
@@ -26,7 +38,6 @@ export async function checkoutAction(formData: FormData): Promise<void> {
     const items = Object.entries(cart).map(([variantId, quantity]) => ({ variantId, quantity }));
     if (items.length === 0) redirect("/cart");
 
-    const { env } = getCloudflareContext();
     const db = createDb(env.HYPERDRIVE.connectionString);
     const market = (await db.select({ id: markets.id }).from(markets).where(eq(markets.code, "us")).limit(1))[0];
     if (!market) redirect("/checkout?error=failed");
@@ -36,6 +47,7 @@ export async function checkoutAction(formData: FormData): Promise<void> {
             createOrder(tx, {
                 idempotencyKey: crypto.randomUUID(),
                 email,
+                customerId,
                 marketId: market.id,
                 currency: "USD",
                 locale: "en",
