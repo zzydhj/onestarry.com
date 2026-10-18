@@ -26,72 +26,53 @@ export default async function CartPage() {
     const total = subtotal + (lines.length ? SHIPPING_CENTS : 0);
 
     return (
-        <main style={{ maxWidth: 720, margin: "0 auto", padding: "2rem 1rem", fontFamily: "system-ui" }}>
-            <p><Link href="/" style={{ color: "#666", fontSize: 14 }}>← 继续购物</Link></p>
-            <h1 style={{ fontSize: 24 }}>购物车</h1>
+        <div className="mx-auto max-w-2xl px-4 py-8">
+            <Link href="/" className="text-sm text-muted transition hover:text-accent">← Continue shopping</Link>
+            <h1 className="mt-2 text-2xl font-semibold tracking-tight">Cart</h1>
 
             {lines.length === 0 ? (
-                <p style={{ color: "#888" }}>购物车是空的。</p>
+                <p className="mt-6 text-muted">Your cart is empty.</p>
             ) : (
                 <>
-                    <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 14 }}>
-                        <thead>
-                            <tr style={{ textAlign: "left", borderBottom: "1px solid #ddd" }}>
-                                <th style={{ padding: "6px 8px" }}>商品</th>
-                                <th style={{ padding: "6px 8px" }}>数量</th>
-                                <th style={{ padding: "6px 8px" }}>小计</th>
-                                <th style={{ padding: "6px 8px" }}></th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {lines.map((l) => {
-                                const qty = cart[l.variantId] ?? 0;
-                                return (
-                                    <tr key={l.variantId} style={{ borderBottom: "1px solid #eee" }}>
-                                        <td style={{ padding: "6px 8px" }}>
-                                            {l.title}
-                                            <div style={{ fontSize: 11, color: "#999", fontFamily: "monospace" }}>{l.sku}</div>
-                                            {l.blocked || l.available < qty ? (
-                                                <div style={{ fontSize: 11, color: "#b00000" }}>
-                                                    {l.blocked ? "当前不可售" : `库存仅 ${l.available}`}
-                                                </div>
-                                            ) : null}
-                                        </td>
-                                        <td style={{ padding: "6px 8px" }}>
-                                            <form action={setQtyAction} style={{ display: "flex", gap: 4 }}>
-                                                <input type="hidden" name="variantId" value={l.variantId} />
-                                                <input name="qty" type="number" min={0} defaultValue={qty} style={{ width: 64 }} />
-                                                <button type="submit">改</button>
-                                            </form>
-                                        </td>
-                                        <td style={{ padding: "6px 8px" }}>{money(l.unitCents * qty, l.currency)}</td>
-                                        <td style={{ padding: "6px 8px" }}>
-                                            <form action={removeItemAction}>
-                                                <input type="hidden" name="variantId" value={l.variantId} />
-                                                <button type="submit">✕</button>
-                                            </form>
-                                        </td>
-                                    </tr>
-                                );
-                            })}
-                        </tbody>
-                    </table>
+                    <ul className="mt-6 divide-y divide-line">
+                        {lines.map((l) => {
+                            const qty = cart[l.variantId] ?? 0;
+                            return (
+                                <li key={l.variantId} className="flex items-center justify-between gap-4 py-4">
+                                    <div className="min-w-0">
+                                        <div className="truncate font-medium">{l.title}</div>
+                                        <div className="font-mono text-xs text-muted">{l.sku}</div>
+                                        {l.blocked || l.available < qty ? (
+                                            <div className="text-xs text-red-600">{l.blocked ? "Not available" : `Only ${l.available} left`}</div>
+                                        ) : null}
+                                    </div>
+                                    <form action={setQtyAction} className="flex items-center gap-2">
+                                        <input type="hidden" name="variantId" value={l.variantId} />
+                                        <input name="qty" type="number" min={0} defaultValue={qty} className="w-16 rounded-md border border-line px-2 py-1 text-fg" />
+                                        <button type="submit" className="rounded-md border border-line px-2 py-1 text-sm transition hover:bg-surface">Update</button>
+                                    </form>
+                                    <div className="w-24 text-right font-medium">{money(l.unitCents * qty, l.currency)}</div>
+                                    <form action={removeItemAction}>
+                                        <input type="hidden" name="variantId" value={l.variantId} />
+                                        <button type="submit" className="text-muted transition hover:text-red-600">✕</button>
+                                    </form>
+                                </li>
+                            );
+                        })}
+                    </ul>
 
-                    <div style={{ marginTop: 16, textAlign: "right", fontSize: 14 }}>
-                        <div>小计 {money(subtotal, currency)}</div>
-                        <div>运费 {money(SHIPPING_CENTS, currency)}</div>
-                        <div style={{ fontSize: 18, fontWeight: 700, marginTop: 4 }}>合计 {money(total, currency)}</div>
+                    <div className="mt-6 space-y-1 text-right text-sm">
+                        <div>Subtotal {money(subtotal, currency)}</div>
+                        <div>Shipping {money(SHIPPING_CENTS, currency)}</div>
+                        <div className="pt-1 text-lg font-bold text-brand">Total {money(total, currency)}</div>
                     </div>
-                    <div style={{ marginTop: 16, textAlign: "right" }}>
-                        <Link
-                            href="/checkout"
-                            style={{ display: "inline-block", padding: "10px 18px", background: "#111", color: "#fff", borderRadius: 6, textDecoration: "none" }}
-                        >
-                            去结账 →
+                    <div className="mt-6 text-right">
+                        <Link href="/checkout" className="inline-block rounded-lg bg-accent px-5 py-2.5 font-medium text-white transition hover:opacity-90">
+                            Checkout →
                         </Link>
                     </div>
                 </>
             )}
-        </main>
+        </div>
     );
 }

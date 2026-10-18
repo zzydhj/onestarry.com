@@ -19,37 +19,33 @@ export default async function OrderPage({ params }: { params: Promise<{ orderNum
     const { order, items } = res;
 
     return (
-        <main style={{ maxWidth: 560, margin: "0 auto", padding: "2rem 1rem", fontFamily: "system-ui" }}>
-            <h1 style={{ fontSize: 24 }}>下单成功 🎉</h1>
-            <p style={{ color: "#555" }}>
-                订单号：<strong>{order.orderNumber}</strong>
-            </p>
-            <p style={{ color: "#555", fontSize: 14 }}>
-                状态：{order.status} · 支付 {order.paymentStatus} · 邮箱 {order.email}
-            </p>
+        <div className="mx-auto max-w-lg px-4 py-8">
+            <h1 className="text-2xl font-semibold tracking-tight">Order placed 🎉</h1>
+            <p className="mt-2 text-muted">Order number: <strong className="text-fg">{order.orderNumber}</strong></p>
+            <p className="mt-1 text-sm text-muted">Status: {order.status} · Payment: {order.paymentStatus} · {order.email}</p>
 
-            <ul style={{ listStyle: "none", padding: 0, borderTop: "1px solid #eee", marginTop: 16 }}>
+            <ul className="mt-6 divide-y divide-line">
                 {items.map((it) => (
-                    <li key={it.id} style={{ display: "flex", justifyContent: "space-between", padding: "8px 0", borderBottom: "1px solid #f4f4f4" }}>
-                        <span>{it.title ?? "商品"} × {it.quantity}</span>
+                    <li key={it.id} className="flex justify-between py-2 text-sm">
+                        <span>{it.title ?? "Item"} × {it.quantity}</span>
                         <span>{money(it.unitPriceCents * it.quantity, order.currency)}</span>
                     </li>
                 ))}
             </ul>
-            <div style={{ marginTop: 12, fontSize: 14, textAlign: "right", color: "#555" }}>
-                {order.discountCents > 0 && <div>折扣 -{money(order.discountCents, order.currency)}</div>}
-                <div>运费 {money(order.shippingCents, order.currency)}</div>
-                {order.taxCents > 0 && <div>税 {money(order.taxCents, order.currency)}</div>}
-                {order.dutyCents > 0 && <div>关税 {money(order.dutyCents, order.currency)}</div>}
+            <div className="mt-2 space-y-1 text-right text-sm text-muted">
+                {order.discountCents > 0 && <div>Discount -{money(order.discountCents, order.currency)}</div>}
+                <div>Shipping {money(order.shippingCents, order.currency)}</div>
+                {order.taxCents > 0 && <div>Tax {money(order.taxCents, order.currency)}</div>}
+                {order.dutyCents > 0 && <div>Duty {money(order.dutyCents, order.currency)}</div>}
             </div>
-            <div style={{ display: "flex", justifyContent: "space-between", fontWeight: 700, fontSize: 18, marginTop: 8 }}>
-                <span>合计</span>
+            <div className="mt-2 flex justify-between text-lg font-bold text-brand">
+                <span>Total</span>
                 <span>{money(order.totalCents, order.currency)}</span>
             </div>
 
-            <p style={{ marginTop: 24 }}>
-                <Link href="/" style={{ color: "#666" }}>← 全部商品</Link>
+            <p className="mt-8">
+                <Link href="/" className="text-sm text-muted transition hover:text-accent">← All products</Link>
             </p>
-        </main>
+        </div>
     );
 }

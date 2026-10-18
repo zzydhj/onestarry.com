@@ -12,37 +12,39 @@ export default function SignInPage() {
     const [status, setStatus] = useState<string>("");
 
     async function signUp() {
-        setStatus("注册中…");
+        setStatus("Signing up…");
         const { data, error } = await authClient.signUp.email({
             email,
             password,
             name: email.split("@")[0] ?? "customer",
         });
-        setStatus(error ? `注册失败：${error.message ?? error.status}` : `注册成功：${data?.user?.email ?? ""}`);
+        setStatus(error ? `Sign up failed: ${error.message ?? error.status}` : `Signed up: ${data?.user?.email ?? ""}`);
     }
 
     async function signIn() {
-        setStatus("登录中…");
+        setStatus("Signing in…");
         const { data, error } = await authClient.signIn.email({ email, password });
-        setStatus(error ? `登录失败：${error.message ?? error.status}` : `登录成功：${data?.user?.email ?? ""}`);
+        setStatus(error ? `Sign in failed: ${error.message ?? error.status}` : `Signed in: ${data?.user?.email ?? ""}`);
     }
 
     async function signOut() {
         await authClient.signOut();
-        setStatus("已登出");
+        setStatus("Signed out");
     }
 
     return (
-        <main style={{ maxWidth: 360, margin: "4rem auto", fontFamily: "system-ui", display: "grid", gap: 12 }}>
-            <h1 style={{ fontSize: 20 }}>账户</h1>
-            <input value={email} onChange={(e) => setEmail(e.target.value)} placeholder="邮箱" autoComplete="email" />
-            <input value={password} onChange={(e) => setPassword(e.target.value)} placeholder="密码" type="password" autoComplete="current-password" />
-            <div style={{ display: "flex", gap: 8 }}>
-                <button onClick={signUp}>注册</button>
-                <button onClick={signIn}>登录</button>
-                <button onClick={signOut}>登出</button>
+        <div className="mx-auto mt-16 max-w-sm px-4">
+            <h1 className="text-2xl font-semibold tracking-tight">Account</h1>
+            <div className="mt-6 grid gap-3">
+                <input value={email} onChange={(e) => setEmail(e.target.value)} placeholder="Email" autoComplete="email" className="rounded-md border border-line px-3 py-2 text-fg" />
+                <input value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Password" type="password" autoComplete="current-password" className="rounded-md border border-line px-3 py-2 text-fg" />
+                <div className="flex gap-2">
+                    <button onClick={signUp} className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white transition hover:opacity-90">Sign up</button>
+                    <button onClick={signIn} className="rounded-lg border border-line px-4 py-2 text-sm font-medium transition hover:bg-surface">Sign in</button>
+                    <button onClick={signOut} className="rounded-lg border border-line px-4 py-2 text-sm font-medium text-muted transition hover:bg-surface">Sign out</button>
+                </div>
+                <pre className="min-h-6 whitespace-pre-wrap text-sm text-muted">{status}</pre>
             </div>
-            <pre style={{ whiteSpace: "pre-wrap", minHeight: 24, color: "#444" }}>{status}</pre>
-        </main>
+        </div>
     );
 }

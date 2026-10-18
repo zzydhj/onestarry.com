@@ -1,4 +1,3 @@
-import type { CSSProperties } from "react";
 import Link from "next/link";
 import { getCloudflareContext } from "@opennextjs/cloudflare";
 import { createDb, getCartLines } from "@onestarry/db";
@@ -8,8 +7,6 @@ import { checkoutAction } from "./actions";
 export const dynamic = "force-dynamic";
 
 const SHIPPING_CENTS = 500;
-const field: CSSProperties = { padding: 8, width: "100%", boxSizing: "border-box" };
-const label: CSSProperties = { fontSize: 13, color: "#555", display: "block", margin: "8px 0 4px" };
 
 function money(cents: number, cur: string): string {
     return new Intl.NumberFormat("en-US", { style: "currency", currency: cur }).format(cents / 100);
@@ -25,11 +22,11 @@ export default async function Checkout({ searchParams }: { searchParams: Promise
 
     if (lines.length === 0) {
         return (
-            <main style={{ maxWidth: 560, margin: "0 auto", padding: "2rem 1rem", fontFamily: "system-ui" }}>
-                <p><Link href="/cart" style={{ color: "#666", fontSize: 14 }}>← 返回购物车</Link></p>
-                <h1 style={{ fontSize: 24 }}>结账</h1>
-                <p style={{ color: "#888" }}>购物车是空的，先去 <Link href="/cart" style={{ color: "#0366d6" }}>加购</Link>。</p>
-            </main>
+            <div className="mx-auto max-w-lg px-4 py-8">
+                <Link href="/cart" className="text-sm text-muted transition hover:text-accent">← Back to cart</Link>
+                <h1 className="mt-2 text-2xl font-semibold tracking-tight">Checkout</h1>
+                <p className="mt-6 text-muted">Your cart is empty. <Link href="/cart" className="text-accent hover:underline">Add items</Link> first.</p>
+            </div>
         );
     }
 
@@ -39,60 +36,60 @@ export default async function Checkout({ searchParams }: { searchParams: Promise
     const total = subtotal + SHIPPING_CENTS;
 
     return (
-        <main style={{ maxWidth: 560, margin: "0 auto", padding: "2rem 1rem", fontFamily: "system-ui" }}>
-            <p><Link href="/cart" style={{ color: "#666", fontSize: 14 }}>← 返回购物车</Link></p>
-            <h1 style={{ fontSize: 24 }}>结账</h1>
-            {error === "invalid" && <p style={{ color: "#b00000" }}>请填写邮箱、收件人和地址。</p>}
-            {error === "failed" && <p style={{ color: "#b00000" }}>下单失败：部分商品可能不可售或库存不足。</p>}
+        <div className="mx-auto max-w-lg px-4 py-8">
+            <Link href="/cart" className="text-sm text-muted transition hover:text-accent">← Back to cart</Link>
+            <h1 className="mt-2 text-2xl font-semibold tracking-tight">Checkout</h1>
+            {error === "invalid" && <p className="mt-3 text-sm text-red-600">Please fill in email, recipient and address.</p>}
+            {error === "failed" && <p className="mt-3 text-sm text-red-600">Order failed: some items may be unavailable or out of stock.</p>}
 
-            <h2 style={{ fontSize: 16, marginTop: 8 }}>订单</h2>
-            <ul style={{ listStyle: "none", padding: 0, fontSize: 14 }}>
+            <h2 className="mt-6 text-base font-semibold">Order</h2>
+            <ul className="mt-2 divide-y divide-line text-sm">
                 {lines.map((l) => {
                     const qty = cart[l.variantId] ?? 0;
                     return (
-                        <li key={l.variantId} style={{ display: "flex", justifyContent: "space-between", padding: "4px 0", borderBottom: "1px solid #f0f0f0" }}>
+                        <li key={l.variantId} className="flex justify-between py-2">
                             <span>{l.title} × {qty}</span>
                             <span>{money(l.unitCents * qty, l.currency)}</span>
                         </li>
                     );
                 })}
             </ul>
-            <div style={{ fontSize: 14, marginTop: 8, textAlign: "right" }}>
-                <div>小计 {money(subtotal, currency)}</div>
-                <div>运费 {money(SHIPPING_CENTS, currency)}</div>
-                <div style={{ fontSize: 18, fontWeight: 700 }}>合计 {money(total, currency)}</div>
+            <div className="mt-2 space-y-1 text-right text-sm">
+                <div>Subtotal {money(subtotal, currency)}</div>
+                <div>Shipping {money(SHIPPING_CENTS, currency)}</div>
+                <div className="text-lg font-bold text-brand">Total {money(total, currency)}</div>
             </div>
 
-            <form action={checkoutAction} style={{ marginTop: 20 }}>
-                <label style={label}>邮箱 *</label>
-                <input name="email" type="email" required style={field} placeholder="you@example.com" />
-                <label style={label}>收件人 *</label>
-                <input name="recipient" required style={field} />
-                <label style={label}>电话</label>
-                <input name="phone" style={field} />
-                <label style={label}>地址行1 *</label>
-                <input name="line1" required style={field} />
-                <label style={label}>地址行2</label>
-                <input name="line2" style={field} />
-                <div style={{ display: "flex", gap: 8 }}>
-                    <div style={{ flex: 1 }}>
-                        <label style={label}>城市</label>
-                        <input name="city" style={field} />
+            <form action={checkoutAction} className="mt-6">
+                <label className="mt-3 block text-sm text-muted">Email *</label>
+                <input name="email" type="email" required placeholder="you@example.com" className="mt-1 w-full rounded-md border border-line px-3 py-2 text-fg" />
+                <label className="mt-3 block text-sm text-muted">Recipient *</label>
+                <input name="recipient" required className="mt-1 w-full rounded-md border border-line px-3 py-2 text-fg" />
+                <label className="mt-3 block text-sm text-muted">Phone</label>
+                <input name="phone" className="mt-1 w-full rounded-md border border-line px-3 py-2 text-fg" />
+                <label className="mt-3 block text-sm text-muted">Address *</label>
+                <input name="line1" required className="mt-1 w-full rounded-md border border-line px-3 py-2 text-fg" />
+                <label className="mt-3 block text-sm text-muted">Apartment, suite, etc.</label>
+                <input name="line2" className="mt-1 w-full rounded-md border border-line px-3 py-2 text-fg" />
+                <div className="mt-3 grid grid-cols-3 gap-3">
+                    <div>
+                        <label className="block text-sm text-muted">City</label>
+                        <input name="city" className="mt-1 w-full rounded-md border border-line px-3 py-2 text-fg" />
                     </div>
-                    <div style={{ flex: 1 }}>
-                        <label style={label}>州/省</label>
-                        <input name="region" style={field} />
+                    <div>
+                        <label className="block text-sm text-muted">State</label>
+                        <input name="region" className="mt-1 w-full rounded-md border border-line px-3 py-2 text-fg" />
                     </div>
-                    <div style={{ flex: 1 }}>
-                        <label style={label}>邮编</label>
-                        <input name="postalCode" style={field} />
+                    <div>
+                        <label className="block text-sm text-muted">ZIP</label>
+                        <input name="postalCode" className="mt-1 w-full rounded-md border border-line px-3 py-2 text-fg" />
                     </div>
                 </div>
-                <label style={label}>国家</label>
-                <input name="country" defaultValue="US" style={field} />
-                <button type="submit" style={{ marginTop: 16, padding: "10px 18px", cursor: "pointer" }}>提交订单</button>
+                <label className="mt-3 block text-sm text-muted">Country</label>
+                <input name="country" defaultValue="US" className="mt-1 w-full rounded-md border border-line px-3 py-2 text-fg" />
+                <button type="submit" className="mt-6 w-full rounded-lg bg-accent px-5 py-2.5 font-medium text-white transition hover:opacity-90">Place order</button>
             </form>
-            <p style={{ fontSize: 12, color: "#999", marginTop: 12 }}>注：MVP 演示，支付为占位（下单即建单，未接真实 PSP）。</p>
-        </main>
+            <p className="mt-3 text-xs text-muted">Note: MVP demo — payment is a placeholder (order is created without a real PSP).</p>
+        </div>
     );
 }

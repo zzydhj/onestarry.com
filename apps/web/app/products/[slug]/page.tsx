@@ -26,21 +26,19 @@ export default async function ProductPage({ params }: { params: Promise<{ slug: 
     const images = await listProductImages(db, res.entityId);
 
     return (
-        <main style={{ maxWidth: 640, margin: "0 auto", padding: "2rem 1rem", fontFamily: "system-ui" }}>
-            <Link href="/" style={{ color: "#666", fontSize: 14 }}>← 全部商品</Link>
-            <span style={{ float: "right", fontSize: 14 }}><Link href="/cart" style={{ color: "#0366d6", textDecoration: "none" }}>🛒 购物车</Link></span>
+        <div className="mx-auto max-w-2xl px-4 py-8">
+            <Link href="/" className="text-sm text-muted transition hover:text-accent">← All products</Link>
             {images.length > 0 ? (
-                <div style={{ marginTop: 12 }}>
+                <div className="mt-4">
                     <img
                         src={mediaUrl(images[0]?.r2Key)}
                         alt={p.title}
                         width={600}
                         height={600}
-                        loading="lazy"
-                        style={{ width: "100%", maxWidth: 480, height: "auto", border: "1px solid #eee", borderRadius: 6 }}
+                        className="aspect-square w-full rounded-xl border border-line object-cover"
                     />
                     {images.length > 1 && (
-                        <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
+                        <div className="mt-2 flex gap-2">
                             {images.slice(1).map((im) => (
                                 <img
                                     key={im.mediaId}
@@ -49,44 +47,52 @@ export default async function ProductPage({ params }: { params: Promise<{ slug: 
                                     width={72}
                                     height={72}
                                     loading="lazy"
-                                    style={{ width: 72, height: 72, objectFit: "cover", borderRadius: 4, border: "1px solid #eee" }}
+                                    className="h-16 w-16 rounded-md border border-line object-cover"
                                 />
                             ))}
                         </div>
                     )}
                 </div>
             ) : (
-                <div
-                    style={{ marginTop: 12, width: "100%", maxWidth: 480, aspectRatio: "1 / 1", background: "#f3f4f6", borderRadius: 6, display: "flex", alignItems: "center", justifyContent: "center", color: "#aaa" }}
-                >
-                    暂无图片
-                </div>
+                <div className="mt-4 flex aspect-square w-full items-center justify-center rounded-xl bg-surface text-muted">No image</div>
             )}
-            <h1 style={{ fontSize: 26, margin: "12px 0 4px" }}>{p.title}</h1>
-            <p style={{ color: "#666" }}>{p.description}</p>
-            <div style={{ fontSize: 24, fontWeight: 700, margin: "16px 0" }}>{money(p.priceCents, p.currency)}</div>
-            <p style={{ fontSize: 14, color: p.available > 0 ? "#187a30" : "#b00000" }}>
-                {p.available > 0 ? `有货 · 库存 ${p.available}` : "暂时缺货"}
+
+            <h1 className="mt-5 text-2xl font-semibold tracking-tight">{p.title}</h1>
+            {p.description && <p className="mt-2 text-muted">{p.description}</p>}
+            <div className="mt-3 text-2xl font-bold text-accent">{money(p.priceCents, p.currency)}</div>
+            <p className={`mt-2 text-sm ${p.available > 0 ? "text-green-600" : "text-red-600"}`}>
+                {p.available > 0 ? `In stock · ${p.available} available` : "Out of stock"}
             </p>
-            <p style={{ fontSize: 12, color: "#999", marginTop: 24 }}>SKU: {p.sku}</p>
+            <p className="mt-6 text-xs text-muted">SKU: {p.sku}</p>
 
             {p.richBody && (
-                <section style={{ marginTop: 20, borderTop: "1px solid #eee", paddingTop: 16 }}>
-                    <h2 style={{ fontSize: 16 }}>商品详情</h2>
+                <section className="mt-6 border-t border-line pt-5">
+                    <h2 className="mb-2 text-base font-semibold">Product details</h2>
                     <RichBody doc={p.richBody} />
                 </section>
             )}
 
-            <form action={addToCartAction} style={{ marginTop: 20, display: "grid", gap: 10, maxWidth: 320 }}>
+            <form action={addToCartAction} className="mt-6 flex max-w-xs items-center gap-3">
                 <input type="hidden" name="variantId" value={p.variantId} />
-                <label style={{ fontSize: 13, color: "#555" }}>
-                    数量
-                    <input type="number" name="qty" min={1} max={p.available || 1} defaultValue={1} style={{ width: 80, marginTop: 4, padding: 8 }} />
+                <label className="text-sm text-muted">
+                    Qty
+                    <input
+                        type="number"
+                        name="qty"
+                        min={1}
+                        max={p.available || 1}
+                        defaultValue={1}
+                        className="mt-1 w-20 rounded-md border border-line px-2 py-1.5 text-fg"
+                    />
                 </label>
-                <button type="submit" disabled={p.available <= 0} style={{ padding: 10, cursor: p.available > 0 ? "pointer" : "not-allowed" }}>
-                    {p.available > 0 ? "加入购物车" : "缺货"}
+                <button
+                    type="submit"
+                    disabled={p.available <= 0}
+                    className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                    {p.available > 0 ? "Add to cart" : "Out of stock"}
                 </button>
             </form>
-        </main>
+        </div>
     );
 }

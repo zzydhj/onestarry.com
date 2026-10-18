@@ -27,41 +27,39 @@ export default async function AccountOrders() {
     const rows = await listOrdersByCustomer(db, session.user.id);
 
     return (
-        <main style={{ maxWidth: 720, margin: "0 auto", padding: "2rem 1rem", fontFamily: "system-ui" }}>
-            <p><Link href="/" style={{ color: "#666", fontSize: 14 }}>← 首页</Link></p>
-            <h1 style={{ fontSize: 24 }}>我的订单</h1>
-            <p style={{ fontSize: 13, color: "#666" }}>{session.user.email}</p>
+        <div className="mx-auto max-w-2xl px-4 py-8">
+            <Link href="/" className="text-sm text-muted transition hover:text-accent">← Home</Link>
+            <h1 className="mt-2 text-2xl font-semibold tracking-tight">My orders</h1>
+            <p className="mt-1 text-sm text-muted">{session.user.email}</p>
 
             {rows.length === 0 ? (
-                <p style={{ color: "#888" }}>还没有订单。</p>
+                <p className="mt-6 text-muted">No orders yet.</p>
             ) : (
-                <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 14 }}>
+                <table className="mt-6 w-full text-sm">
                     <thead>
-                        <tr style={{ textAlign: "left", borderBottom: "1px solid #ddd" }}>
-                            <th style={{ padding: "6px 8px" }}>单号</th>
-                            <th style={{ padding: "6px 8px" }}>金额</th>
-                            <th style={{ padding: "6px 8px" }}>支付</th>
-                            <th style={{ padding: "6px 8px" }}>履约</th>
-                            <th style={{ padding: "6px 8px" }}>时间</th>
+                        <tr className="border-b border-line text-left text-muted">
+                            <th className="py-2 pr-2 font-medium">Order</th>
+                            <th className="py-2 pr-2 font-medium">Amount</th>
+                            <th className="py-2 pr-2 font-medium">Payment</th>
+                            <th className="py-2 pr-2 font-medium">Fulfillment</th>
+                            <th className="py-2 font-medium">Date</th>
                         </tr>
                     </thead>
                     <tbody>
                         {rows.map((o) => (
-                            <tr key={o.id} style={{ borderBottom: "1px solid #eee" }}>
-                                <td style={{ padding: "6px 8px" }}>
-                                    <Link href={`/order/${o.orderNumber}`} style={{ color: "#0366d6", textDecoration: "none", fontFamily: "monospace", fontSize: 12 }}>
-                                        {o.orderNumber}
-                                    </Link>
+                            <tr key={o.id} className="border-b border-line">
+                                <td className="py-2 pr-2">
+                                    <Link href={`/order/${o.orderNumber}`} className="font-mono text-xs text-accent hover:underline">{o.orderNumber}</Link>
                                 </td>
-                                <td style={{ padding: "6px 8px" }}>{money(o.totalCents, o.currency)}</td>
-                                <td style={{ padding: "6px 8px" }}>{o.paymentStatus}</td>
-                                <td style={{ padding: "6px 8px" }}>{o.fulfillmentStatus}</td>
-                                <td style={{ padding: "6px 8px", color: "#888", fontSize: 12 }}>{o.createdAt?.toISOString?.().slice(0, 16).replace("T", " ")}</td>
+                                <td className="py-2 pr-2">{money(o.totalCents, o.currency)}</td>
+                                <td className="py-2 pr-2">{o.paymentStatus}</td>
+                                <td className="py-2 pr-2">{o.fulfillmentStatus}</td>
+                                <td className="py-2 text-muted">{o.createdAt?.toISOString?.().slice(0, 10)}</td>
                             </tr>
                         ))}
                     </tbody>
                 </table>
             )}
-        </main>
+        </div>
     );
 }

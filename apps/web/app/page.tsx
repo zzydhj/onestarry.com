@@ -16,9 +16,9 @@ export default async function Home() {
 
     return (
         <div className="mx-auto max-w-5xl px-4 py-8">
-            <h1 className="mb-6 text-2xl font-semibold tracking-tight text-brand">全部商品</h1>
+            <h1 className="mb-6 text-2xl font-semibold tracking-tight text-brand">Shop</h1>
             {items.length === 0 ? (
-                <p className="text-muted">暂无商品。</p>
+                <p className="text-muted">No products yet.</p>
             ) : (
                 <ul className="grid grid-cols-2 gap-5 sm:grid-cols-3 lg:grid-cols-4">
                     {items.map((it) => (
@@ -36,7 +36,7 @@ export default async function Home() {
                                             className="h-full w-full object-cover transition duration-300 group-hover:scale-105"
                                         />
                                     ) : (
-                                        <div className="flex h-full w-full items-center justify-center text-sm text-muted">无图</div>
+                                        <div className="flex h-full w-full items-center justify-center text-sm text-muted">No image</div>
                                     )}
                                 </div>
                                 <div className="p-3">

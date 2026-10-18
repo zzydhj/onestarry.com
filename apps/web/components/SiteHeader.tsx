@@ -10,13 +10,13 @@ export function SiteHeader() {
                 </Link>
                 <nav className="flex items-center gap-5 text-sm text-muted">
                     <Link href="/" className="transition hover:text-accent">
-                        全部商品
+                        Shop
                     </Link>
                     <Link href="/cart" className="transition hover:text-accent">
-                        购物车
+                        Cart
                     </Link>
                     <Link href="/account/orders" className="transition hover:text-accent">
-                        我的订单
+                        Orders
                     </Link>
                 </nav>
             </div>
