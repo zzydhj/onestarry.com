@@ -17,22 +17,32 @@ export default async function AdminHome() {
     const session = await auth.api.getSession({ headers: h });
 
     return (
-        <main style={{ maxWidth: 720, margin: "0 auto", padding: "2rem 1rem", fontFamily: "system-ui" }}>
-            <h1 style={{ fontSize: 22 }}>onestarry · 管理后台</h1>
+        <div className="mx-auto max-w-5xl px-4 py-8">
+            <h1 className="text-2xl font-semibold tracking-tight">管理后台</h1>
             {session?.user ? (
                 <>
-                    <p>已登录：<strong>{session.user.email}</strong></p>
-                    <p><Link href="/products">→ 商品管理</Link></p>
-                    <p><Link href="/orders">→ 订单管理</Link></p>
-                    <p><Link href="/categories">→ 类目管理</Link></p>
-                    <p><Link href="/markets">→ 市场配置</Link></p>
-                    <p style={{ color: "#666" }}>后台功能（商品/改价/类目/市场/库存/批量导入）将在此逐步接入。</p>
+                    <p className="mt-1 text-sm text-muted">已登录：<strong className="text-fg">{session.user.email}</strong></p>
+                    <div className="mt-6 grid grid-cols-2 gap-4 sm:grid-cols-4">
+                        {[
+                            { href: "/products", label: "商品管理" },
+                            { href: "/orders", label: "订单管理" },
+                            { href: "/categories", label: "类目管理" },
+                            { href: "/markets", label: "市场配置" },
+                        ].map((c) => (
+                            <Link
+                                key={c.href}
+                                href={c.href}
+                                className="rounded-xl border border-line bg-white p-4 font-medium transition hover:border-accent hover:shadow-sm"
+                            >
+                                {c.label}
+                            </Link>
+                        ))}
+                    </div>
+                    <p className="mt-6 text-sm text-muted">改价 / 上下架 / 库存 / 新建 / 图片 / 图文详情 / 批量导入 均在「商品管理」内。</p>
                 </>
             ) : (
-                <p>
-                    未登录 · <Link href="/signin">去登录</Link>
-                </p>
+                <p className="mt-6 text-muted">未登录 · <Link href="/signin" className="text-accent hover:underline">去登录</Link></p>
             )}
-        </main>
+        </div>
     );
 }

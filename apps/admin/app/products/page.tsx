@@ -36,31 +36,34 @@ export default async function AdminProducts() {
         .limit(200);
 
     return (
-        <main style={{ maxWidth: 960, margin: "0 auto", padding: "2rem 1rem", fontFamily: "system-ui" }}>
-            <h1 style={{ fontSize: 22 }}>商品 <span style={{ fontSize: 13, color: "#888" }}>（{rows.length}）</span></h1>
-            <p><Link href="/">← 返回后台首页</Link> · <Link href="/products/new">＋ 新建商品</Link> · <Link href="/products/import">⇪ 批量导入</Link></p>
-            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 14 }}>
+        <div className="mx-auto max-w-4xl px-4 py-8">
+            <div className="flex items-center justify-between">
+                <h1 className="text-2xl font-semibold tracking-tight">商品 <span className="text-sm font-normal text-muted">（{rows.length}）</span></h1>
+                <div className="flex gap-2">
+                    <Link href="/products/new" className="rounded-lg bg-accent px-3 py-1.5 text-sm font-medium text-white transition hover:opacity-90">＋ 新建商品</Link>
+                    <Link href="/products/import" className="rounded-lg border border-line px-3 py-1.5 text-sm font-medium transition hover:bg-surface">⇪ 批量导入</Link>
+                </div>
+            </div>
+            <table className="mt-6 w-full text-sm">
                 <thead>
-                    <tr style={{ textAlign: "left", borderBottom: "1px solid #ddd" }}>
-                        <th style={{ padding: "6px 8px" }}>标题</th>
-                        <th style={{ padding: "6px 8px" }}>状态</th>
-                        <th style={{ padding: "6px 8px" }}>商品 ID</th>
+                    <tr className="border-b border-line text-left text-muted">
+                        <th className="py-2 pr-2 font-medium">标题</th>
+                        <th className="py-2 pr-2 font-medium">状态</th>
+                        <th className="py-2 font-medium">商品 ID</th>
                     </tr>
                 </thead>
                 <tbody>
                     {rows.map((r) => (
-                        <tr key={r.id} style={{ borderBottom: "1px solid #eee" }}>
-                            <td style={{ padding: "6px 8px" }}>
-                                <Link href={`/products/${r.id}`} style={{ color: "#0366d6", textDecoration: "none" }}>
-                                    {r.title ?? <em style={{ color: "#c00" }}>（缺英文文案）</em>}
-                                </Link>
+                        <tr key={r.id} className="border-b border-line">
+                            <td className="py-2 pr-2">
+                                <Link href={`/products/${r.id}`} className="text-accent hover:underline">{r.title ?? <em className="text-red-600">（缺英文文案）</em>}</Link>
                             </td>
-                            <td style={{ padding: "6px 8px" }}>{r.status}</td>
-                            <td style={{ padding: "6px 8px", fontFamily: "monospace", fontSize: 12, color: "#888" }}>{r.id}</td>
+                            <td className="py-2 pr-2">{r.status}</td>
+                            <td className="py-2 font-mono text-xs text-muted">{r.id}</td>
                         </tr>
                     ))}
                 </tbody>
             </table>
-        </main>
+        </div>
     );
 }
