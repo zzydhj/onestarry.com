@@ -135,26 +135,20 @@ export interface UpdateBasePriceInput {
 }
 
 /**
- * 改某变体的售价真源 basePriceCents，并对所有市场发出 price.recompute 事件（与主写同事务）。
- * 事件 payload 即完整 RecomputeInput（与 seed 一致：MVP 单币种、税/关/运费 provider 未接入 → 0/1 占位）。
- * 调用方负责：包在事务里 + 提交后 ctx.waitUntil(runRelayBatch(...)) 即时派发（Cron 每分钟兜底）。
+ * 对当前所有市场发出 price.recompute 事件（payload 为完整 RecomputeInput，与 seed 一致）。
+ * 改价与新建商品共用。税/关/运费 provider 未接入 → 0/1 占位。
  */
-export async function updateVariantBasePrice(db: Db | Tx, input: UpdateBasePriceInput): Promise<{ emitted: number }> {
-    const variant = (await db.select().from(productVariants).where(eq(productVariants.id, input.variantId)).limit(1))[0];
-    if (!variant) throw new Error(`variant ${input.variantId} 不存在`);
-
-    await db
-        .update(productVariants)
-        .set({ basePriceCents: input.basePriceCents, updatedAt: new Date() })
-        .where(eq(productVariants.id, input.variantId));
-
+export async function emitPriceRecomputeForAllMarkets(
+    db: Db | Tx,
+    input: { variantId: string; basePriceCents: number; baseCurrency: string; changedBy?: string | null },
+): Promise<{ emitted: number }> {
     const allMarkets = await db.select().from(markets);
     for (const m of allMarkets) {
         const payload: RecomputeInput = {
-            variantId: variant.id,
+            variantId: input.variantId,
             marketId: m.id,
             basePriceCents: input.basePriceCents,
-            baseCurrency: variant.baseCurrency,
+            baseCurrency: input.baseCurrency,
             fxRate: 1, // MVP：基价币种==市场币种；FX provider 待接
             marketCurrency: m.currency,
             shippingCents: 0, // ShippingProvider 待接
@@ -169,10 +163,31 @@ export async function updateVariantBasePrice(db: Db | Tx, input: UpdateBasePrice
         };
         await emitEvent(db, {
             aggregateType: "variant",
-            aggregateId: variant.id,
+            aggregateId: input.variantId,
             eventType: "price.recompute",
             payload,
         });
     }
     return { emitted: allMarkets.length };
+}
+
+/**
+ * 改某变体的售价真源 basePriceCents，并对所有市场发出 price.recompute 事件（与主写同事务）。
+ * 调用方负责：包在事务里 + 提交后 ctx.waitUntil(runRelayBatch(...)) 即时派发（Cron 每分钟兜底）。
+ */
+export async function updateVariantBasePrice(db: Db | Tx, input: UpdateBasePriceInput): Promise<{ emitted: number }> {
+    const variant = (await db.select().from(productVariants).where(eq(productVariants.id, input.variantId)).limit(1))[0];
+    if (!variant) throw new Error(`variant ${input.variantId} 不存在`);
+
+    await db
+        .update(productVariants)
+        .set({ basePriceCents: input.basePriceCents, updatedAt: new Date() })
+        .where(eq(productVariants.id, input.variantId));
+
+    return emitPriceRecomputeForAllMarkets(db, {
+        variantId: variant.id,
+        basePriceCents: input.basePriceCents,
+        baseCurrency: variant.baseCurrency,
+        changedBy: input.changedBy,
+    });
 }
