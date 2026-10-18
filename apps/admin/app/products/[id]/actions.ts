@@ -6,7 +6,7 @@ import { revalidatePath } from "next/cache";
 import { eq } from "drizzle-orm";
 import { getCloudflareContext } from "@opennextjs/cloudflare";
 import { createAdminAuth } from "@onestarry/auth";
-import { createDb, products, updateVariantBasePrice } from "@onestarry/db";
+import { createDb, products, setVariantOnHand, updateVariantBasePrice } from "@onestarry/db";
 import { runRelayBatch, relayHandlers } from "@onestarry/jobs";
 
 /**
@@ -69,4 +69,32 @@ export async function setProductStatusAction(formData: FormData): Promise<void> 
         .where(eq(products.id, productId));
 
     revalidatePath(`/products/${productId}`);
+}
+
+/**
+ * 调整某变体库存（on_hand 绝对值）：事务内 upsert 库存 + 追加 adjustment 流水。
+ * 可售性读时现算→前台下次请求自动跟随，无需发事件。
+ */
+export async function updateInventoryAction(formData: FormData): Promise<void> {
+    const { env } = getCloudflareContext();
+    const h = await headers();
+    const auth = createAdminAuth({
+        connString: env.HYPERDRIVE.connectionString,
+        baseURL: `https://${h.get("host") ?? "localhost"}`,
+        secret: env.BETTER_AUTH_SECRET,
+    });
+    const session = await auth.api.getSession({ headers: h });
+    if (!session?.user) redirect("/signin");
+
+    const variantId = String(formData.get("variantId") ?? "");
+    const productId = String(formData.get("productId") ?? "");
+    const onHand = Number.parseInt(String(formData.get("onHand") ?? ""), 10);
+    if (!variantId || !Number.isInteger(onHand) || onHand < 0) return;
+
+    const db = createDb(env.HYPERDRIVE.connectionString);
+    await db.transaction(async (tx) => {
+        await setVariantOnHand(tx, { variantId, onHand, changedBy: session.user!.id });
+    });
+
+    if (productId) revalidatePath(`/products/${productId}`);
 }
