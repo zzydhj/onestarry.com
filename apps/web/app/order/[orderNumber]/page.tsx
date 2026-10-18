@@ -16,7 +16,7 @@ export default async function OrderPage({ params }: { params: Promise<{ orderNum
 
     const res = await getOrderByNumber(db, decodeURIComponent(orderNumber));
     if (!res) notFound();
-    const { order, lines } = res;
+    const { order, items } = res;
 
     return (
         <main style={{ maxWidth: 560, margin: "0 auto", padding: "2rem 1rem", fontFamily: "system-ui" }}>
@@ -29,14 +29,20 @@ export default async function OrderPage({ params }: { params: Promise<{ orderNum
             </p>
 
             <ul style={{ listStyle: "none", padding: 0, borderTop: "1px solid #eee", marginTop: 16 }}>
-                {lines.map((l) => (
-                    <li key={l.id} style={{ display: "flex", justifyContent: "space-between", padding: "8px 0", borderBottom: "1px solid #f4f4f4" }}>
-                        <span>{l.type}</span>
-                        <span>{money(l.amountCents, order.currency)}</span>
+                {items.map((it) => (
+                    <li key={it.id} style={{ display: "flex", justifyContent: "space-between", padding: "8px 0", borderBottom: "1px solid #f4f4f4" }}>
+                        <span>{it.title ?? "商品"} × {it.quantity}</span>
+                        <span>{money(it.unitPriceCents * it.quantity, order.currency)}</span>
                     </li>
                 ))}
             </ul>
-            <div style={{ display: "flex", justifyContent: "space-between", fontWeight: 700, fontSize: 18, marginTop: 12 }}>
+            <div style={{ marginTop: 12, fontSize: 14, textAlign: "right", color: "#555" }}>
+                {order.discountCents > 0 && <div>折扣 -{money(order.discountCents, order.currency)}</div>}
+                <div>运费 {money(order.shippingCents, order.currency)}</div>
+                {order.taxCents > 0 && <div>税 {money(order.taxCents, order.currency)}</div>}
+                {order.dutyCents > 0 && <div>关税 {money(order.dutyCents, order.currency)}</div>}
+            </div>
+            <div style={{ display: "flex", justifyContent: "space-between", fontWeight: 700, fontSize: 18, marginTop: 8 }}>
                 <span>合计</span>
                 <span>{money(order.totalCents, order.currency)}</span>
             </div>

@@ -1,6 +1,5 @@
 import type { CSSProperties } from "react";
 import Link from "next/link";
-import { redirect } from "next/navigation";
 import { getCloudflareContext } from "@opennextjs/cloudflare";
 import { createDb, getCartLines } from "@onestarry/db";
 import { readCart } from "@/lib/cart";
@@ -22,8 +21,17 @@ export default async function Checkout({ searchParams }: { searchParams: Promise
     const db = createDb(env.HYPERDRIVE.connectionString);
     const cart = await readCart();
     const lines = await getCartLines(db, Object.keys(cart), "us", "en");
-    if (lines.length === 0) redirect("/cart");
     const { error } = await searchParams;
+
+    if (lines.length === 0) {
+        return (
+            <main style={{ maxWidth: 560, margin: "0 auto", padding: "2rem 1rem", fontFamily: "system-ui" }}>
+                <p><Link href="/cart" style={{ color: "#666", fontSize: 14 }}>← 返回购物车</Link></p>
+                <h1 style={{ fontSize: 24 }}>结账</h1>
+                <p style={{ color: "#888" }}>购物车是空的，先去 <Link href="/cart" style={{ color: "#0366d6" }}>加购</Link>。</p>
+            </main>
+        );
+    }
 
     let subtotal = 0;
     for (const l of lines) subtotal += l.unitCents * (cart[l.variantId] ?? 0);

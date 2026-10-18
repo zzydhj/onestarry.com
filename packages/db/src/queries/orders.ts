@@ -1,5 +1,5 @@
 import { and, eq, inArray } from "drizzle-orm";
-import { addresses, idempotencyKeys, orderItems, orderLines, orders, variantMarketPrices } from "../schema";
+import { addresses, idempotencyKeys, orderItems, orderLines, orders, productTranslations, productVariants, variantMarketPrices } from "../schema";
 import { emitEvent } from "./outbox";
 import type { Db, Tx } from "../client";
 
@@ -173,10 +173,24 @@ export async function createOrder(db: Db | Tx, input: CreateOrderInput): Promise
     return { orderId: order.id, orderNumber: order.orderNumber, totalCents: total };
 }
 
-/** 按单号读订单 + 明细行（前台确认页用）。 */
+/** 按单号读订单 + 明细行 + 商品行（带当前标题，前台确认页用）。 */
 export async function getOrderByNumber(db: Db | Tx, orderNumber: string) {
     const order = (await db.select().from(orders).where(eq(orders.orderNumber, orderNumber)).limit(1))[0];
     if (!order) return null;
     const lines = await db.select().from(orderLines).where(eq(orderLines.orderId, order.id));
-    return { order, lines };
+    const items = await db
+        .select({
+            id: orderItems.id,
+            quantity: orderItems.quantity,
+            unitPriceCents: orderItems.unitPriceCents,
+            title: productTranslations.title,
+        })
+        .from(orderItems)
+        .leftJoin(productVariants, eq(orderItems.variantId, productVariants.id))
+        .leftJoin(
+            productTranslations,
+            and(eq(productTranslations.productId, productVariants.productId), eq(productTranslations.locale, order.locale)),
+        )
+        .where(eq(orderItems.orderId, order.id));
+    return { order, lines, items };
 }
