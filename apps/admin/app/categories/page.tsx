@@ -25,6 +25,10 @@ export default async function CategoriesPage() {
                 <button type="submit" className="rounded-lg bg-accent px-3 py-1.5 text-sm font-medium text-white transition hover:opacity-90">新增</button>
             </form>
 
+            {cats.length === 0 && (
+                <p className="mt-6 text-sm text-muted">暂无类目，用上方表单新增第一个。</p>
+            )}
+
             <ul className="mt-6 space-y-2">
                 {cats.map((c) => (
                     <li key={c.id} className="flex items-center gap-2" style={{ marginLeft: (c.level - 1) * 22 }}>

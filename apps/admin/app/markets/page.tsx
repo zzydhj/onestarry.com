@@ -23,7 +23,7 @@ export default async function MarketsPage() {
                 <form action={createMarketAction} className="mt-4 flex flex-wrap items-center gap-2">
                     <input name="code" placeholder="code 如 gb" required className="rounded-md border border-line px-3 py-1.5 text-sm" />
                     <input name="name" placeholder="名称 如 United Kingdom" required className="w-40 rounded-md border border-line px-3 py-1.5 text-sm" />
-                    <input name="currency" placeholder="币种 GBP" required className="w-20 rounded-md border border-line px-3 py-1.5 text-sm" />
+                    <input name="currency" placeholder="币种 GBP" required className="w-24 rounded-md border border-line px-3 py-1.5 text-sm" />
                     <select name="legalEntityId" required className="rounded-md border border-line px-3 py-1.5 text-sm">
                         {entities.map((e) => (
                             <option key={e.id} value={e.id}>{e.displayName}（{e.jurisdiction}）</option>
