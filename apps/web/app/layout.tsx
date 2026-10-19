@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import type { ReactNode } from "react";
 import "./globals.css";
 import { SiteHeader } from "@/components/SiteHeader";
+import { CookieConsent } from "@/components/CookieConsent";
 
 export const metadata: Metadata = {
     metadataBase: new URL("https://onestarry.com"),
@@ -17,6 +18,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
             <body className="min-h-screen bg-white text-fg antialiased">
                 <SiteHeader />
                 {children}
+                <CookieConsent />
             </body>
         </html>
     );
