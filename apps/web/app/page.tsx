@@ -1,10 +1,12 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { unstable_cache } from "next/cache";
-import { connection } from "next/server";
 import { getCloudflareContext } from "@opennextjs/cloudflare";
 import { mediaUrl } from "@onestarry/core";
 import { createDb, listProductsForMarket } from "@onestarry/db";
+
+// 整页 ISR（与 PDP 同级）：构建期用 CI 注入的 DATABASE_URL 预渲染真实首页存进 R2；
+// 运行期每 60s 到期后首个访问秒回旧页 + 后台用 Hyperdrive 绑定刷新。
+export const revalidate = 60;
 
 export const metadata: Metadata = {
     title: { absolute: "onestarry — Shop quality goods, shipped worldwide" },
@@ -24,22 +26,19 @@ function money(cents: number, currency: string): string {
     return new Intl.NumberFormat("en-US", { style: "currency", currency }).format(cents / 100);
 }
 
-/** 商品列表数据缓存：60s 内命中 R2 数据缓存、不查库（B 方案对无参数静态页的等价实现）。 */
-const getHomeProducts = unstable_cache(
-    async () => {
-        const { env } = getCloudflareContext();
-        const db = createDb(env.HYPERDRIVE.connectionString);
-        return await listProductsForMarket(db, "us", "en");
-    },
-    ["home", "products"],
-    { revalidate: 60 },
-);
+/** 连接串：运行期用 Hyperdrive 绑定；构建期（SSG 预渲染）无 Workers 上下文 → 回退到 CI 注入的 DATABASE_URL（Neon 池化）。 */
+function dbUrl(): string {
+    try {
+        return getCloudflareContext().env.HYPERDRIVE.connectionString;
+    } catch {
+        const url = process.env.DATABASE_URL;
+        if (!url) throw new Error("构建期缺少 DATABASE_URL：请在 Workers Builds 环境变量配置 Neon 池化连接串");
+        return url;
+    }
+}
 
 export default async function Home() {
-    // connection() 让本路由动态渲染（不在构建期预渲染，否则 getCloudflareContext 在 SSG 抛错）；
-    // 商品列表仍走上面的 unstable_cache → 命中 R2、60s 不查库。
-    await connection();
-    const items = await getHomeProducts();
+    const items = await listProductsForMarket(createDb(dbUrl()), "us", "en");
 
     return (
         <div className="mx-auto max-w-5xl px-4 py-8">
