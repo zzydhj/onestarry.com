@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { redirect } from "next/navigation";
 import {
     createAttributeDefinition,
     createDb,
@@ -35,13 +36,14 @@ function parseInput(fd: FormData): Omit<AttributeDefInput, "slug"> & { slug: str
     };
 }
 
-/** 新增属性（slug 重复则静默跳过）。 */
+/** 新增属性（slug 重复则跳回并带 ?error=duplicate）。 */
 export async function createAttributeAction(fd: FormData): Promise<void> {
     const { env } = await requireAdmin();
     const input = parseInput(fd);
     if (!input.slug || !input.name) return;
     const db = createDb(env.HYPERDRIVE.connectionString);
-    await createAttributeDefinition(db, input);
+    const res = await createAttributeDefinition(db, input);
+    if (!res.ok) redirect("/attributes?error=duplicate");
     revalidatePath("/attributes");
 }
 

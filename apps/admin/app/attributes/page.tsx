@@ -18,8 +18,9 @@ const DATA_TYPES = [
 const checkCls = "h-4 w-4 accent-accent";
 
 /** 属性管理（受保护）：全局属性库的新增 / 编辑 / 删除。 */
-export default async function AttributesPage() {
+export default async function AttributesPage({ searchParams }: { searchParams: Promise<{ error?: string }> }) {
     const { env } = await requireAdmin();
+    const { error } = await searchParams;
     const db = createDb(env.HYPERDRIVE.connectionString);
     const attrs = await listAttributeDefinitions(db);
 
@@ -29,6 +30,9 @@ export default async function AttributesPage() {
                 属性管理 <span className="text-sm font-normal text-muted">（{attrs.length}）</span>
             </h1>
             <p className="mt-1 text-sm text-muted">全局属性库：定义一次即可被类目/商品复用；slug 为稳定标识，创建后不可改。</p>
+            {error === "duplicate" && (
+                <p className="mt-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600">slug 已存在，请换一个。</p>
+            )}
 
             <Card className="mt-6 p-5">
                 <form action={createAttributeAction} className="grid gap-3 sm:grid-cols-2">
