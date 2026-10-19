@@ -2,6 +2,24 @@ import { and, asc, eq, inArray } from "drizzle-orm";
 import { inventory, markets, mediaAssets, productImages, productTranslations, productVariants, products, slugs, variantMarketPrices } from "../schema";
 import type { Db, Tx } from "../client";
 
+/** 活跃商品的当前 en slug + 更新时间（sitemap 用）。 */
+export async function listActiveProductSlugs(db: Db | Tx) {
+    return db
+        .select({ slug: slugs.slug, updatedAt: products.updatedAt })
+        .from(products)
+        .innerJoin(
+            slugs,
+            and(
+                eq(slugs.entityId, products.id),
+                eq(slugs.entityType, "product"),
+                eq(slugs.locale, "en"),
+                eq(slugs.isCurrent, true),
+            ),
+        )
+        .where(eq(products.status, "active"))
+        .orderBy(asc(slugs.slug));
+}
+
 export interface CatalogListItem {
     productId: string;
     slug: string;

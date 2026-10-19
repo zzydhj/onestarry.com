@@ -1,4 +1,5 @@
 import Link from "next/link";
+import type { Metadata } from "next";
 import { getCloudflareContext } from "@opennextjs/cloudflare";
 import { createDb, getCartLines } from "@onestarry/db";
 import { Button, Input, Label } from "@onestarry/ui";
@@ -6,6 +7,8 @@ import { readCart } from "@/lib/cart";
 import { checkoutAction } from "./actions";
 
 export const dynamic = "force-dynamic";
+
+export const metadata: Metadata = { title: "Checkout", robots: { index: false, follow: false } };
 
 const SHIPPING_CENTS = 500;
 

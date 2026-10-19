@@ -1,9 +1,24 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import { getCloudflareContext } from "@opennextjs/cloudflare";
 import { mediaUrl } from "@onestarry/core";
 import { createDb, listProductsForMarket } from "@onestarry/db";
 
 export const dynamic = "force-dynamic";
+
+export const metadata: Metadata = {
+    title: "Shop",
+    description: "Browse our catalog of quality goods shipped worldwide from our own warehouse.",
+    alternates: { canonical: "/" },
+};
+
+const SITE_JSONLD = {
+    "@context": "https://schema.org",
+    "@type": "WebSite",
+    name: "onestarry",
+    url: "https://onestarry.com",
+    publisher: { "@type": "Organization", name: "onestarry", url: "https://onestarry.com" },
+};
 
 function money(cents: number, currency: string): string {
     return new Intl.NumberFormat("en-US", { style: "currency", currency }).format(cents / 100);
@@ -16,6 +31,7 @@ export default async function Home() {
 
     return (
         <div className="mx-auto max-w-5xl px-4 py-8">
+            <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(SITE_JSONLD) }} />
             <h1 className="mb-6 text-2xl font-semibold tracking-tight text-brand">Shop</h1>
             {items.length === 0 ? (
                 <p className="text-muted">No products yet.</p>

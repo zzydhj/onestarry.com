@@ -1,4 +1,5 @@
 import { headers } from "next/headers";
+import type { Metadata } from "next";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getCloudflareContext } from "@opennextjs/cloudflare";
@@ -6,6 +7,8 @@ import { createCustomerAuth } from "@onestarry/auth";
 import { createDb, listOrdersByCustomer } from "@onestarry/db";
 
 export const dynamic = "force-dynamic";
+
+export const metadata: Metadata = { title: "My Orders", robots: { index: false, follow: false } };
 
 function money(cents: number, cur: string): string {
     return new Intl.NumberFormat("en-US", { style: "currency", currency: cur }).format(cents / 100);

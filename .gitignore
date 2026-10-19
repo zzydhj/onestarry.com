@@ -4,6 +4,7 @@ node_modules/
 
 # builds
 .next/
+.open-next/
 dist/
 build/
 out/

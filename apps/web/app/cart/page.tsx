@@ -1,4 +1,5 @@
 import Link from "next/link";
+import type { Metadata } from "next";
 import { getCloudflareContext } from "@opennextjs/cloudflare";
 import { createDb, getCartLines } from "@onestarry/db";
 import { Button, Input, buttonVariants } from "@onestarry/ui";
@@ -6,6 +7,8 @@ import { readCart } from "@/lib/cart";
 import { removeItemAction, setQtyAction } from "./actions";
 
 export const dynamic = "force-dynamic";
+
+export const metadata: Metadata = { title: "Cart", robots: { index: false, follow: false } };
 
 const SHIPPING_CENTS = 500; // MVP 占位运费（真实 computeShipping 待接）
 
