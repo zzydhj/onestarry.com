@@ -69,22 +69,21 @@ export function RichTextEditor({
         <button
             type="button"
             onClick={run}
-            className={`mr-1 rounded border px-2 py-0.5 text-xs transition ${
-                active ? "border-accent bg-accent/10 font-semibold text-accent" : "border-line bg-surface hover:bg-gray-100"
-            }`}
+            className={`mr-1 rounded border px-2 py-0.5 text-xs transition ${active ? "border-accent bg-accent/10 font-semibold text-accent" : "border-line bg-surface hover:bg-gray-100"
+                }`}
         >
             {label}
         </button>
     );
-    
+
     return (
         <div className="overflow-hidden rounded-lg border border-line">
             <div className="flex flex-wrap gap-1 border-b border-line p-2">
                 {btn("B", () => editor.chain().focus().toggleBold().run(), editor.isActive("bold"))}
                 {btn("I", () => editor.chain().focus().toggleItalic().run(), editor.isActive("italic"))}
                 {btn("S", () => editor.chain().focus().toggleStrike().run(), editor.isActive("strike"))}
-                {btn("H1", () => editor.chain().focus().toggleHeading({ level: 1 }).run(), editor.isActive("heading", { level: 1}))}
-                {btn("H2", () => editor.chain().focus().toggleHeading({ level: 2 }).run(), editor.isActive("heading", { level: 2}))}
+                {btn("H1", () => editor.chain().focus().toggleHeading({ level: 1 }).run(), editor.isActive("heading", { level: 1 }))}
+                {btn("H2", () => editor.chain().focus().toggleHeading({ level: 2 }).run(), editor.isActive("heading", { level: 2 }))}
                 {btn("• 列表", () => editor.chain().focus().toggleBulletList().run(), editor.isActive("bulletList"))}
                 {btn("1. 列表", () => editor.chain().focus().toggleOrderedList().run(), editor.isActive("orderedList"))}
                 {btn("引用", () => editor.chain().focus().toggleBlockquote().run(), editor.isActive("blockquote"))}

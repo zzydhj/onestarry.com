@@ -18,3 +18,11 @@ body {
     font-family: var(--font-sans);
     -webkit-font-smoothing: antialiased;
 }
+
+@layer base {
+
+    /* Tailwind v4 preflight 将按钮默认指针改为 default，这里恢复为手形（禁用态除外） */
+    button:not(:disabled) {
+        cursor: pointer;
+    }
+}
