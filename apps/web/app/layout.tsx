@@ -4,8 +4,11 @@ import "./globals.css";
 import { SiteHeader } from "@/components/SiteHeader";
 
 export const metadata: Metadata = {
-    title: "onestarry.com",
-    description: "Global e-commerce template — Next.js on Cloudflare Workers",
+    metadataBase: new URL("https://onestarry.com"),
+    title: { default: "onestarry.com", template: "%s · onestarry" },
+    description: "Global e-commerce storefront — quality goods shipped worldwide from our own warehouse.",
+    openGraph: { siteName: "onestarry", type: "website" },
+    robots: { index: true, follow: true },
 };
 
 export default function RootLayout({ children }: { children: ReactNode }) {
