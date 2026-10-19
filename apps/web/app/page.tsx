@@ -1,10 +1,12 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { unstable_cache } from "next/cache";
-import { connection } from "next/server";
 import { getCloudflareContext } from "@opennextjs/cloudflare";
 import { mediaUrl } from "@onestarry/core";
 import { createDb, listProductsForMarket } from "@onestarry/db";
+
+// 首页是无参数的静态路由，不能走 PDP 那种按需 ISR（构建期会预渲染并触发 getCloudflareContext 报错）；
+// 保持动态渲染，查库成本由 Hyperdrive 查询缓存（方案 C）兜底。
+export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = {
     title: { absolute: "onestarry — Shop quality goods, shipped worldwide" },
@@ -24,22 +26,10 @@ function money(cents: number, currency: string): string {
     return new Intl.NumberFormat("en-US", { style: "currency", currency }).format(cents / 100);
 }
 
-/** 商品列表数据缓存：60s 内命中 R2 数据缓存、不查库（B 方案对无参数静态页的等价实现）。 */
-const getHomeProducts = unstable_cache(
-    async () => {
-        const { env } = getCloudflareContext();
-        const db = createDb(env.HYPERDRIVE.connectionString);
-        return await listProductsForMarket(db, "us", "en");
-    },
-    ["home", "products"],
-    { revalidate: 60 },
-);
-
 export default async function Home() {
-    // connection() 让本路由动态渲染（不在构建期预渲染，否则 getCloudflareContext 在 SSG 抛错）；
-    // 商品列表仍走上面的 unstable_cache → 命中 R2、60s 不查库。
-    await connection();
-    const items = await getHomeProducts();
+    const { env } = getCloudflareContext();
+    const db = createDb(env.HYPERDRIVE.connectionString);
+    const items = await listProductsForMarket(db, "us", "en");
 
     return (
         <div className="mx-auto max-w-5xl px-4 py-8">
