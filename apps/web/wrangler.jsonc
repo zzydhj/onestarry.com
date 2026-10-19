@@ -25,6 +25,34 @@
         {
             "binding": "MEDIA",
             "bucket_name": "onestarry-media"
+        },
+        {
+            // ISR 增量缓存持久层（成品页存这里，前缀默认 incremental-cache/）
+            "binding": "NEXT_INC_CACHE_R2_BUCKET",
+            "bucket_name": "onestarry-isr-cache"
+        }
+    ],
+    "services": [
+        {
+            // 自引用：DO Queue 后台 revalidate 时回灌本页需要
+            "binding": "WORKER_SELF_REFERENCE",
+            "service": "onestarry-com"
+        }
+    ],
+    "durable_objects": {
+        "bindings": [
+            {
+                "name": "NEXT_CACHE_DO_QUEUE",
+                "class_name": "DOQueueHandler"
+            }
+        ]
+    },
+    "migrations": [
+        {
+            "tag": "v1",
+            "new_sqlite_classes": [
+                "DOQueueHandler"
+            ]
         }
     ]
 }
