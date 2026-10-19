@@ -1,4 +1,3 @@
-import Link from "next/link";
 import { createDb, listAllCategories } from "@onestarry/db";
 import { requireAdmin } from "@/lib/auth";
 import { createCategoryAction, renameCategoryAction } from "./actions";
@@ -13,32 +12,31 @@ export default async function CategoriesPage() {
     const parentOptions = [{ id: "", name: "（顶层）" }, ...cats.map((c) => ({ id: c.id, name: "　".repeat(c.level - 1) + c.name }))];
 
     return (
-        <main style={{ maxWidth: 720, margin: "0 auto", padding: "2rem 1rem", fontFamily: "system-ui" }}>
-            <p><Link href="/">← 返回后台首页</Link></p>
-            <h1 style={{ fontSize: 22 }}>类目管理 <span style={{ fontSize: 13, color: "#888" }}>（{cats.length}）</span></h1>
+        <div className="mx-auto max-w-2xl px-4 py-8">
+            <h1 className="text-2xl font-semibold tracking-tight">类目管理 <span className="text-sm font-normal text-muted">（{cats.length}）</span></h1>
 
-            <form action={createCategoryAction} style={{ display: "flex", gap: 8, margin: "12px 0", alignItems: "center" }}>
-                <input name="name" placeholder="新类目名称" required style={{ padding: 6 }} />
-                <select name="parentId" style={{ padding: 6 }}>
+            <form action={createCategoryAction} className="mt-5 flex items-center gap-2">
+                <input name="name" placeholder="新类目名称" required className="rounded-md border border-line px-3 py-1.5 text-fg" />
+                <select name="parentId" className="rounded-md border border-line px-3 py-1.5 text-fg">
                     {parentOptions.map((p) => (
                         <option key={p.id} value={p.id}>{p.name}</option>
                     ))}
                 </select>
-                <button type="submit">新增</button>
+                <button type="submit" className="rounded-lg bg-accent px-3 py-1.5 text-sm font-medium text-white transition hover:opacity-90">新增</button>
             </form>
 
-            <ul style={{ listStyle: "none", padding: 0 }}>
+            <ul className="mt-6 space-y-2">
                 {cats.map((c) => (
-                    <li key={c.id} style={{ marginLeft: (c.level - 1) * 22, margin: "6px 0", display: "flex", alignItems: "center", gap: 8 }}>
-                        <form action={renameCategoryAction} style={{ display: "inline-flex", gap: 6 }}>
+                    <li key={c.id} className="flex items-center gap-2" style={{ marginLeft: (c.level - 1) * 22 }}>
+                        <form action={renameCategoryAction} className="flex items-center gap-2">
                             <input type="hidden" name="id" value={c.id} />
-                            <input name="name" defaultValue={c.name} style={{ padding: 4 }} />
-                            <button type="submit">改名</button>
+                            <input name="name" defaultValue={c.name} className="rounded-md border border-line px-2 py-1 text-sm text-fg" />
+                            <button type="submit" className="rounded-md border border-line px-2 py-1 text-sm transition hover:bg-surface">改名</button>
                         </form>
-                        <span style={{ color: "#999", fontSize: 12 }}>L{c.level}</span>
+                        <span className="text-xs text-muted">L{c.level}</span>
                     </li>
                 ))}
             </ul>
-        </main>
+        </div>
     );
 }

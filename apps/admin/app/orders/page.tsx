@@ -1,9 +1,6 @@
-import { headers } from "next/headers";
 import Link from "next/link";
-import { redirect } from "next/navigation";
-import { getCloudflareContext } from "@opennextjs/cloudflare";
-import { createAdminAuth } from "@onestarry/auth";
 import { createDb, listRecentOrders } from "@onestarry/db";
+import { requireAdmin } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
 
@@ -13,51 +10,45 @@ function money(cents: number, cur: string): string {
 
 /** 后台订单列表（受保护）：最近订单，点进详情。 */
 export default async function AdminOrders() {
-    const { env } = getCloudflareContext();
-    const h = await headers();
-    const auth = createAdminAuth({
-        connString: env.HYPERDRIVE.connectionString,
-        baseURL: `https://${h.get("host") ?? "localhost"}`,
-        secret: env.BETTER_AUTH_SECRET,
-    });
-    const session = await auth.api.getSession({ headers: h });
-    if (!session?.user) redirect("/signin");
-
+    const { env } = await requireAdmin();
     const db = createDb(env.HYPERDRIVE.connectionString);
     const rows = await listRecentOrders(db, 200);
 
     return (
-        <main style={{ maxWidth: 960, margin: "0 auto", padding: "2rem 1rem", fontFamily: "system-ui" }}>
-            <h1 style={{ fontSize: 22 }}>订单 <span style={{ fontSize: 13, color: "#888" }}>（{rows.length}）</span></h1>
-            <p><Link href="/">← 返回后台首页</Link></p>
-            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 14 }}>
-                <thead>
-                    <tr style={{ textAlign: "left", borderBottom: "1px solid #ddd" }}>
-                        <th style={{ padding: "6px 8px" }}>单号</th>
-                        <th style={{ padding: "6px 8px" }}>邮箱</th>
-                        <th style={{ padding: "6px 8px" }}>金额</th>
-                        <th style={{ padding: "6px 8px" }}>支付</th>
-                        <th style={{ padding: "6px 8px" }}>履约</th>
-                        <th style={{ padding: "6px 8px" }}>时间</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {rows.map((o) => (
-                        <tr key={o.id} style={{ borderBottom: "1px solid #eee" }}>
-                            <td style={{ padding: "6px 8px" }}>
-                                <Link href={`/orders/${o.id}`} style={{ color: "#0366d6", textDecoration: "none", fontFamily: "monospace", fontSize: 12 }}>
-                                    {o.orderNumber}
-                                </Link>
-                            </td>
-                            <td style={{ padding: "6px 8px" }}>{o.email}</td>
-                            <td style={{ padding: "6px 8px" }}>{money(o.totalCents, o.currency)}</td>
-                            <td style={{ padding: "6px 8px" }}>{o.paymentStatus}</td>
-                            <td style={{ padding: "6px 8px" }}>{o.fulfillmentStatus}</td>
-                            <td style={{ padding: "6px 8px", color: "#888", fontSize: 12 }}>{o.createdAt?.toISOString?.().slice(0, 16).replace("T", " ")}</td>
+        <main className="mx-auto max-w-5xl px-4 py-8">
+            <h1 className="text-xl font-semibold">
+                订单 <span className="ml-1 text-sm font-normal text-muted">（{rows.length}）</span>
+            </h1>
+            <div className="mt-6 overflow-x-auto rounded-xl border border-line">
+                <table className="w-full text-sm">
+                    <thead className="border-b border-line text-left text-muted">
+                        <tr>
+                            <th className="px-4 py-2 font-medium">单号</th>
+                            <th className="px-4 py-2 font-medium">邮箱</th>
+                            <th className="px-4 py-2 font-medium">金额</th>
+                            <th className="px-4 py-2 font-medium">支付</th>
+                            <th className="px-4 py-2 font-medium">履约</th>
+                            <th className="px-4 py-2 font-medium">时间</th>
                         </tr>
-                    ))}
-                </tbody>
-            </table>
+                    </thead>
+                    <tbody>
+                        {rows.map((o) => (
+                            <tr key={o.id} className="border-b border-line last:border-0 hover:bg-surface">
+                                <td className="px-4 py-2 font-mono text-xs">
+                                    <Link href={`/orders/${o.id}`} className="text-accent hover:underline">
+                                        {o.orderNumber}
+                                    </Link>
+                                </td>
+                                <td className="px-4 py-2">{o.email}</td>
+                                <td className="px-4 py-2">{money(o.totalCents, o.currency)}</td>
+                                <td className="px-4 py-2">{o.paymentStatus}</td>
+                                <td className="px-4 py-2">{o.fulfillmentStatus}</td>
+                                <td className="px-4 py-2 text-xs text-muted">{o.createdAt?.toISOString?.().slice(0, 16).replace("T", " ")}</td>
+                            </tr>
+                        ))}
+                    </tbody>
+                </table>
+            </div>
         </main>
     );
 }

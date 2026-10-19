@@ -23,7 +23,7 @@ export function RichTextEditor({
         content: initial ?? undefined,
         editorProps: { attributes: { style: "min-height:180px; outline:none; padding:8px; line-height:1.6" } },
     });
-    if (!editor) return <div style={{ color: "#999", fontSize: 13 }}>加载编辑器…</div>;
+    if (!editor) return <div className="text-sm text-muted">加载编辑器…</div>;
 
     async function save() {
         if (!editor) return;
@@ -69,41 +69,35 @@ export function RichTextEditor({
         <button
             type="button"
             onClick={run}
-            style={{
-                marginRight: 4,
-                padding: "2px 8px",
-                fontWeight: active ? 700 : 400,
-                background: active ? "#e8f0fe" : "#f5f5f5",
-                border: "1px solid #ddd",
-                borderRadius: 4,
-                cursor: "pointer",
-            }}
+            className={`mr-1 rounded border px-2 py-0.5 text-xs transition ${
+                active ? "border-accent bg-accent/10 font-semibold text-accent" : "border-line bg-surface hover:bg-gray-100"
+            }`}
         >
             {label}
         </button>
     );
-
+    
     return (
-        <div style={{ border: "1px solid #ddd", borderRadius: 6 }}>
-            <div style={{ padding: 8, borderBottom: "1px solid #eee", display: "flex", flexWrap: "wrap", gap: 2 }}>
+        <div className="overflow-hidden rounded-lg border border-line">
+            <div className="flex flex-wrap gap-1 border-b border-line p-2">
                 {btn("B", () => editor.chain().focus().toggleBold().run(), editor.isActive("bold"))}
                 {btn("I", () => editor.chain().focus().toggleItalic().run(), editor.isActive("italic"))}
                 {btn("S", () => editor.chain().focus().toggleStrike().run(), editor.isActive("strike"))}
-                {btn("H1", () => editor.chain().focus().toggleHeading({ level: 1 }).run(), editor.isActive("heading", { level: 1 }))}
-                {btn("H2", () => editor.chain().focus().toggleHeading({ level: 2 }).run(), editor.isActive("heading", { level: 2 }))}
+                {btn("H1", () => editor.chain().focus().toggleHeading({ level: 1 }).run(), editor.isActive("heading", { level: 1}))}
+                {btn("H2", () => editor.chain().focus().toggleHeading({ level: 2 }).run(), editor.isActive("heading", { level: 2}))}
                 {btn("• 列表", () => editor.chain().focus().toggleBulletList().run(), editor.isActive("bulletList"))}
                 {btn("1. 列表", () => editor.chain().focus().toggleOrderedList().run(), editor.isActive("orderedList"))}
                 {btn("引用", () => editor.chain().focus().toggleBlockquote().run(), editor.isActive("blockquote"))}
                 {btn("分隔", () => editor.chain().focus().setHorizontalRule().run())}
                 {btn("🖼 图片", () => imgRef.current?.click())}
-                <input ref={imgRef} type="file" accept="image/*" style={{ display: "none" }} onChange={onPickImage} />
+                <input ref={imgRef} type="file" accept="image/*" className="hidden" onChange={onPickImage} />
             </div>
             <EditorContent editor={editor} />
-            <div style={{ padding: 8, borderTop: "1px solid #eee" }}>
-                <button type="button" onClick={save} disabled={saving}>
+            <div className="flex items-center border-t border-line p-2">
+                <button type="button" onClick={save} disabled={saving} className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40">
                     {saving ? "保存中…" : "保存详情"}
                 </button>
-                {msg && <span style={{ marginLeft: 8, fontSize: 13, color: "#666" }}>{msg}</span>}
+                {msg && <span className="ml-2 text-sm text-muted">{msg}</span>}
             </div>
         </div>
     );

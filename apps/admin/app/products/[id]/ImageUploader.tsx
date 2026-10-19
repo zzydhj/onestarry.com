@@ -58,32 +58,32 @@ export function ImageUploader({
 
     return (
         <div>
-            <div style={{ display: "flex", flexWrap: "wrap", gap: 10, marginBottom: 10 }}>
-                {images.length === 0 && <span style={{ color: "#999", fontSize: 13 }}>暂无图片</span>}
+            <div className="mb-3 flex flex-wrap gap-3">
+                {images.length === 0 && <span className="text-sm text-muted">暂无图片</span>}
                 {images.map((img, i) => (
-                    <div key={img.mediaId} style={{ width: 100 }}>
+                    <div key={img.mediaId} className="w-24">
                         <img
                             src={img.url}
                             alt=""
                             loading="lazy"
                             width={96}
                             height={96}
-                            style={{ width: 96, height: 96, objectFit: "cover", border: "1px solid #ddd", borderRadius: 4 }}
+                            className="h-24 w-24 rounded border border-line object-cover"
                         />
-                        <div style={{ display: "flex", gap: 2, marginTop: 2 }}>
-                            <button type="button" disabled={i === 0} onClick={() => move(img.mediaId, "up")}>↑</button>
-                            <button type="button" disabled={i === images.length - 1} onClick={() => move(img.mediaId, "down")}>↓</button>
-                            <button type="button" onClick={() => remove(img.mediaId)}>✕</button>
+                        <div className="mt-1 flex gap-1">
+                            <button type="button" disabled={i === 0} onClick={() => move(img.mediaId, "up")} className="rounded border border-line px-2 py-0.5 text-xs transition hover:bg-surface disabled:opacity-30">↑</button>
+                            <button type="button" disabled={i === images.length - 1} onClick={() => move(img.mediaId, "down")} className="rounded border border-line px-2 py-0.5 text-xs transition hover:bg-surface disabled:opacity-30">↓</button>
+                            <button type="button" onClick={() => remove(img.mediaId)} className="rounded border border-line px-2 py-0.5 text-xs transition hover:bg-red-50 hover:text-red-600">✕</button>
                         </div>
                     </div>
                 ))}
             </div>
-            <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                <input ref={ref} type="file" accept="image/*" />
-                <button type="button" onClick={onPick} disabled={busy}>
+            <div className="flex flex-wrap items-center gap-3">
+                <input ref={ref} type="file" accept="image/*" className="text-sm" />
+                <button type="button" onClick={onPick} disabled={busy} className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40">
                     {busy ? "上传中…" : "上传（自动压图）"}
                 </button>
-                {msg && <span style={{ fontSize: 13, color: "#666" }}>{msg}</span>}
+                {msg && <span className="text-sm text-muted">{msg}</span>}
             </div>
         </div>
     );

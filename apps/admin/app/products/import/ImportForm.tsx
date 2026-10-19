@@ -26,34 +26,34 @@ export function ImportForm() {
     }
 
     return (
-        <div style={{ marginTop: 16 }}>
-            <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                <input ref={ref} type="file" accept=".csv,text/csv" />
-                <button type="button" onClick={onSubmit} disabled={busy}>
+        <div>
+            <div className="flex flex-wrap items-center gap-3">
+                <input ref={ref} type="file" accept=".csv,text/csv" className="text-sm" />
+                <button type="button" onClick={onSubmit} disabled={busy} className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40">
                     {busy ? "导入中…" : "开始导入"}
                 </button>
             </div>
 
             {summary && (
-                <div style={{ marginTop: 16, padding: 12, border: "1px solid #ddd", borderRadius: 6, fontSize: 14 }}>
+                <div className="mt-4 rounded-xl border border-line p-4 text-sm">
                     <div>
-                        共 <strong>{summary.total}</strong> 行 · 新建 <strong style={{ color: "#187a30" }}>{summary.created}</strong> ·
-                        更新 <strong style={{ color: "#0366d6" }}>{summary.updated}</strong> ·
-                        抓图 <strong style={{ color: "#187a30" }}>{summary.imagesImported}</strong> ·
-                        失败 <strong style={{ color: summary.failed.length ? "#b00000" : "#666" }}>{summary.failed.length}</strong>
+                        共 <strong>{summary.total}</strong> 行 · 新建 <strong className="text-green-700">{summary.created}</strong> ·
+                        更新 <strong className="text-accent">{summary.updated}</strong> ·
+                        抓图 <strong className="text-green-700">{summary.imagesImported}</strong> ·
+                        失败 <strong className={summary.failed.length ? "text-red-600" : "text-muted"}>{summary.failed.length}</strong>
                     </div>
                     {summary.imageFailed.length > 0 && (
-                        <ul style={{ margin: "6px 0 0", paddingLeft: 20, color: "#b58900", fontSize: 13 }}>
+                        <ul className="mt-2 list-disc space-y-0.5 pl-5 text-xs text-amber-600">
                             {summary.imageFailed.slice(0, 20).map((f, i) => (
-                                <li key={i}>图片 <code>{f.sku}</code>：{f.reason}</li>
+                                <li key={i}>图片 <code className="font-mono">{f.sku}</code>：{f.reason}</li>
                             ))}
                         </ul>
                     )}
                     {summary.failed.length > 0 && (
-                        <ul style={{ margin: "8px 0 0", paddingLeft: 20, color: "#b00000" }}>
+                        <ul className="mt-2 list-disc space-y-0.5 pl-5 text-red-600">
                             {summary.failed.slice(0, 50).map((f, i) => (
                                 <li key={i}>
-                                    <code>{f.sku}</code>：{f.reason}
+                                    <code className="font-mono">{f.sku}</code>：{f.reason}
                                 </li>
                             ))}
                             {summary.failed.length > 50 && <li>…（仅显示前 50 条）</li>}
