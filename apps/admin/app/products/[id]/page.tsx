@@ -4,6 +4,7 @@ import { eq, inArray } from "drizzle-orm";
 import { mediaUrl } from "@onestarry/core";
 import { createDb, inventory, listProductImages, productTranslations, productVariants, products } from "@onestarry/db";
 import { requireAdmin } from "@/lib/auth";
+import { Button, Input, Select, TableFrame, THead, Th, Tr, Td } from "@onestarry/ui";
 import { setProductStatusAction, updateBasePriceAction, updateInventoryAction } from "./actions";
 import { ImageUploader } from "./ImageUploader";
 import { RichTextEditor } from "./RichTextEditor";
@@ -42,12 +43,12 @@ export default async function AdminProductDetail({ params }: { params: Promise<{
             <form action={setProductStatusAction} className="mt-4 flex flex-wrap items-center gap-2">
                 <input type="hidden" name="productId" value={product.id} />
                 <span className="text-sm">上架状态：</span>
-                <select name="status" defaultValue={product.status} className="rounded-md border border-line px-3 py-1.5 text-sm">
+                <Select name="status" defaultValue={product.status} className="py-1.5 text-sm">
                     <option value="draft">草稿（下架）</option>
                     <option value="active">已上架</option>
                     <option value="archived">已归档</option>
-                </select>
-                <button type="submit" className="rounded-lg border border-line px-4 py-1.5 text-sm font-medium transition hover:bg-surface">更新状态</button>
+                </Select>
+                <Button type="submit" variant="secondary">更新状态</Button>
             </form>
 
             <h2 className="mt-8 text-base font-semibold">商品图片</h2>
@@ -59,54 +60,54 @@ export default async function AdminProductDetail({ params }: { params: Promise<{
             </div>
 
             <h2 className="mt-8 text-base font-semibold">变体、基价与库存（改价会触发全包价重算）</h2>
-            <div className="mt-3 overflow-x-auto rounded-xl border border-line">
+            <TableFrame className="mt-3">
                 <table className="w-full text-sm">
-                    <thead className="border-b border-line text-left text-muted">
+                    <THead>
                         <tr>
-                            <th className="px-4 py-2 font-medium">SKU</th>
-                            <th className="px-4 py-2 font-medium">基价(USD)</th>
-                            <th className="px-4 py-2 font-medium">主变体</th>
-                            <th className="px-4 py-2 font-medium">库存(on_hand)</th>
-                            <th className="px-4 py-2 font-medium">成本</th>
+                            <Th>SKU</Th>
+                            <Th>基价(USD)</Th>
+                            <Th>主变体</Th>
+                            <Th>库存(on_hand)</Th>
+                            <Th>成本</Th>
                         </tr>
-                    </thead>
+                    </THead>
                     <tbody>
                         {variants.map((v) => (
-                            <tr key={v.id} className="border-b border-line last:border-0">
-                                <td className="px-4 py-2 font-mono text-xs">{v.sku}</td>
-                                <td className="px-4 py-2">
+                            <Tr key={v.id}>
+                                <Td className="font-mono text-xs">{v.sku}</Td>
+                                <Td>
                                     <form action={updateBasePriceAction} className="flex gap-2">
                                         <input type="hidden" name="variantId" value={v.id} />
                                         <input type="hidden" name="productId" value={product.id} />
-                                        <input
+                                        <Input
                                             name="price"
                                             type="number"
                                             step="0.01"
                                             min="0"
                                             defaultValue={v.basePriceCents != null ? (v.basePriceCents / 100).toFixed(2) : ""}
-                                            className="w-24 rounded-md border border-line px-2 py-1 text-sm"
+                                            className="w-24 px-2 py-1 text-sm"
                                         />
-                                        <button type="submit" className="rounded-md border border-line px-3 py-1 text-xs transition hover:bg-surface">保存</button>
+                                        <Button type="submit" variant="secondary" size="sm">保存</Button>
                                     </form>
-                                </td>
-                                <td className="px-4 py-2">{v.isPrimary ? "★" : ""}</td>
-                                <td className="px-4 py-2">
+                                </Td>
+                                <Td>{v.isPrimary ? "★" : ""}</Td>
+                                <Td>
                                     <form action={updateInventoryAction} className="flex gap-2">
                                         <input type="hidden" name="variantId" value={v.id} />
                                         <input type="hidden" name="productId" value={product.id} />
-                                        <input name="onHand" type="number" min="0" step="1" defaultValue={stockMap.get(v.id)?.onHand ?? 0} className="w-20 rounded-md border border-line px-2 py-1 text-sm" />
-                                        <button type="submit" className="rounded-md border border-line px-3 py-1 text-xs transition hover:bg-surface">保存</button>
+                                        <Input name="onHand" type="number" min="0" step="1" defaultValue={stockMap.get(v.id)?.onHand ?? 0} className="w-20 px-2 py-1 text-sm" />
+                                        <Button type="submit" variant="secondary" size="sm">保存</Button>
                                     </form>
                                     <div className="mt-1 text-xs text-muted">可用 {stockMap.get(v.id)?.available ?? 0}</div>
-                                </td>
-                                <td className="px-4 py-2 text-xs text-muted">
+                                </Td>
+                                <Td className="text-xs text-muted">
                                     成本 {v.costCents != null ? `$${(v.costCents / 100).toFixed(2)}` : "—"}
-                                </td>
-                            </tr>
+                                </Td>
+                            </Tr>
                         ))}
                     </tbody>
                 </table>
-            </div>
+            </TableFrame>
 
             <h2 className="mt-8 text-base font-semibold">图文详情（富文本，存结构化 JSON）</h2>
             <div className="mt-3">

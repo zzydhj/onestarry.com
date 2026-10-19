@@ -4,6 +4,7 @@ import { useRef, useState } from "react";
 import { useEditor, EditorContent } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import Image from "@tiptap/extension-image";
+import { Button } from "@onestarry/ui";
 import { downscaleImage } from "@/lib/image";
 import { saveRichBodyAction, uploadRichImageAction } from "./actions";
 
@@ -93,9 +94,9 @@ export function RichTextEditor({
             </div>
             <EditorContent editor={editor} />
             <div className="flex items-center border-t border-line p-2">
-                <button type="button" onClick={save} disabled={saving} className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40">
+                <Button type="button" onClick={save} disabled={saving}>
                     {saving ? "保存中…" : "保存详情"}
-                </button>
+                </Button>
                 {msg && <span className="ml-2 text-sm text-muted">{msg}</span>}
             </div>
         </div>

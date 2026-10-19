@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { getCloudflareContext } from "@opennextjs/cloudflare";
 import { createDb, getCartLines } from "@onestarry/db";
+import { Button, Input, Label } from "@onestarry/ui";
 import { readCart } from "@/lib/cart";
 import { checkoutAction } from "./actions";
 
@@ -61,33 +62,33 @@ export default async function Checkout({ searchParams }: { searchParams: Promise
             </div>
 
             <form action={checkoutAction} className="mt-6">
-                <label className="mt-3 block text-sm text-muted">Email *</label>
-                <input name="email" type="email" required placeholder="you@example.com" className="mt-1 w-full rounded-md border border-line px-3 py-2 text-fg" />
-                <label className="mt-3 block text-sm text-muted">Recipient *</label>
-                <input name="recipient" required className="mt-1 w-full rounded-md border border-line px-3 py-2 text-fg" />
-                <label className="mt-3 block text-sm text-muted">Phone</label>
-                <input name="phone" className="mt-1 w-full rounded-md border border-line px-3 py-2 text-fg" />
-                <label className="mt-3 block text-sm text-muted">Address *</label>
-                <input name="line1" required className="mt-1 w-full rounded-md border border-line px-3 py-2 text-fg" />
-                <label className="mt-3 block text-sm text-muted">Apartment, suite, etc.</label>
-                <input name="line2" className="mt-1 w-full rounded-md border border-line px-3 py-2 text-fg" />
+                <Label className="mt-3" htmlFor="email">Email *</Label>
+                <Input id="email" name="email" type="email" required placeholder="you@example.com" className="mt-1 w-full" />
+                <Label className="mt-3" htmlFor="recipient">Recipient *</Label>
+                <Input id="recipient" name="recipient" required className="mt-1 w-full" />
+                <Label className="mt-3" htmlFor="phone">Phone</Label>
+                <Input id="phone" name="phone" className="mt-1 w-full" />
+                <Label className="mt-3" htmlFor="line1">Address *</Label>
+                <Input id="line1" name="line1" required className="mt-1 w-full" />
+                <Label className="mt-3" htmlFor="line2">Apartment, suite, etc.</Label>
+                <Input id="line2" name="line2" className="mt-1 w-full" />
                 <div className="mt-3 grid grid-cols-3 gap-3">
                     <div>
-                        <label className="block text-sm text-muted">City</label>
-                        <input name="city" className="mt-1 w-full rounded-md border border-line px-3 py-2 text-fg" />
+                        <Label htmlFor="city">City</Label>
+                        <Input id="city" name="city" className="mt-1 w-full" />
                     </div>
                     <div>
-                        <label className="block text-sm text-muted">State</label>
-                        <input name="region" className="mt-1 w-full rounded-md border border-line px-3 py-2 text-fg" />
+                        <Label htmlFor="region">State</Label>
+                        <Input id="region" name="region" className="mt-1 w-full" />
                     </div>
                     <div>
-                        <label className="block text-sm text-muted">ZIP</label>
-                        <input name="postalCode" className="mt-1 w-full rounded-md border border-line px-3 py-2 text-fg" />
+                        <Label htmlFor="postalCode">ZIP</Label>
+                        <Input id="postalCode" name="postalCode" className="mt-1 w-full" />
                     </div>
                 </div>
-                <label className="mt-3 block text-sm text-muted">Country</label>
-                <input name="country" defaultValue="US" className="mt-1 w-full rounded-md border border-line px-3 py-2 text-fg" />
-                <button type="submit" className="mt-6 w-full rounded-lg bg-accent px-5 py-2.5 font-medium text-white transition hover:opacity-90">Place order</button>
+                <Label className="mt-3" htmlFor="country">Country</Label>
+                <Input id="country" name="country" defaultValue="US" className="mt-1 w-full" />
+                <Button type="submit" className="mt-6 w-full">Place order</Button>
             </form>
             <p className="mt-3 text-xs text-muted">Note: MVP demo — payment is a placeholder (order is created without a real PSP).</p>
         </div>

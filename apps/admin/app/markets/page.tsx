@@ -1,5 +1,6 @@
 import { createDb, listLegalEntities, listMarkets } from "@onestarry/db";
 import { requireAdmin } from "@/lib/auth";
+import { Button, Input, Select, TableFrame, THead, Th, Tr, Td } from "@onestarry/ui";
 import { createMarketAction } from "./actions";
 
 export const dynamic = "force-dynamic";
@@ -21,54 +22,52 @@ export default async function MarketsPage() {
                 <p className="mt-4 text-sm text-red-600">还没有法人主体（legal entity），无法新建市场。</p>
             ) : (
                 <form action={createMarketAction} className="mt-4 flex flex-wrap items-center gap-2">
-                    <input name="code" placeholder="code 如 gb" required className="rounded-md border border-line px-3 py-1.5 text-sm" />
-                    <input name="name" placeholder="名称 如 United Kingdom" required className="w-40 rounded-md border border-line px-3 py-1.5 text-sm" />
-                    <input name="currency" placeholder="币种 GBP" required className="w-24 rounded-md border border-line px-3 py-1.5 text-sm" />
-                    <select name="legalEntityId" required className="rounded-md border border-line px-3 py-1.5 text-sm">
+                    <Input name="code" placeholder="code 如 gb" required className="py-1.5 text-sm" />
+                    <Input name="name" placeholder="名称 如 United Kingdom" required className="w-40 py-1.5 text-sm" />
+                    <Input name="currency" placeholder="币种 GBP" required className="w-24 py-1.5 text-sm" />
+                    <Select name="legalEntityId" required className="py-1.5 text-sm">
                         {entities.map((e) => (
                             <option key={e.id} value={e.id}>{e.displayName}（{e.jurisdiction}）</option>
                         ))}
-                    </select>
-                    <select name="pricingMode" className="rounded-md border border-line px-3 py-1.5 text-sm">
+                    </Select>
+                    <Select name="pricingMode" className="py-1.5 text-sm">
                         <option value="net_plus_tax">net_plus_tax（净价+税）</option>
                         <option value="fixed_gross">fixed_gross（含税全包）</option>
-                    </select>
-                    <select name="dutyPresentation" className="rounded-md border border-line px-3 py-1.5 text-sm">
+                    </Select>
+                    <Select name="dutyPresentation" className="py-1.5 text-sm">
                         <option value="separate_line">separate_line（关税单列）</option>
                         <option value="included_in_price">included_in_price（含在价内）</option>
-                    </select>
-                    <button type="submit" className="rounded-lg bg-accent px-4 py-1.5 text-sm font-medium text-white transition hover:opacity-90">
-                        新增市场
-                    </button>
+                    </Select>
+                    <Button type="submit" size="sm">新增市场</Button>
                 </form>
             )}
 
-            <div className="mt-6 overflow-x-auto rounded-xl border border-line">
+            <TableFrame className="mt-6">
                 <table className="w-full text-sm">
-                    <thead className="border-b border-line text-left text-muted">
+                    <THead>
                         <tr>
-                            <th className="px-4 py-2 font-medium">code</th>
-                            <th className="px-4 py-2 font-medium">名称</th>
-                            <th className="px-4 py-2 font-medium">币种</th>
-                            <th className="px-4 py-2 font-medium">定价模式</th>
-                            <th className="px-4 py-2 font-medium">关税呈现</th>
-                            <th className="px-4 py-2 font-medium">法人</th>
+                            <Th>code</Th>
+                            <Th>名称</Th>
+                            <Th>币种</Th>
+                            <Th>定价模式</Th>
+                            <Th>关税呈现</Th>
+                            <Th>法人</Th>
                         </tr>
-                    </thead>
+                    </THead>
                     <tbody>
                         {markets.map((m) => (
-                            <tr key={m.id} className="border-b border-line last:border-0">
-                                <td className="px-4 py-2 font-mono">{m.code}</td>
-                                <td className="px-4 py-2">{m.name}</td>
-                                <td className="px-4 py-2">{m.currency}</td>
-                                <td className="px-4 py-2">{m.pricingMode}</td>
-                                <td className="px-4 py-2">{m.dutyPresentation}</td>
-                                <td className="px-4 py-2 text-xs text-muted">{entityName(m.legalEntityId)}</td>
-                            </tr>
+                            <Tr key={m.id}>
+                                <Td className="font-mono">{m.code}</Td>
+                                <Td>{m.name}</Td>
+                                <Td>{m.currency}</Td>
+                                <Td>{m.pricingMode}</Td>
+                                <Td>{m.dutyPresentation}</Td>
+                                <Td className="text-xs text-muted">{entityName(m.legalEntityId)}</Td>
+                            </Tr>
                         ))}
                     </tbody>
                 </table>
-            </div>
+            </TableFrame>
             <p className="mt-3 text-xs text-muted">
                 注：新建市场后，现有变体会在下一次价格重算时为该市场生成价格缓存（当前 FX/税率未接入，按基价币种 1:1、税/关 0 占位）。
             </p>

@@ -2,6 +2,7 @@
 
 import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import { Button } from "@onestarry/ui";
 import { downscaleImage } from "@/lib/image";
 import { deleteProductImageAction, moveProductImageAction, uploadProductImageAction } from "./actions";
 
@@ -80,9 +81,9 @@ export function ImageUploader({
             </div>
             <div className="flex flex-wrap items-center gap-3">
                 <input ref={ref} type="file" accept="image/*" className="text-sm" />
-                <button type="button" onClick={onPick} disabled={busy} className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40">
+                <Button type="button" onClick={onPick} disabled={busy}>
                     {busy ? "上传中…" : "上传（自动压图）"}
-                </button>
+                </Button>
                 {msg && <span className="text-sm text-muted">{msg}</span>}
             </div>
         </div>

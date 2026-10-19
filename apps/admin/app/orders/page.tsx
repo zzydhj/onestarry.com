@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { createDb, listRecentOrders } from "@onestarry/db";
 import { requireAdmin } from "@/lib/auth";
+import { TableFrame, THead, Th, Tr, Td } from "@onestarry/ui";
 
 export const dynamic = "force-dynamic";
 
@@ -19,36 +20,36 @@ export default async function AdminOrders() {
             <h1 className="text-xl font-semibold">
                 订单 <span className="ml-1 text-sm font-normal text-muted">（{rows.length}）</span>
             </h1>
-            <div className="mt-6 overflow-x-auto rounded-xl border border-line">
+            <TableFrame className="mt-6">
                 <table className="w-full text-sm">
-                    <thead className="border-b border-line text-left text-muted">
+                    <THead>
                         <tr>
-                            <th className="px-4 py-2 font-medium">单号</th>
-                            <th className="px-4 py-2 font-medium">邮箱</th>
-                            <th className="px-4 py-2 font-medium">金额</th>
-                            <th className="px-4 py-2 font-medium">支付</th>
-                            <th className="px-4 py-2 font-medium">履约</th>
-                            <th className="px-4 py-2 font-medium">时间</th>
+                            <Th>单号</Th>
+                            <Th>邮箱</Th>
+                            <Th>金额</Th>
+                            <Th>支付</Th>
+                            <Th>履约</Th>
+                            <Th>时间</Th>
                         </tr>
-                    </thead>
+                    </THead>
                     <tbody>
                         {rows.map((o) => (
-                            <tr key={o.id} className="border-b border-line last:border-0 hover:bg-surface">
-                                <td className="px-4 py-2 font-mono text-xs">
+                            <Tr key={o.id} className="hover:bg-surface">
+                                <Td className="font-mono text-xs">
                                     <Link href={`/orders/${o.id}`} className="text-accent hover:underline">
                                         {o.orderNumber}
                                     </Link>
-                                </td>
-                                <td className="px-4 py-2">{o.email}</td>
-                                <td className="px-4 py-2">{money(o.totalCents, o.currency)}</td>
-                                <td className="px-4 py-2">{o.paymentStatus}</td>
-                                <td className="px-4 py-2">{o.fulfillmentStatus}</td>
-                                <td className="px-4 py-2 text-xs text-muted">{o.createdAt?.toISOString?.().slice(0, 16).replace("T", " ")}</td>
-                            </tr>
+                                </Td>
+                                <Td>{o.email}</Td>
+                                <Td>{money(o.totalCents, o.currency)}</Td>
+                                <Td>{o.paymentStatus}</Td>
+                                <Td>{o.fulfillmentStatus}</Td>
+                                <Td className="text-xs text-muted">{o.createdAt?.toISOString?.().slice(0, 16).replace("T", " ")}</Td>
+                            </Tr>
                         ))}
                     </tbody>
                 </table>
-            </div>
+            </TableFrame>
         </main>
     );
 }

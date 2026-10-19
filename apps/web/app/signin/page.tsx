@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { makeAuthClient } from "@onestarry/auth/client";
+import { Button, Input } from "@onestarry/ui";
 
 const authClient = makeAuthClient();
 
@@ -36,12 +37,12 @@ export default function SignInPage() {
         <div className="mx-auto mt-16 max-w-sm px-4">
             <h1 className="text-2xl font-semibold tracking-tight">Account</h1>
             <div className="mt-6 grid gap-3">
-                <input value={email} onChange={(e) => setEmail(e.target.value)} placeholder="Email" autoComplete="email" className="rounded-md border border-line px-3 py-2 text-fg" />
-                <input value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Password" type="password" autoComplete="current-password" className="rounded-md border border-line px-3 py-2 text-fg" />
+                <Input value={email} onChange={(e) => setEmail(e.target.value)} placeholder="Email" autoComplete="email" />
+                <Input value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Password" type="password" autoComplete="current-password" />
                 <div className="flex gap-2">
-                    <button onClick={signUp} className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white transition hover:opacity-90">Sign up</button>
-                    <button onClick={signIn} className="rounded-lg border border-line px-4 py-2 text-sm font-medium transition hover:bg-surface">Sign in</button>
-                    <button onClick={signOut} className="rounded-lg border border-line px-4 py-2 text-sm font-medium text-muted transition hover:bg-surface">Sign out</button>
+                    <Button onClick={signUp}>Sign up</Button>
+                    <Button onClick={signIn} variant="secondary">Sign in</Button>
+                    <Button onClick={signOut} variant="secondary">Sign out</Button>
                 </div>
                 <pre className="min-h-6 whitespace-pre-wrap text-sm text-muted">{status}</pre>
             </div>

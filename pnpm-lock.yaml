@@ -36,6 +36,9 @@ importers:
       '@onestarry/jobs':
         specifier: workspace:*
         version: link:../../packages/jobs
+      '@onestarry/ui':
+        specifier: workspace:*
+        version: link:../../packages/ui
       '@opennextjs/cloudflare':
         specifier: ^1.5.3
         version: 1.20.12(next@15.5.28(@types/node@22.20.5)(react-dom@19.3.1(react@19.3.1))(react@19.3.1))(wrangler@4.151.1(@cloudflare/workers-types@5.20261016.1)(@types/node@22.20.5))
@@ -137,6 +140,9 @@ importers:
       '@onestarry/db':
         specifier: workspace:*
         version: link:../../packages/db
+      '@onestarry/ui':
+        specifier: workspace:*
+        version: link:../../packages/ui
       '@opennextjs/cloudflare':
         specifier: ^1.5.3
         version: 1.20.12(next@15.5.28(@types/node@22.20.5)(react-dom@19.3.1(react@19.3.1))(react@19.3.1))(wrangler@4.151.1(@cloudflare/workers-types@5.20261016.1)(@types/node@22.20.5))
@@ -297,6 +303,28 @@ importers:
       '@onestarry/config':
         specifier: workspace:*
         version: link:../config
+      typescript:
+        specifier: ^5.7.2
+        version: 5.9.3
+
+  packages/ui:
+    dependencies:
+      clsx:
+        specifier: ^2.1.1
+        version: 2.1.1
+      tailwind-merge:
+        specifier: ^2.6.0
+        version: 2.6.1
+    devDependencies:
+      '@onestarry/config':
+        specifier: workspace:*
+        version: link:../config
+      '@types/react':
+        specifier: ^19.0.2
+        version: 19.3.0
+      react:
+        specifier: ^19.0.0
+        version: 19.3.1
       typescript:
         specifier: ^5.7.2
         version: 5.9.3
@@ -2511,6 +2539,10 @@ packages:
   cloudflare@4.5.0:
     resolution: {integrity: sha512-fPcbPKx4zF45jBvQ0z7PCdgejVAPBBCZxwqk1k7krQNfpM07Cfj97/Q6wBzvYqlWXx/zt1S9+m8vnfCe06umbQ==}
 
+  clsx@2.1.1:
+    resolution: {integrity: sha512-eYm0QWBtUrBWZWG0d386OGAw16Z995PiOVo2B7bjWSbHedGl5e0ZWaq65kOGgUSNesEIDkB9ISbTg/JK9dhCZA==}
+    engines: {node: '>=6'}
+
   color-convert@2.0.1:
     resolution: {integrity: sha512-RRECPsj7iu/xb5oKYcsFHSppFNnsj/52OVTRKb4zP5onXwVF3zVmmToNcOfGC+CRDpfK/U584fMg38ZHCaElKQ==}
     engines: {node: '>=7.0.0'}
@@ -4109,6 +4141,9 @@ packages:
   supports-preserve-symlinks-flag@1.0.0:
     resolution: {integrity: sha512-ot0WnXS9fgdkgIcePe6RHNk1WA8+muPa6cSjeR3V8K27q9BB1rTE3R1p7Hv0z1ZyAc8s6Vvv8DIyWf681MAt0w==}
     engines: {node: '>= 0.4'}
+
+  tailwind-merge@2.6.1:
+    resolution: {integrity: sha512-Oo6tHdpZsGpkKG88HJ8RR1rg/RdnEkQEfMoEk2x1XRI3F1AxeU+ijRXpiVUF4UbLfcxxRGw6TbUINKYdWVsQTQ==}
 
   tailwindcss@4.3.3:
     resolution: {integrity: sha512-gOhV3P7ufE62QDGg1zVaTgCR+EtPv92k2nIhVcVKcLmxT1sUBsQGhnZj175j+MqRt4zLF7ic+sCYjfhxMxj7YQ==}
@@ -6637,6 +6672,8 @@ snapshots:
     transitivePeerDependencies:
       - encoding
 
+  clsx@2.1.1: {}
+
   color-convert@2.0.1:
     dependencies:
       color-name: 1.1.4
@@ -8467,6 +8504,8 @@ snapshots:
       has-flag: 4.0.0
 
   supports-preserve-symlinks-flag@1.0.0: {}
+
+  tailwind-merge@2.6.1: {}
 
   tailwindcss@4.3.3: {}
 

@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { getCloudflareContext } from "@opennextjs/cloudflare";
 import { createDb, getCartLines } from "@onestarry/db";
+import { Button, Input, buttonVariants } from "@onestarry/ui";
 import { readCart } from "@/lib/cart";
 import { removeItemAction, setQtyAction } from "./actions";
 
@@ -48,8 +49,8 @@ export default async function CartPage() {
                                     </div>
                                     <form action={setQtyAction} className="flex items-center gap-2">
                                         <input type="hidden" name="variantId" value={l.variantId} />
-                                        <input name="qty" type="number" min={0} defaultValue={qty} className="w-16 rounded-md border border-line px-2 py-1 text-fg" />
-                                        <button type="submit" className="rounded-md border border-line px-2 py-1 text-sm transition hover:bg-surface">Update</button>
+                                        <Input name="qty" type="number" min={0} defaultValue={qty} className="w-16 px-2 py-1" />
+                                        <Button type="submit" variant="secondary" size="sm">Update</Button>
                                     </form>
                                     <div className="w-24 text-right font-medium">{money(l.unitCents * qty, l.currency)}</div>
                                     <form action={removeItemAction}>
@@ -67,7 +68,7 @@ export default async function CartPage() {
                         <div className="pt-1 text-lg font-bold text-brand">Total {money(total, currency)}</div>
                     </div>
                     <div className="mt-6 text-right">
-                        <Link href="/checkout" className="inline-block rounded-lg bg-accent px-5 py-2.5 font-medium text-white transition hover:opacity-90">
+                        <Link href="/checkout" className={buttonVariants()}>
                             Checkout →
                         </Link>
                     </div>

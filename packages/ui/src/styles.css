@@ -1,0 +1,33 @@
+/*
+ * @onestarry/ui 共享样式：设计 token（单一来源）+ 基础层。
+ * 各 app 的 globals.css 通过 `@import "@onestarry/ui/styles.css";` 继承，
+ * 换肤/改色只改这里一处。
+ */
+
+@theme {
+    --color-brand: #111827;
+    --color-accent: #2563eb;
+    --color-fg: #111827;
+    --color-muted: #6b7280;
+    --color-line: #e5e7eb;
+    --color-surface: #f9fafb;
+
+    --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto,
+        "Helvetica Neue", Arial, "PingFang SC", "Microsoft YaHei", sans-serif;
+}
+
+/* 显式扫描本包组件源码里的工具类，确保跨包复用不被 purge（相对本文件解析） */
+@source "./";
+
+@layer base {
+    body {
+        color: var(--color-fg);
+        font-family: var(--font-sans);
+        -webkit-font-smoothing: antialiased;
+    }
+
+    /* Tailwind v4 preflight 将按钮默认指针改为 default，这里恢复为手形（禁用态除外） */
+    button:not(:disabled) {
+        cursor: pointer;
+    }
+}

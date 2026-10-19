@@ -1,6 +1,7 @@
 "use client";
 
 import { useRef, useState } from "react";
+import { Button } from "@onestarry/ui";
 import { importProductsAction, type ImportSummary } from "./actions";
 
 /** CSV 上传 + 导入结果报告。 */
@@ -29,9 +30,9 @@ export function ImportForm() {
         <div>
             <div className="flex flex-wrap items-center gap-3">
                 <input ref={ref} type="file" accept=".csv,text/csv" className="text-sm" />
-                <button type="button" onClick={onSubmit} disabled={busy} className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40">
+                <Button type="button" onClick={onSubmit} disabled={busy}>
                     {busy ? "导入中…" : "开始导入"}
-                </button>
+                </Button>
             </div>
 
             {summary && (

@@ -3,6 +3,7 @@ import { notFound, permanentRedirect } from "next/navigation";
 import { getCloudflareContext } from "@opennextjs/cloudflare";
 import { mediaUrl } from "@onestarry/core";
 import { createDb, getProductById, listProductImages, resolveSlug } from "@onestarry/db";
+import { Button, Input } from "@onestarry/ui";
 import { addToCartAction } from "../../cart/actions";
 import { RichBody } from "./RichBody";
 
@@ -76,22 +77,18 @@ export default async function ProductPage({ params }: { params: Promise<{ slug: 
                 <input type="hidden" name="variantId" value={p.variantId} />
                 <label className="text-sm text-muted">
                     Qty
-                    <input
+                    <Input
                         type="number"
                         name="qty"
                         min={1}
                         max={p.available || 1}
                         defaultValue={1}
-                        className="mt-1 w-20 rounded-md border border-line px-2 py-1.5 text-fg"
+                        className="mt-1 w-20 px-2 py-1.5"
                     />
                 </label>
-                <button
-                    type="submit"
-                    disabled={p.available <= 0}
-                    className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
-                >
+                <Button type="submit" disabled={p.available <= 0}>
                     {p.available > 0 ? "Add to cart" : "Out of stock"}
-                </button>
+                </Button>
             </form>
         </div>
     );

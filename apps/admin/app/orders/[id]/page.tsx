@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { createDb, getOrderDetail } from "@onestarry/db";
 import { requireAdmin } from "@/lib/auth";
+import { Button, Input, TableFrame, THead, Th, Tr, Td } from "@onestarry/ui";
 import { markShippedAction } from "./actions";
 
 export const dynamic = "force-dynamic";
@@ -32,28 +33,28 @@ export default async function AdminOrderDetail({ params }: { params: Promise<{ i
             </p>
 
             <h2 className="mt-6 text-base font-semibold">明细</h2>
-            <div className="mt-2 overflow-x-auto rounded-xl border border-line">
+            <TableFrame className="mt-2">
                 <table className="w-full text-sm">
-                    <thead className="border-b border-line text-left text-muted">
+                    <THead>
                         <tr>
-                            <th className="px-4 py-2 font-medium">SKU</th>
-                            <th className="px-4 py-2 font-medium">数量</th>
-                            <th className="px-4 py-2 font-medium">单价</th>
-                            <th className="px-4 py-2 font-medium">小计</th>
+                            <Th>SKU</Th>
+                            <Th>数量</Th>
+                            <Th>单价</Th>
+                            <Th>小计</Th>
                         </tr>
-                    </thead>
+                    </THead>
                     <tbody>
                         {items.map((it) => (
-                            <tr key={it.id} className="border-b border-line last:border-0">
-                                <td className="px-4 py-2 font-mono text-xs">{it.sku ?? "—"}</td>
-                                <td className="px-4 py-2">{it.quantity}</td>
-                                <td className="px-4 py-2">{money(it.unitPriceCents, cur)}</td>
-                                <td className="px-4 py-2">{money(it.unitPriceCents * it.quantity, cur)}</td>
-                            </tr>
+                            <Tr key={it.id}>
+                                <Td className="font-mono text-xs">{it.sku ?? "—"}</Td>
+                                <Td>{it.quantity}</Td>
+                                <Td>{money(it.unitPriceCents, cur)}</Td>
+                                <Td>{money(it.unitPriceCents * it.quantity, cur)}</Td>
+                            </Tr>
                         ))}
                     </tbody>
                 </table>
-            </div>
+            </TableFrame>
 
             <h2 className="mt-6 text-base font-semibold">金额</h2>
             <table className="mt-2 text-sm">
@@ -86,9 +87,9 @@ export default async function AdminOrderDetail({ params }: { params: Promise<{ i
             ) : canShip ? (
                 <form action={markShippedAction} className="mt-2 flex flex-wrap items-center gap-2">
                     <input type="hidden" name="orderId" value={order.id} />
-                    <input name="carrier" placeholder="承运商（如 顺丰/4PX）" className="rounded-md border border-line px-3 py-1.5 text-sm" />
-                    <input name="trackingNumber" placeholder="运单号" className="rounded-md border border-line px-3 py-1.5 text-sm" />
-                    <button type="submit" className="rounded-lg bg-accent px-4 py-1.5 text-sm font-medium text-white transition hover:opacity-90">标记发货</button>
+                    <Input name="carrier" placeholder="承运商（如 顺丰/4PX）" className="py-1.5 text-sm" />
+                    <Input name="trackingNumber" placeholder="运单号" className="py-1.5 text-sm" />
+                    <Button type="submit">标记发货</Button>
                 </form>
             ) : (
                 <p className="mt-2 text-sm text-muted">{order.paymentStatus !== "paid" ? "未支付，暂不可发货。" : "已发货。"}</p>

@@ -20,6 +20,7 @@
         "@onestarry/auth": "workspace:*",
         "@onestarry/core": "workspace:*",
         "@onestarry/jobs": "workspace:*",
+        "@onestarry/ui": "workspace:*",
         "@opennextjs/cloudflare": "^1.5.3",
         "@tiptap/react": "^2.11.0",
         "@tiptap/starter-kit": "^2.11.0",

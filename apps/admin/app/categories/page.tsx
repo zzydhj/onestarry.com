@@ -1,5 +1,6 @@
 import { createDb, listAllCategories } from "@onestarry/db";
 import { requireAdmin } from "@/lib/auth";
+import { Button, Input, Select } from "@onestarry/ui";
 import { createCategoryAction, renameCategoryAction } from "./actions";
 
 export const dynamic = "force-dynamic";
@@ -16,13 +17,13 @@ export default async function CategoriesPage() {
             <h1 className="text-2xl font-semibold tracking-tight">类目管理 <span className="text-sm font-normal text-muted">（{cats.length}）</span></h1>
 
             <form action={createCategoryAction} className="mt-5 flex items-center gap-2">
-                <input name="name" placeholder="新类目名称" required className="rounded-md border border-line px-3 py-1.5 text-fg" />
-                <select name="parentId" className="rounded-md border border-line px-3 py-1.5 text-fg">
+                <Input name="name" placeholder="新类目名称" required className="py-1.5" />
+                <Select name="parentId" className="py-1.5">
                     {parentOptions.map((p) => (
                         <option key={p.id} value={p.id}>{p.name}</option>
                     ))}
-                </select>
-                <button type="submit" className="rounded-lg bg-accent px-3 py-1.5 text-sm font-medium text-white transition hover:opacity-90">新增</button>
+                </Select>
+                <Button type="submit" size="sm">新增</Button>
             </form>
 
             {cats.length === 0 && (
@@ -34,8 +35,8 @@ export default async function CategoriesPage() {
                     <li key={c.id} className="flex items-center gap-2" style={{ marginLeft: (c.level - 1) * 22 }}>
                         <form action={renameCategoryAction} className="flex items-center gap-2">
                             <input type="hidden" name="id" value={c.id} />
-                            <input name="name" defaultValue={c.name} className="rounded-md border border-line px-2 py-1 text-sm text-fg" />
-                            <button type="submit" className="rounded-md border border-line px-2 py-1 text-sm transition hover:bg-surface">改名</button>
+                            <Input name="name" defaultValue={c.name} className="px-2 py-1 text-sm" />
+                            <Button type="submit" variant="secondary" size="sm">改名</Button>
                         </form>
                         <span className="text-xs text-muted">L{c.level}</span>
                     </li>
