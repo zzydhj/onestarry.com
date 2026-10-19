@@ -7,7 +7,7 @@ import { createDb, listProductsForMarket } from "@onestarry/db";
 export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = {
-    title: "Shop",
+    title: { absolute: "onestarry — Shop quality goods, shipped worldwide" },
     description: "Browse our catalog of quality goods shipped worldwide from our own warehouse.",
     alternates: { canonical: "/" },
 };
