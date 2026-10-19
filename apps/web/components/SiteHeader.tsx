@@ -12,6 +12,9 @@ export function SiteHeader() {
                     <Link href="/" className="transition hover:text-accent">
                         Shop
                     </Link>
+                    <Link href="/products" className="transition hover:text-accent">
+                        Products
+                    </Link>
                     <Link href="/cart" className="transition hover:text-accent">
                         Cart
                     </Link>

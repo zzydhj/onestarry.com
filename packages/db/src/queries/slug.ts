@@ -52,3 +52,12 @@ export async function resolveSlug(db: Db | Tx, q: SlugQuery): Promise<SlugResolu
         toSlug: current?.slug ?? hit.slug,
     };
 }
+
+/** 某实体类型的全部当前 en slug（sitemap 用：category / brand / product 通用）。 */
+export async function listCurrentSlugs(db: Db | Tx, entityType: string): Promise<string[]> {
+    const rows = await db
+        .select({ slug: slugs.slug })
+        .from(slugs)
+        .where(and(eq(slugs.entityType, entityType), eq(slugs.locale, "en"), eq(slugs.isCurrent, true)));
+    return rows.map((r) => r.slug);
+}
