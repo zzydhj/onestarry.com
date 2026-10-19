@@ -13,6 +13,15 @@ import { RichBody } from "./RichBody";
 // 商品页对所有人一致、慢变、无写副作用 → 符合可缓存判据。价格/库存最多陈旧 60s（电商可接受）。
 export const revalidate = 60;
 
+/**
+ * 返回空列表 → 所有 slug 走「按需 ISR」：首个请求渲染并缓存到 R2，之后命中缓存；
+ * 构建期无参数需预渲染 → 不会触发 getCloudflareContext 在 build 期报错。百万商品无需枚举。
+ * （关键：Next 15 里光有 revalidate 不足以让 [slug] 路由进入 ISR，必须配 generateStaticParams 才是静态/ISR 路由。）
+ */
+export async function generateStaticParams() {
+    return [];
+}
+
 const SITE = "https://onestarry.com";
 
 function money(cents: number, currency: string): string {
