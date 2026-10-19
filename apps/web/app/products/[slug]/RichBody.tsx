@@ -15,7 +15,7 @@ export function RichBody({ doc }: { doc: unknown }) {
     if (!doc || typeof doc !== "object") return null;
     const root = doc as PMNode;
     if (root.type !== "doc" || !Array.isArray(root.content)) return null;
-    return <div style={{ lineHeight: 1.7 }}>{renderNodes(root.content, "d")}</div>;
+    return <div className="rich-content" style={{ lineHeight: 1.7 }}>{renderNodes(root.content, "d")}</div>;
 }
 
 function renderNodes(nodes: PMNode[], keyBase: string): ReactNode[] {

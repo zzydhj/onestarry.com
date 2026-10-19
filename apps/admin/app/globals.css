@@ -2,14 +2,7 @@
 /* 设计 token + 基础层来自 @onestarry/ui（换肤只改那一处） */
 @import "@onestarry/ui/styles.css";
 
-/* Tiptap 编辑器：图片不撑破编辑区 */
+/* Tiptap 编辑器：去除聚焦外框（图片/标题/列表等排版由 @onestarry/ui 共享样式接管） */
 .ProseMirror {
     outline: none;
-}
-
-.ProseMirror img {
-    max-width: 100%;
-    height: auto;
-    display: block;
-    margin: 8px 0;
 }
