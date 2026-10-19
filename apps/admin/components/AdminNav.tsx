@@ -11,6 +11,7 @@ const LINKS = [
     { href: "/products", label: "商品" },
     { href: "/orders", label: "订单" },
     { href: "/categories", label: "类目" },
+    { href: "/attributes", label: "属性" },
     { href: "/markets", label: "市场" },
 ];
 

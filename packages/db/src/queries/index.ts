@@ -9,6 +9,7 @@ export * from "./outbox";
 export * from "./orders";
 export * from "./adminOrders";
 export * from "./adminConfig";
+export * from "./attributeAdmin";
 export * from "./cart";
 export * from "./ledger";
 export * from "./payments";
