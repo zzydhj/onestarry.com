@@ -1,4 +1,5 @@
 import { createDb, getEntitySlug, listAllCategories } from "@onestarry/db";
+import Link from "next/link";
 import { requireAdmin } from "@/lib/auth";
 import { Button, Input, Select } from "@onestarry/ui";
 import { createCategoryAction, updateCategoryAction } from "./actions";
@@ -42,6 +43,7 @@ export default async function CategoriesPage() {
                             <Input name="slug" defaultValue={slugById.get(c.id) ?? ""} placeholder="slug" className="px-2 py-1 text-sm w-40 font-mono" />
                             <Button type="submit" variant="secondary" size="sm">保存</Button>
                         </form>
+                        <Link href={`/categories/${c.id}/attributes`} className="text-xs text-muted transition hover:text-accent">属性</Link>
                         <span className="text-xs text-muted">L{c.level}</span>
                     </li>
                 ))}

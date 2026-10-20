@@ -1,4 +1,4 @@
-import { asc, eq } from "drizzle-orm";
+import { and, asc, count, eq } from "drizzle-orm";
 import { attributeDefinitions, categoryAttributeSets, productOptions } from "../schema";
 import type { Db, Tx } from "../client";
 
@@ -86,4 +86,44 @@ export async function deleteAttributeDefinition(db: Db, id: string): Promise<voi
         await tx.update(productOptions).set({ attributeId: null }).where(eq(productOptions.attributeId, id));
         await tx.delete(attributeDefinitions).where(eq(attributeDefinitions.id, id));
     });
+}
+
+/**
+ * 将属性挂到类目（category_attribute_sets）。已存在则更新 override/position，否则插入（position 缺省 = 末尾）。
+ * override 传 null 表“继承属性定义本身”。
+ */
+export async function setCategoryAttribute(
+    db: Db | Tx,
+    input: { categoryId: string; attributeId: string; position?: number; isRequiredOverride?: boolean | null; isFacetOverride?: boolean | null },
+): Promise<void> {
+    let position = input.position;
+    if (position == null) {
+        const c = (await db.select({ n: count() }).from(categoryAttributeSets).where(eq(categoryAttributeSets.categoryId, input.categoryId)))[0]?.n ?? 0;
+        position = Number(c);
+    }
+    await db
+        .insert(categoryAttributeSets)
+        .values({
+            categoryId: input.categoryId,
+            attributeId: input.attributeId,
+            position,
+            isRequiredOverride: input.isRequiredOverride ?? null,
+            isFacetOverride: input.isFacetOverride ?? null,
+        })
+        .onConflictDoUpdate({
+            target: [categoryAttributeSets.categoryId, categoryAttributeSets.attributeId],
+            set: {
+                position,
+                isRequiredOverride: input.isRequiredOverride ?? null,
+                isFacetOverride: input.isFacetOverride ?? null,
+                updatedAt: new Date(),
+            },
+        });
+}
+
+/** 从类目解除某属性关联（只删 category_attribute_sets 行，不动全局定义）。 */
+export async function removeCategoryAttribute(db: Db | Tx, input: { categoryId: string; attributeId: string }): Promise<void> {
+    await db
+        .delete(categoryAttributeSets)
+        .where(and(eq(categoryAttributeSets.categoryId, input.categoryId), eq(categoryAttributeSets.attributeId, input.attributeId)));
 }
