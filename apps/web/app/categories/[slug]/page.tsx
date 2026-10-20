@@ -1,8 +1,9 @@
 import type { Metadata } from "next";
 import { cache } from "react";
 import { notFound, redirect } from "next/navigation";
-import { browseProducts, getCategoryById, getCategorySubtreeIds, resolveSlug } from "@onestarry/db";
+import { browseProducts, getCategoryById, getCategorySubtreeIds, getSeoMeta, resolveSlug } from "@onestarry/db";
 import { getDb } from "@/lib/db";
+import { applySeoMeta } from "@/lib/seo";
 import { ProductGrid } from "@/components/ProductGrid";
 
 export const revalidate = 60;
@@ -21,18 +22,20 @@ const loadCategory = cache(async (slug: string) => {
     if (!cat) return { status: "notfound" } as const;
     const ids = await getCategorySubtreeIds(db, res.entityId);
     const { items } = await browseProducts(db, { marketCode: "us", locale: "en", categoryIds: ids, limit: 100 });
-    return { status: "ok", name: cat.name, items } as const;
+    const seo = await getSeoMeta(db, { entityType: "category", entityId: res.entityId, locale: "en" });
+    return { status: "ok", name: cat.name, items, seo } as const;
 });
 
 export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }): Promise<Metadata> {
     const { slug } = await params;
     const d = await loadCategory(slug);
     const name = d.status === "ok" ? d.name : slug;
-    return {
+    const base: Metadata = {
         title: name,
         description: `Shop ${name} — quality goods shipped worldwide from our own warehouse.`,
         alternates: { canonical: `/categories/${slug}` },
     };
+    return applySeoMeta(base, d.status === "ok" ? d.seo : null);
 }
 
 export default async function CategoryPage({ params }: { params: Promise<{ slug: string }> }) {

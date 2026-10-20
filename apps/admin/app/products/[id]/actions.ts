@@ -7,7 +7,7 @@ import { eq } from "drizzle-orm";
 import { getCloudflareContext } from "@opennextjs/cloudflare";
 import { createAdminAuth } from "@onestarry/auth";
 import { mediaUrl } from "@onestarry/core";
-import { createDb, attachProductImage, deleteProductImage, moveProductImage, products, setProductRichBody, setVariantOnHand, updateVariantBasePrice } from "@onestarry/db";
+import { createDb, attachProductImage, deleteProductImage, moveProductImage, products, setProductRichBody, setVariantOnHand, updateVariantBasePrice, upsertSeoMeta } from "@onestarry/db";
 import { runRelayBatch, relayHandlers } from "@onestarry/jobs";
 
 /**
@@ -235,5 +235,36 @@ export async function moveProductImageAction(formData: FormData): Promise<void> 
 
     const db = createDb(env.HYPERDRIVE.connectionString);
     await moveProductImage(db, { productId, mediaId, dir });
+    revalidatePath(`/products/${productId}`);
+}
+
+/** 保存商品 SEO 覆盖（写 seo_meta，locale=en、市场级 NULL）；全空则删除→前台回退自动生成。 */
+export async function saveSeoMetaAction(formData: FormData): Promise<void> {
+    const { env } = getCloudflareContext();
+    const h = await headers();
+    const auth = createAdminAuth({
+        connString: env.HYPERDRIVE.connectionString,
+        baseURL: `https://${h.get("host") ?? "localhost"}`,
+        secret: env.BETTER_AUTH_SECRET,
+    });
+    const session = await auth.api.getSession({ headers: h });
+    if (!session?.user) redirect("/signin");
+
+    const productId = String(formData.get("productId") ?? "");
+    if (!productId) return;
+    const noindex = formData.get("noindex") === "on";
+
+    const db = createDb(env.HYPERDRIVE.connectionString);
+    await upsertSeoMeta(db, {
+        entityType: "product",
+        entityId: productId,
+        locale: "en",
+        seoTitle: String(formData.get("seoTitle") ?? "") || null,
+        metaDescription: String(formData.get("metaDescription") ?? "") || null,
+        canonicalUrl: String(formData.get("canonicalUrl") ?? "") || null,
+        robots: noindex ? { index: false } : null,
+        og: null,
+    });
+
     revalidatePath(`/products/${productId}`);
 }

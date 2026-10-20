@@ -2,10 +2,10 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { eq, inArray } from "drizzle-orm";
 import { mediaUrl } from "@onestarry/core";
-import { createDb, inventory, listProductImages, productTranslations, productVariants, products } from "@onestarry/db";
+import { createDb, getSeoMeta, inventory, listProductImages, productTranslations, productVariants, products } from "@onestarry/db";
 import { requireAdmin } from "@/lib/auth";
 import { Button, Input, Select, TableFrame, THead, Th, Tr, Td } from "@onestarry/ui";
-import { setProductStatusAction, updateBasePriceAction, updateInventoryAction } from "./actions";
+import { saveSeoMetaAction, setProductStatusAction, updateBasePriceAction, updateInventoryAction } from "./actions";
 import { ImageUploader } from "./ImageUploader";
 import { RichTextEditor } from "./RichTextEditor";
 
@@ -33,6 +33,7 @@ export default async function AdminProductDetail({ params }: { params: Promise<{
         : [];
     const stockMap = new Map(invRows.map((r) => [r.variantId, { onHand: r.onHand, available: r.available ?? 0 }]));
     const images = await listProductImages(db, id);
+    const seo = await getSeoMeta(db, { entityType: "product", entityId: id, locale: "en" });
 
     return (
         <main className="mx-auto max-w-4xl px-4 py-8">
@@ -113,6 +114,53 @@ export default async function AdminProductDetail({ params }: { params: Promise<{
             <div className="mt-3">
                 <RichTextEditor productId={product.id} initial={(title?.richBody as Record<string, unknown> | null) ?? null} />
             </div>
+
+            <h2 className="mt-8 text-base font-semibold">SEO（覆盖搜索标题/描述；留空则用自动生成）</h2>
+            <form action={saveSeoMetaAction} className="mt-3 space-y-3">
+                <input type="hidden" name="productId" value={product.id} />
+                <div>
+                    <label className="block text-sm text-muted">SEO 标题</label>
+                    <Input
+                        name="seoTitle"
+                        defaultValue={seo?.seoTitle ?? ""}
+                        maxLength={70}
+                        placeholder={title?.title ?? "留空用商品名"}
+                        className="mt-1 w-full px-2 py-1.5 text-sm"
+                    />
+                </div>
+                <div>
+                    <label className="block text-sm text-muted">Meta 描述</label>
+                    <textarea
+                        name="metaDescription"
+                        rows={2}
+                        maxLength={160}
+                        defaultValue={seo?.metaDescription ?? ""}
+                        placeholder="留空用商品描述"
+                        className="mt-1 w-full rounded-md border border-line px-2 py-1.5 text-sm"
+                    />
+                </div>
+                <div>
+                    <label className="block text-sm text-muted">Canonical URL（可选）</label>
+                    <Input
+                        name="canonicalUrl"
+                        defaultValue={seo?.canonicalUrl ?? ""}
+                        placeholder="/products/xxx 或完整 URL"
+                        className="mt-1 w-full px-2 py-1.5 text-sm"
+                    />
+                </div>
+                <label className="flex items-center gap-2 text-sm">
+                    <input
+                        type="checkbox"
+                        name="noindex"
+                        defaultChecked={seo?.robots ? (seo.robots as { index?: boolean }).index === false : false}
+                    />
+                    <span>不让搜索引擎收录（noindex）</span>
+                </label>
+                <div className="flex items-center gap-3">
+                    <Button type="submit" variant="secondary">保存 SEO</Button>
+                    <span className="text-xs text-muted">全部留空保存 = 恢复自动生成</span>
+                </div>
+            </form>
         </main>
     );
 }

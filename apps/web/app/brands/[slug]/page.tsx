@@ -1,8 +1,9 @@
 import type { Metadata } from "next";
 import { cache } from "react";
 import { notFound, redirect } from "next/navigation";
-import { browseProducts, getBrandById, resolveSlug } from "@onestarry/db";
+import { browseProducts, getBrandById, getSeoMeta, resolveSlug } from "@onestarry/db";
 import { getDb } from "@/lib/db";
+import { applySeoMeta } from "@/lib/seo";
 import { ProductGrid } from "@/components/ProductGrid";
 
 export const revalidate = 60;
@@ -20,18 +21,20 @@ const loadBrand = cache(async (slug: string) => {
     const brand = await getBrandById(db, res.entityId);
     if (!brand) return { status: "notfound" } as const;
     const { items } = await browseProducts(db, { marketCode: "us", locale: "en", brandId: res.entityId, limit: 100 });
-    return { status: "ok", name: brand.name, items } as const;
+    const seo = await getSeoMeta(db, { entityType: "brand", entityId: res.entityId, locale: "en" });
+    return { status: "ok", name: brand.name, items, seo } as const;
 });
 
 export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }): Promise<Metadata> {
     const { slug } = await params;
     const d = await loadBrand(slug);
     const name = d.status === "ok" ? d.name : slug;
-    return {
+    const base: Metadata = {
         title: `${name} products`,
         description: `Shop ${name} — quality goods shipped worldwide from our own warehouse.`,
         alternates: { canonical: `/brands/${slug}` },
     };
+    return applySeoMeta(base, d.status === "ok" ? d.seo : null);
 }
 
 export default async function BrandPage({ params }: { params: Promise<{ slug: string }> }) {

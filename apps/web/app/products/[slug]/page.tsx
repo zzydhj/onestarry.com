@@ -4,9 +4,10 @@ import Link from "next/link";
 import { notFound, permanentRedirect } from "next/navigation";
 import { getCloudflareContext } from "@opennextjs/cloudflare";
 import { mediaUrl } from "@onestarry/core";
-import { createDb, getProductById, listProductImages, resolveSlug } from "@onestarry/db";
+import { createDb, getProductById, getSeoMeta, listProductImages, resolveSlug } from "@onestarry/db";
 import { Button, Input } from "@onestarry/ui";
 import { addToCartAction } from "../../cart/actions";
+import { applySeoMeta } from "@/lib/seo";
 import { RichBody } from "./RichBody";
 
 // ISR（方案 B）：动态路由无 generateStaticParams → 构建期不预渲染，首请求才渲染并存入 R2，每 60s 后台刷新。
@@ -38,17 +39,18 @@ const resolveProduct = cache(async (slug: string) => {
     const p = await getProductById(db, res.entityId, "us", "en");
     if (!p) return { status: "notfound" } as const;
     const images = await listProductImages(db, res.entityId);
-    return { status: "ok", p, images } as const;
+    const seo = await getSeoMeta(db, { entityType: "product", entityId: res.entityId, locale: "en" });
+    return { status: "ok", p, images, seo } as const;
 });
 
 export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }): Promise<Metadata> {
     const { slug } = await params;
     const r = await resolveProduct(slug);
     if (r.status !== "ok") return { title: "Product" };
-    const { p, images } = r;
+    const { p, images, seo } = r;
     const image = images[0]?.r2Key ? mediaUrl(images[0].r2Key) : undefined;
     const desc = p.description || undefined;
-    return {
+    const base: Metadata = {
         title: p.title,
         description: desc,
         alternates: { canonical: `/products/${slug}` },
@@ -66,6 +68,7 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
             images: image ? [image] : undefined,
         },
     };
+    return applySeoMeta(base, seo);
 }
 
 export default async function ProductPage({ params }: { params: Promise<{ slug: string }> }) {
