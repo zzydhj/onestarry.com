@@ -5,9 +5,22 @@ const nextConfig: NextConfig = {
     images: { unoptimized: true },
     // 内部 workspace 包以 TS 源码导出，需让 Next 转译
     transpilePackages: ["@onestarry/db", "@onestarry/auth", "@onestarry/core", "@onestarry/shared", "@onestarry/ui"],
-    // 注：安全响应头故意不在此 next.config headers() 里加——实测 @opennextjs/cloudflare 会因
-    // 需逐请求套用自定义头而把 ISR 页的 s-maxage 从 60 降到 2（破坏边缘缓存）。改由 Cloudflare
-    // 边缘 Transform Rules 添加（在 Next 之后、不碰 Cache-Control），见架构文档 §18。
+    // 安全响应头（全路由附加头，不碰 Cache-Control）。注：ISR 页 s-maxage 是剩余新鲜度倒计时，
+    // 接近过期时看到小值属正常，非缓存回归。暂不加严格 CSP（需 nonce，易与 Next 水合冲突）。
+    async headers() {
+        return [
+            {
+                source: "/:path*",
+                headers: [
+                    { key: "X-Content-Type-Options", value: "nosniff" },
+                    { key: "X-Frame-Options", value: "SAMEORIGIN" },
+                    { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
+                    { key: "Permissions-Policy", value: "camera=(), microphone=(), geolocation=()" },
+                    { key: "Strict-Transport-Security", value: "max-age=63072000; includeSubDomains" },
+                ],
+            },
+        ];
+    },
 };
 
 export default nextConfig;
