@@ -116,10 +116,9 @@ export async function upsertContent(
             .limit(1)
     )[0];
     if (existing) {
-        await db
-            .update(contentTranslations)
-            .set({ title: input.title, excerpt: input.excerpt ?? null, body: input.body ?? null, updatedAt: new Date() })
-            .where(eq(contentTranslations.id, existing.id));
+        const patch: Record<string, unknown> = { title: input.title, excerpt: input.excerpt ?? null, updatedAt: new Date() };
+        if (input.body !== undefined) patch.body = input.body; // 未传 body 则保留原正文（供只改标题/slug 的表单）
+        await db.update(contentTranslations).set(patch).where(eq(contentTranslations.id, existing.id));
     } else {
         await db
             .insert(contentTranslations)
@@ -127,6 +126,15 @@ export async function upsertContent(
     }
     await setEntitySlug(db, { entityType: "content", entityId: id, slug: input.slug || input.title, locale });
     return id;
+}
+
+/** 只更新正文 body（编辑器用，不动 title/excerpt/slug）。 */
+export async function updateContentBody(db: Db | Tx, input: { id: string; body: unknown; locale?: string }): Promise<void> {
+    const locale = input.locale ?? "en";
+    await db
+        .update(contentTranslations)
+        .set({ body: input.body, updatedAt: new Date() })
+        .where(and(eq(contentTranslations.contentId, input.id), eq(contentTranslations.locale, locale)));
 }
 
 /** 改发布状态；转 published 且首次则盖 publishedAt（ISO 文本）。 */
