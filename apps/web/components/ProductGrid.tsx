@@ -6,8 +6,8 @@ export function ProductGrid({ items, emptyLabel = "No products yet." }: { items:
     if (items.length === 0) return <p className="text-muted">{emptyLabel}</p>;
     return (
         <ul className="grid grid-cols-2 gap-5 sm:grid-cols-3 lg:grid-cols-4">
-            {items.map((it) => (
-                <ProductCard key={it.productId} item={it} />
+            {items.map((it, i) => (
+                <ProductCard key={it.productId} item={it} priority={i < 4} />
             ))}
         </ul>
     );

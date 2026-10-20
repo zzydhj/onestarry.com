@@ -3,8 +3,8 @@ import { mediaUrl } from "@onestarry/core";
 import type { CatalogListItem } from "@onestarry/db";
 import { money } from "@/lib/format";
 
-/** 单个商品卡片（首页 / 列表 / 类目 / 品牌页共用）。 */
-export function ProductCard({ item }: { item: CatalogListItem }) {
+/** 单个商品卡片（首页 / 列表 / 类目 / 品牌页共用）。priority=首屏可见卡片 → 图 eager + fetchPriority high（优化 LCP）。 */
+export function ProductCard({ item, priority = false }: { item: CatalogListItem; priority?: boolean }) {
     return (
         <li>
             <Link
@@ -16,7 +16,8 @@ export function ProductCard({ item }: { item: CatalogListItem }) {
                         <img
                             src={mediaUrl(item.imageUrl)}
                             alt={item.title}
-                            loading="lazy"
+                            loading={priority ? "eager" : "lazy"}
+                            fetchPriority={priority ? "high" : "auto"}
                             className="h-full w-full object-cover transition duration-300 group-hover:scale-105"
                         />
                     ) : (

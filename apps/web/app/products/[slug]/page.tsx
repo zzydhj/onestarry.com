@@ -77,6 +77,7 @@ export default async function ProductPage({ params }: { params: Promise<{ slug: 
     if (r.status === "notfound") notFound();
     if (r.status === "redirect") permanentRedirect(`/products/${r.toSlug}`);
     const { p, images } = r;
+    const hero = images[0]?.r2Key ? mediaUrl(images[0].r2Key) : null;
 
     const jsonLd = {
         "@context": "https://schema.org",
@@ -98,6 +99,7 @@ export default async function ProductPage({ params }: { params: Promise<{ slug: 
         <div className="mx-auto max-w-2xl px-4 py-8">
             <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }} />
             <Link href="/" className="text-sm text-muted transition hover:text-accent">← All products</Link>
+            {hero && <link rel="preload" as="image" href={hero} fetchPriority="high" />}
             {images.length > 0 ? (
                 <div className="mt-4">
                     <img
@@ -105,6 +107,7 @@ export default async function ProductPage({ params }: { params: Promise<{ slug: 
                         alt={p.title}
                         width={600}
                         height={600}
+                        fetchPriority="high"
                         className="aspect-square w-full rounded-xl border border-line object-cover"
                     />
                     {images.length > 1 && (
