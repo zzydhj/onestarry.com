@@ -18,6 +18,7 @@ export default async function AdminHome() {
                     { href: "/brands", label: "品牌管理" },
                     { href: "/markets", label: "市场配置" },
                     { href: "/legal", label: "法律文档" },
+                    { href: "/reviews", label: "评论审核" },
                     { href: "/team", label: "团队管理" },
                 ].map((c) => (
                     <Link

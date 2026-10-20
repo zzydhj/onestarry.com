@@ -13,6 +13,7 @@ const LINKS = [
     { href: "/categories", label: "类目" },
     { href: "/brands", label: "品牌" },
     { href: "/attributes", label: "属性" },
+    { href: "/reviews", label: "评论" },
     { href: "/markets", label: "市场" },
     { href: "/team", label: "团队" },
 ];
