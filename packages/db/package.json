@@ -13,6 +13,7 @@
         "db:generate": "drizzle-kit generate",
         "db:migrate": "drizzle-kit migrate",
         "db:push": "drizzle-kit push",
+        "db:partition": "tsx scripts/apply-partition.ts",
         "db:studio": "drizzle-kit studio",
         "smoke": "tsx src/smoke.ts",
         "smoke:catalog": "tsx src/smoke-catalog.ts",
