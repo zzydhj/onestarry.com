@@ -1,5 +1,5 @@
 import { and, eq, inArray } from "drizzle-orm";
-import { permissions, principalRoles, rolePermissions, roles } from "../schema";
+import { adminUser, permissions, principalRoles, rolePermissions, roles } from "../schema";
 import { PERMISSIONS, ROLE_PERMISSIONS, ROLES, type PermissionKey, type RoleKey } from "@onestarry/core";
 import type { Db, Tx } from "../client";
 
@@ -94,4 +94,30 @@ export async function revokeRole(
     await db
         .delete(principalRoles)
         .where(and(eq(principalRoles.subjectId, input.subjectId), eq(principalRoles.kind, kind), eq(principalRoles.roleId, role.id)));
+}
+
+export interface AdminMember {
+    userId: string;
+    email: string;
+    name: string;
+    roles: RoleKey[];
+}
+
+/** 列出全部后台账号及其角色（团队管理页用）。 */
+export async function listAdminMembers(db: Db | Tx): Promise<AdminMember[]> {
+    const users = await db
+        .select({ id: adminUser.id, email: adminUser.email, name: adminUser.name })
+        .from(adminUser);
+    const pr = await db
+        .select({ subjectId: principalRoles.subjectId, key: roles.key })
+        .from(principalRoles)
+        .innerJoin(roles, eq(principalRoles.roleId, roles.id))
+        .where(eq(principalRoles.kind, "admin"));
+    const bySubject = new Map<string, RoleKey[]>();
+    for (const r of pr) {
+        const arr = bySubject.get(r.subjectId) ?? [];
+        arr.push(r.key as RoleKey);
+        bySubject.set(r.subjectId, arr);
+    }
+    return users.map((u) => ({ userId: u.id, email: u.email, name: u.name, roles: bySubject.get(u.id) ?? [] }));
 }

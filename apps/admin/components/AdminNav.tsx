@@ -14,6 +14,7 @@ const LINKS = [
     { href: "/brands", label: "品牌" },
     { href: "/attributes", label: "属性" },
     { href: "/markets", label: "市场" },
+    { href: "/team", label: "团队" },
 ];
 
 /** 后台顶部导航（中文）。登录页不显示。 */
