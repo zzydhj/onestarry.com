@@ -2,6 +2,7 @@ export * from "./slug";
 export * from "./category";
 export * from "./product";
 export * from "./seo";
+export * from "./legal";
 export * from "./catalogAdmin";
 export * from "./media";
 export * from "./inventory";
