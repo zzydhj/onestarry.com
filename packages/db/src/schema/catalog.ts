@@ -15,9 +15,10 @@ import {
     jsonb,
     index,
     uniqueIndex,
+    customType,
     type AnyPgColumn,
 } from "drizzle-orm/pg-core";
-import { relations } from "drizzle-orm";
+import { relations, sql } from "drizzle-orm";
 import { id, timestamps } from "./columns";
 import { markets } from "./foundation";
 
@@ -26,6 +27,13 @@ export const availabilityPolicyEnum = pgEnum("availability_policy", ["in_stock_o
 export const attrModeEnum = pgEnum("attr_mode", ["allow", "deny"]);
 export const reviewStatusEnum = pgEnum("review_status", ["pending", "approved", "rejected", "flagged"]);
 export const contentStatusEnum = pgEnum("content_status", ["draft", "published", "archived"]);
+
+/** Postgres tsvector 列型（drizzle 0.45 无内置，用 customType 映射）。 */
+const tsvector = customType<{ data: string }>({
+    dataType() {
+        return "tsvector";
+    },
+});
 
 /* ------------------------------ 品牌 / 类目 ------------------------------ */
 export const brands = pgTable("brands", {
@@ -215,8 +223,13 @@ export const productTranslations = pgTable(
         richBody: jsonb("rich_body"), // 图文详情：ProseMirror JSON（Tiptap），结构化非 HTML
         aiGenerated: boolean("ai_generated").notNull().default(false),
         manualOverride: boolean("manual_override").notNull().default(false),
+        // 搜索用生成列（英文 FTS）：title+description → tsvector，配 GIN 索引，免每次搜索全表扫。
+        // 非英语语种的全文搜索走 Typesense（步骤 10）；此处只服 en 主语种。
+        searchVector: tsvector("search_vector").generatedAlwaysAs(
+            sql`to_tsvector('english', coalesce(title, '') || ' ' || coalesce(description, ''))`,
+        ),
     },
-    (t) => [uniqueIndex("pt_product_locale_uq").on(t.productId, t.locale)],
+    (t) => [uniqueIndex("pt_product_locale_uq").on(t.productId, t.locale), index("pt_search_gin").using("gin", t.searchVector)],
 );
 
 /* ------------------------------ 集合 / 尺码表 / 收藏 / 到货登记 ------------------------------ */

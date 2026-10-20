@@ -125,9 +125,8 @@ export async function searchProducts(db: Db | Tx, f: SearchFilters): Promise<Bro
     const market = (await db.select({ id: markets.id }).from(markets).where(eq(markets.code, f.marketCode)).limit(1))[0];
     if (!market) return { items: [], total: 0 };
 
-    const tsvec = sql`to_tsvector('english', coalesce(${productTranslations.title}, '') || ' ' || coalesce(${productTranslations.description}, ''))`;
     const tsq = sql`websearch_to_tsquery('english', ${q})`;
-    const match = sql`${tsvec} @@ ${tsq}`;
+    const match = sql`${productTranslations.searchVector} @@ ${tsq}`;
 
     const rows = await db
         .select({
@@ -144,7 +143,7 @@ export async function searchProducts(db: Db | Tx, f: SearchFilters): Promise<Bro
         .innerJoin(productTranslations, and(eq(productTranslations.productId, products.id), eq(productTranslations.locale, locale)))
         .innerJoin(slugs, and(eq(slugs.entityId, products.id), eq(slugs.entityType, "product"), eq(slugs.locale, locale), eq(slugs.isCurrent, true)))
         .where(and(eq(products.status, "active"), match))
-        .orderBy(sql`ts_rank(${tsvec}, ${tsq}) desc`, asc(productTranslations.title))
+        .orderBy(sql`ts_rank(${productTranslations.searchVector}, ${tsq}) desc`, asc(productTranslations.title))
         .limit(f.limit ?? 60)
         .offset(f.offset ?? 0);
 
