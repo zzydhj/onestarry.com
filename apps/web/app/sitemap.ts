@@ -1,10 +1,11 @@
 import type { MetadataRoute } from "next";
 import { getCloudflareContext } from "@opennextjs/cloudflare";
+import { SITE_ORIGIN } from "@onestarry/core";
 import { createDb, listActiveProductSlugs, listCurrentSlugs } from "@onestarry/db";
 
 export const dynamic = "force-dynamic";
 
-const BASE = "https://onestarry.com";
+const BASE = SITE_ORIGIN;
 
 /** 动态 sitemap：首页 + /products + 全部活跃商品 PDP + 类目页 + 品牌页。规模化时再迁到 jobs cron 预生成 → R2 分片 + 动态 index。 */
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {

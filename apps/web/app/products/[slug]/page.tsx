@@ -3,7 +3,7 @@ import { cache } from "react";
 import Link from "next/link";
 import { notFound, permanentRedirect } from "next/navigation";
 import { getCloudflareContext } from "@opennextjs/cloudflare";
-import { mediaUrl } from "@onestarry/core";
+import { mediaUrl, SITE_ORIGIN } from "@onestarry/core";
 import { createDb, getProductById, getSeoMeta, listProductImages, resolveSlug } from "@onestarry/db";
 import { Button, Input } from "@onestarry/ui";
 import { addToCartAction } from "../../cart/actions";
@@ -23,7 +23,7 @@ export async function generateStaticParams() {
     return [];
 }
 
-const SITE = "https://onestarry.com";
+const SITE = SITE_ORIGIN;
 
 function money(cents: number, currency: string): string {
     return new Intl.NumberFormat("en-US", { style: "currency", currency }).format(cents / 100);

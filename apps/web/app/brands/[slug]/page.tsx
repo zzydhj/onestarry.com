@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { cache } from "react";
 import { notFound, redirect } from "next/navigation";
+import { SITE_ORIGIN } from "@onestarry/core";
 import { browseProducts, getBrandById, getSeoMeta, resolveSlug } from "@onestarry/db";
 import { getDb } from "@/lib/db";
 import { applySeoMeta } from "@/lib/seo";
@@ -11,7 +12,7 @@ export async function generateStaticParams() {
     return [];
 }
 
-const SITE = "https://onestarry.com";
+const SITE = SITE_ORIGIN;
 
 const loadBrand = cache(async (slug: string) => {
     const db = getDb();

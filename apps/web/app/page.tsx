@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { SITE_NAME, SITE_ORIGIN } from "@onestarry/core";
 import { listProductsForMarket } from "@onestarry/db";
 import { getDb } from "@/lib/db";
 import { ProductGrid } from "@/components/ProductGrid";
@@ -8,7 +9,7 @@ import { ProductGrid } from "@/components/ProductGrid";
 export const revalidate = 60;
 
 export const metadata: Metadata = {
-    title: { absolute: "onestarry — Shop quality goods, shipped worldwide" },
+    title: { absolute: `${SITE_NAME} — Shop quality goods, shipped worldwide` },
     description: "Browse our catalog of quality goods shipped worldwide from our own warehouse.",
     alternates: { canonical: "/" },
 };
@@ -16,9 +17,9 @@ export const metadata: Metadata = {
 const SITE_JSONLD = {
     "@context": "https://schema.org",
     "@type": "WebSite",
-    name: "onestarry",
-    url: "https://onestarry.com",
-    publisher: { "@type": "Organization", name: "onestarry", url: "https://onestarry.com" },
+    name: SITE_NAME,
+    url: SITE_ORIGIN,
+    publisher: { "@type": "Organization", name: SITE_NAME, url: SITE_ORIGIN },
 };
 
 export default async function Home() {

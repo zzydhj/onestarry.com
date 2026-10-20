@@ -1,15 +1,16 @@
 import type { Metadata } from "next";
 import type { ReactNode } from "react";
+import { SITE_NAME, SITE_ORIGIN } from "@onestarry/core";
 import "./globals.css";
 import { SiteHeader } from "@/components/SiteHeader";
 import { SiteFooter } from "@/components/SiteFooter";
 import { CookieConsent } from "@/components/CookieConsent";
 
 export const metadata: Metadata = {
-    metadataBase: new URL("https://onestarry.com"),
-    title: { default: "onestarry.com", template: "%s · onestarry" },
+    metadataBase: new URL(SITE_ORIGIN),
+    title: { default: `${SITE_NAME}.com`, template: `%s · ${SITE_NAME}` },
     description: "Global e-commerce storefront — quality goods shipped worldwide from our own warehouse.",
-    openGraph: { siteName: "onestarry", type: "website" },
+    openGraph: { siteName: SITE_NAME, type: "website" },
     robots: { index: true, follow: true },
 };
 
