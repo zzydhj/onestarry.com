@@ -1,5 +1,6 @@
 export * from "./slug";
 export * from "./category";
+export * from "./brand";
 export * from "./product";
 export * from "./seo";
 export * from "./legal";

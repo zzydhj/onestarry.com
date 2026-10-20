@@ -1,23 +1,26 @@
-import { createDb, listAllCategories } from "@onestarry/db";
+import { createDb, getEntitySlug, listAllCategories } from "@onestarry/db";
 import { requireAdmin } from "@/lib/auth";
 import { Button, Input, Select } from "@onestarry/ui";
-import { createCategoryAction, renameCategoryAction } from "./actions";
+import { createCategoryAction, updateCategoryAction } from "./actions";
 
 export const dynamic = "force-dynamic";
 
-/** 类目管理（受保护）：树状列表 + 新增（选父级）+ 重命名。 */
+/** 类目管理（受保护）：树状列表 + 新增（选父级/slug）+ 改名/改 slug。 */
 export default async function CategoriesPage() {
     const { env } = await requireAdmin();
     const db = createDb(env.HYPERDRIVE.connectionString);
     const cats = await listAllCategories(db);
+    const slugs = await Promise.all(cats.map((c) => getEntitySlug(db, { entityType: "category", entityId: c.id })));
+    const slugById = new Map(cats.map((c, i) => [c.id, slugs[i] ?? ""]));
     const parentOptions = [{ id: "", name: "（顶层）" }, ...cats.map((c) => ({ id: c.id, name: "　".repeat(c.level - 1) + c.name }))];
 
     return (
-        <div className="mx-auto max-w-2xl px-4 py-8">
+        <div className="mx-auto max-w-3xl px-4 py-8">
             <h1 className="text-2xl font-semibold tracking-tight">类目管理 <span className="text-sm font-normal text-muted">（{cats.length}）</span></h1>
 
-            <form action={createCategoryAction} className="mt-5 flex items-center gap-2">
+            <form action={createCategoryAction} className="mt-5 flex flex-wrap items-center gap-2">
                 <Input name="name" placeholder="新类目名称" required className="py-1.5" />
+                <Input name="slug" placeholder="slug（留空自动生成）" className="py-1.5 w-44" />
                 <Select name="parentId" className="py-1.5">
                     {parentOptions.map((p) => (
                         <option key={p.id} value={p.id}>{p.name}</option>
@@ -33,10 +36,11 @@ export default async function CategoriesPage() {
             <ul className="mt-6 space-y-2">
                 {cats.map((c) => (
                     <li key={c.id} className="flex items-center gap-2" style={{ marginLeft: (c.level - 1) * 22 }}>
-                        <form action={renameCategoryAction} className="flex items-center gap-2">
+                        <form action={updateCategoryAction} className="flex flex-wrap items-center gap-2">
                             <input type="hidden" name="id" value={c.id} />
-                            <Input name="name" defaultValue={c.name} className="px-2 py-1 text-sm" />
-                            <Button type="submit" variant="secondary" size="sm">改名</Button>
+                            <Input name="name" defaultValue={c.name} className="px-2 py-1 text-sm w-40" />
+                            <Input name="slug" defaultValue={slugById.get(c.id) ?? ""} placeholder="slug" className="px-2 py-1 text-sm w-40 font-mono" />
+                            <Button type="submit" variant="secondary" size="sm">保存</Button>
                         </form>
                         <span className="text-xs text-muted">L{c.level}</span>
                     </li>

@@ -1,5 +1,6 @@
 import { asc, eq, isNull } from "drizzle-orm";
 import { attributeDefinitions, categories, categoryAttributeSets } from "../schema";
+import { setEntitySlug } from "./slug";
 import type { Db, Tx } from "../client";
 
 /** 列出某父类目的直接子类目（parentId=null 取顶层）。用 parent_id 递归，暂不依赖 ltree。 */
@@ -16,8 +17,11 @@ export async function listAllCategories(db: Db | Tx) {
         .orderBy(asc(categories.level), asc(categories.name));
 }
 
-/** 新建类目：传 parentId 则为其子级，level 自动 = 父.level+1。 */
-export async function createCategory(db: Db | Tx, input: { name: string; parentId?: string | null }): Promise<{ id: string }> {
+/** 新建类目：传 parentId 则为其子级，level 自动 = 父.level+1。slug 缺省由 name 派生（写入 slugs 表，前台可达）。 */
+export async function createCategory(
+    db: Db | Tx,
+    input: { name: string; parentId?: string | null; slug?: string; locale?: string },
+): Promise<{ id: string; slug: string }> {
     let level = 1;
     if (input.parentId) {
         const p = (await db.select({ level: categories.level }).from(categories).where(eq(categories.id, input.parentId)).limit(1))[0];
@@ -27,12 +31,31 @@ export async function createCategory(db: Db | Tx, input: { name: string; parentI
         .insert(categories)
         .values({ name: input.name, parentId: input.parentId ?? null, level })
         .returning({ id: categories.id });
-    return { id: row!.id };
+    const slug = await setEntitySlug(db, {
+        entityType: "category",
+        entityId: row!.id,
+        slug: input.slug || input.name,
+        locale: input.locale,
+    });
+    return { id: row!.id, slug };
 }
 
-/** 重命名类目。 */
+/** 重命名类目（不动 slug，避免破坏已索引 URL）。 */
 export async function renameCategory(db: Db | Tx, input: { id: string; name: string }): Promise<void> {
     await db.update(categories).set({ name: input.name, updatedAt: new Date() }).where(eq(categories.id, input.id));
+}
+
+/**
+ * 更新类目名 + slug。slug 为空则视为不改（保留当前），非空则经 setEntitySlug 处理
+ * （与当前不同才动，旧 slug 降历史 → resolveSlug 自动 301）。返回最终 slug。
+ */
+export async function updateCategory(
+    db: Db | Tx,
+    input: { id: string; name: string; slug?: string; locale?: string },
+): Promise<string | null> {
+    await db.update(categories).set({ name: input.name, updatedAt: new Date() }).where(eq(categories.id, input.id));
+    if (!input.slug) return null;
+    return setEntitySlug(db, { entityType: "category", entityId: input.id, slug: input.slug, locale: input.locale });
 }
 
 /**

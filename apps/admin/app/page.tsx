@@ -15,6 +15,7 @@ export default async function AdminHome() {
                     { href: "/products", label: "商品管理" },
                     { href: "/orders", label: "订单管理" },
                     { href: "/categories", label: "类目管理" },
+                    { href: "/brands", label: "品牌管理" },
                     { href: "/markets", label: "市场配置" },
                     { href: "/legal", label: "法律文档" },
                 ].map((c) => (
