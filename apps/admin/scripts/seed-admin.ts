@@ -9,8 +9,7 @@
 import { config } from "dotenv";
 config({ path: "../../.env.local" });
 
-import { eq } from "drizzle-orm";
-import { createDb, roles, principalRoles } from "@onestarry/db";
+import { assignRole, createDb, seedRbac } from "@onestarry/db";
 import { createAdminAuth } from "@onestarry/auth";
 
 async function main() {
@@ -24,6 +23,7 @@ async function main() {
     }
 
     const db = createDb(url);
+    await seedRbac(db); // 幂等：内置角色 + 全部权限点 + 角色→权限映射
     const auth = createAdminAuth({
         connString: url,
         baseURL: "http://localhost:3000",
@@ -53,18 +53,8 @@ async function main() {
     }
     if (!userId) throw new Error("无法获取管理员 userId");
 
-    // 2) 确保内置 super_admin 角色存在
-    let role = (await db.select().from(roles).where(eq(roles.key, "super_admin")).limit(1))[0];
-    if (!role) {
-        role = (await db.insert(roles).values({ key: "super_admin", name: "Super Admin", isSystem: true }).returning())[0];
-        console.log("已创建 super_admin 角色");
-    }
-
-    // 3) 绑定主体→角色（admin kind）
-    await db
-        .insert(principalRoles)
-        .values({ subjectId: userId, kind: "admin", roleId: role!.id })
-        .onConflictDoNothing();
+    // 2) 绑定主体→super_admin（admin kind；角色与权限已由 seedRbac 建好）
+    await assignRole(db, { subjectId: userId, roleKey: "super_admin" });
 
     console.log(`✅ 完成：${email} 现为 super_admin（用此邮箱/密码登录后台 /signin）`);
     process.exit(0);

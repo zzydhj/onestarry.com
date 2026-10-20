@@ -1,12 +1,13 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { PERMISSIONS } from "@onestarry/core";
 import { createDb, createMarket } from "@onestarry/db";
-import { requireAdmin } from "@/lib/auth";
+import { requirePermission } from "@/lib/auth";
 
-/** 新建市场（code 唯一；冲突则忽略）。 */
+/** 新建市场（code 唯一；冲突则忽略）。需 market:write（staff 无此权）。 */
 export async function createMarketAction(formData: FormData): Promise<void> {
-    const { env } = await requireAdmin();
+    const { env } = await requirePermission(PERMISSIONS.marketWrite);
     const code = String(formData.get("code") ?? "").trim().toLowerCase();
     const name = String(formData.get("name") ?? "").trim();
     const currency = String(formData.get("currency") ?? "").trim().toUpperCase();
