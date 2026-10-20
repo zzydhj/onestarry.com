@@ -3,10 +3,13 @@
 -- 目的：应用不再以表主 neondb_owner 连库，改用只干该干活的 app_rw；并对只追加表
 --       ledger_entries / stock_movements 禁掉 UPDATE/DELETE（append-only 由 DB 强制）。
 --
--- ⚠️ 安全：本文件含密码占位符，切勿把真实密码提交进仓库。流程：
---   1) 在 Neon「SQL Editor」以 neondb_owner 运行本文件（先把两处 PASTE_... 换成你生成的强密码）。
---   2) 到 Cloudflare Hyperdrive，把 origin 的 Database user/password 改成 app_rw / 同一密码。
---   3) 迁移/DDL 仍用表主（DATABASE_URL_UNPOOLED），运行时用 Hyperdrive(app_rw)。
+-- ⚠️ 安全：本文件含密码占位符，切勿把真实密码提交进仓库。正确做法：
+--   1) 把本文件**复制**到临时位置（如 $env:TEMP\0015_run.sql），在副本里把两处 PASTE_STRONG_PASSWORD_HERE 换成强密码。
+--   2) 在 Neon「SQL Editor」以 neondb_owner 运行副本内容；跑完删副本。仓库内这份始终保持占位符。
+--   3) 到 Cloudflare Hyperdrive，把 origin 的 Database user/password 改成 app_rw / 同一密码。
+--   4) 迁移/DDL 仍用表主（DATABASE_URL_UNPOOLED），运行时用 Hyperdrive(app_rw)。
+--
+-- 已验证（2026-10-20）：本仓库当前实例已完成上述流程，app_rw 在线；ledger/stock 禁 UPDATE/DELETE、outbox 保留 UPDATE。
 --
 -- 幂等：角色存在则改密；重复授权无害。
 
