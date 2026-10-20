@@ -4,7 +4,7 @@ import Link from "next/link";
 import { notFound, permanentRedirect } from "next/navigation";
 import { getCloudflareContext } from "@opennextjs/cloudflare";
 import { mediaUrl, SITE_ORIGIN } from "@onestarry/core";
-import { createDb, getProductById, getSeoMeta, listProductImages, resolveSlug } from "@onestarry/db";
+import { createDb, getProductById, getSeoMeta, listApprovedReviews, listProductImages, resolveSlug } from "@onestarry/db";
 import { Button, Input } from "@onestarry/ui";
 import { addToCartAction } from "../../cart/actions";
 import { applySeoMeta } from "@/lib/seo";
@@ -40,7 +40,8 @@ const resolveProduct = cache(async (slug: string) => {
     if (!p) return { status: "notfound" } as const;
     const images = await listProductImages(db, res.entityId);
     const seo = await getSeoMeta(db, { entityType: "product", entityId: res.entityId, locale: "en" });
-    return { status: "ok", p, images, seo } as const;
+    const reviews = await listApprovedReviews(db, res.entityId, "en");
+    return { status: "ok", p, images, seo, reviews } as const;
 });
 
 export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }): Promise<Metadata> {
@@ -76,7 +77,7 @@ export default async function ProductPage({ params }: { params: Promise<{ slug: 
     const r = await resolveProduct(slug);
     if (r.status === "notfound") notFound();
     if (r.status === "redirect") permanentRedirect(`/products/${r.toSlug}`);
-    const { p, images } = r;
+    const { p, images, reviews } = r;
     const hero = images[0]?.r2Key ? mediaUrl(images[0].r2Key) : null;
 
     const jsonLd = {
@@ -162,6 +163,39 @@ export default async function ProductPage({ params }: { params: Promise<{ slug: 
                     {p.available > 0 ? "Add to cart" : "Out of stock"}
                 </Button>
             </form>
+
+            <section className="mt-10 border-t border-line pt-6">
+                <div className="flex items-center justify-between">
+                    <h2 className="text-base font-semibold">Customer reviews</h2>
+                    <Link href={`/products/${slug}/review`} className="text-sm text-accent hover:underline">
+                        Write a review
+                    </Link>
+                </div>
+                {reviews.count === 0 ? (
+                    <p className="mt-2 text-sm text-muted">No reviews yet. Be the first to review this product.</p>
+                ) : (
+                    <>
+                        <p className="mt-1 text-sm text-muted">
+                            {reviews.avg} out of 5 · {reviews.count} review(s)
+                        </p>
+                        <ul className="mt-4 space-y-4">
+                            {reviews.items.map((rv) => (
+                                <li key={rv.id} className="rounded-xl border border-line p-4">
+                                    <div className="text-sm font-medium">
+                                        {rv.rating}★{rv.title ? ` · ${rv.title}` : ""}
+                                    </div>
+                                    <div className="text-xs text-muted">
+                                        {rv.author}
+                                        {rv.verifiedPurchase ? " · Verified purchase" : ""} · {rv.createdAt.toISOString().slice(0, 10)}
+                                    </div>
+                                    {rv.body && <p className="mt-2 text-sm">{rv.body}</p>}
+                                    {rv.ownerReply && <p className="mt-2 rounded-lg bg-surface p-2 text-sm text-muted">Seller: {rv.ownerReply}</p>}
+                                </li>
+                            ))}
+                        </ul>
+                    </>
+                )}
+            </section>
         </div>
     );
 }
