@@ -7,7 +7,7 @@ import { eq } from "drizzle-orm";
 import { getCloudflareContext } from "@opennextjs/cloudflare";
 import { createAdminAuth } from "@onestarry/auth";
 import { mediaUrl } from "@onestarry/core";
-import { createDb, attachProductImage, deleteProductImage, moveProductImage, products, setProductRichBody, setVariantOnHand, updateVariantBasePrice, upsertSeoMeta } from "@onestarry/db";
+import { createDb, attachProductImage, deleteProductImage, moveProductImage, products, setProductCatalog, setProductRichBody, setVariantOnHand, updateVariantBasePrice, upsertSeoMeta } from "@onestarry/db";
 import { runRelayBatch, relayHandlers } from "@onestarry/jobs";
 
 /**
@@ -265,6 +265,29 @@ export async function saveSeoMetaAction(formData: FormData): Promise<void> {
         robots: noindex ? { index: false } : null,
         og: null,
     });
+
+    revalidatePath(`/products/${productId}`);
+}
+
+/** 设置商品归属类目 / 品牌（空串=清空）。仅写 products 行，可售/重算不受影响。 */
+export async function assignCatalogAction(formData: FormData): Promise<void> {
+    const { env } = getCloudflareContext();
+    const h = await headers();
+    const auth = createAdminAuth({
+        connString: env.HYPERDRIVE.connectionString,
+        baseURL: `https://${h.get("host") ?? "localhost"}`,
+        secret: env.BETTER_AUTH_SECRET,
+    });
+    const session = await auth.api.getSession({ headers: h });
+    if (!session?.user) redirect("/signin");
+
+    const productId = String(formData.get("productId") ?? "");
+    if (!productId) return;
+    const categoryId = String(formData.get("categoryId") ?? "").trim() || null;
+    const brandId = String(formData.get("brandId") ?? "").trim() || null;
+
+    const db = createDb(env.HYPERDRIVE.connectionString);
+    await setProductCatalog(db, { productId, categoryId, brandId });
 
     revalidatePath(`/products/${productId}`);
 }

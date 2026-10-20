@@ -2,10 +2,10 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { eq, inArray } from "drizzle-orm";
 import { mediaUrl } from "@onestarry/core";
-import { createDb, getSeoMeta, inventory, listProductImages, productTranslations, productVariants, products } from "@onestarry/db";
+import { createDb, getSeoMeta, inventory, listAllBrands, listAllCategories, listProductImages, productTranslations, productVariants, products } from "@onestarry/db";
 import { requireAdmin } from "@/lib/auth";
 import { Button, Input, Select, TableFrame, THead, Th, Tr, Td } from "@onestarry/ui";
-import { saveSeoMetaAction, setProductStatusAction, updateBasePriceAction, updateInventoryAction } from "./actions";
+import { assignCatalogAction, saveSeoMetaAction, setProductStatusAction, updateBasePriceAction, updateInventoryAction } from "./actions";
 import { ImageUploader } from "./ImageUploader";
 import { RichTextEditor } from "./RichTextEditor";
 
@@ -34,6 +34,8 @@ export default async function AdminProductDetail({ params }: { params: Promise<{
     const stockMap = new Map(invRows.map((r) => [r.variantId, { onHand: r.onHand, available: r.available ?? 0 }]));
     const images = await listProductImages(db, id);
     const seo = await getSeoMeta(db, { entityType: "product", entityId: id, locale: "en" });
+    const cats = await listAllCategories(db);
+    const brandList = await listAllBrands(db);
 
     return (
         <main className="mx-auto max-w-4xl px-4 py-8">
@@ -50,6 +52,24 @@ export default async function AdminProductDetail({ params }: { params: Promise<{
                     <option value="archived">已归档</option>
                 </Select>
                 <Button type="submit" variant="secondary">更新状态</Button>
+            </form>
+
+            <h2 className="mt-8 text-base font-semibold">分类与品牌（决定商品出现在哪些浏览页）</h2>
+            <form action={assignCatalogAction} className="mt-3 flex flex-wrap items-center gap-2">
+                <input type="hidden" name="productId" value={product.id} />
+                <Select name="categoryId" defaultValue={product.primaryCategoryId ?? ""} className="py-1.5 text-sm">
+                    <option value="">（未分类）</option>
+                    {cats.map((c) => (
+                        <option key={c.id} value={c.id}>{"　".repeat(c.level - 1) + c.name}</option>
+                    ))}
+                </Select>
+                <Select name="brandId" defaultValue={product.brandId ?? ""} className="py-1.5 text-sm">
+                    <option value="">（无品牌）</option>
+                    {brandList.map((b) => (
+                        <option key={b.id} value={b.id}>{b.name}</option>
+                    ))}
+                </Select>
+                <Button type="submit" variant="secondary">保存归属</Button>
             </form>
 
             <h2 className="mt-8 text-base font-semibold">商品图片</h2>

@@ -33,7 +33,7 @@ export async function getEntitySlug(
 async function uniqueSlug(db: Db | Tx, entityType: string, locale: string, base: string, selfId: string): Promise<string> {
     let candidate = base;
     let n = 2;
-    for (;;) {
+    for (; ;) {
         const taken = (
             await db
                 .select({ entityId: slugs.entityId })

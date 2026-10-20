@@ -64,6 +64,23 @@ export async function createProductWithVariant(db: Db | Tx, input: CreateProduct
     return { productId: prod!.id, variantId: variant!.id };
 }
 
+/**
+ * 设置商品归属类目 / 品牌（null 清空）。两者独立，各按传入值写；用于后台把商品挂进目录体系。
+ */
+export async function setProductCatalog(
+    db: Db | Tx,
+    input: { productId: string; categoryId?: string | null; brandId?: string | null },
+): Promise<void> {
+    await db
+        .update(products)
+        .set({
+            primaryCategoryId: input.categoryId ?? null,
+            brandId: input.brandId ?? null,
+            updatedAt: new Date(),
+        })
+        .where(eq(products.id, input.productId));
+}
+
 /** 保存商品的图文详情（ProseMirror JSON）到指定语言译文行（行必存在，由新建时创建）。 */
 export async function setProductRichBody(
     db: Db | Tx,
