@@ -25,6 +25,15 @@ export function SiteHeader() {
                         Orders
                     </Link>
                 </nav>
+                <form action="/search" method="get" className="hidden md:block">
+                    <input
+                        type="search"
+                        name="q"
+                        placeholder="Search…"
+                        aria-label="Search products"
+                        className="w-36 rounded-lg border border-line px-3 py-1.5 text-sm outline-none transition focus:border-accent"
+                    />
+                </form>
             </div>
         </header>
     );

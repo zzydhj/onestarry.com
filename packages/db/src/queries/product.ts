@@ -1,4 +1,4 @@
-import { and, asc, count, eq, inArray } from "drizzle-orm";
+import { and, asc, count, eq, inArray, sql } from "drizzle-orm";
 import { brands, categories, inventory, markets, mediaAssets, productImages, productTranslations, productVariants, products, slugs, variantMarketPrices } from "../schema";
 import type { Db, Tx } from "../client";
 
@@ -41,6 +41,22 @@ export interface BrowseFilters {
 export interface BrowseResult {
     items: CatalogListItem[];
     total: number;
+}
+
+type RowNoImg = Omit<CatalogListItem, "imageUrl">;
+
+/** 为一页商品行批量附首图（position 最小、同位按创建时间最早）。空行短路。 */
+async function attachFirstImages(db: Db | Tx, rows: RowNoImg[]): Promise<CatalogListItem[]> {
+    if (rows.length === 0) return [];
+    const imgRows = await db
+        .select({ productId: productImages.productId, r2Key: mediaAssets.r2Key })
+        .from(productImages)
+        .innerJoin(mediaAssets, eq(productImages.mediaId, mediaAssets.id))
+        .where(inArray(productImages.productId, rows.map((r) => r.productId)))
+        .orderBy(asc(productImages.position), asc(mediaAssets.createdAt));
+    const firstImg = new Map<string, string>();
+    for (const r of imgRows) if (!firstImg.has(r.productId)) firstImg.set(r.productId, r.r2Key);
+    return rows.map((r) => ({ ...r, imageUrl: firstImg.get(r.productId) ?? null }));
 }
 
 /**
@@ -86,16 +102,62 @@ export async function browseProducts(db: Db | Tx, f: BrowseFilters): Promise<Bro
 
     if (rows.length === 0) return { items: [], total };
 
-    const imgRows = await db
-        .select({ productId: productImages.productId, r2Key: mediaAssets.r2Key })
-        .from(productImages)
-        .innerJoin(mediaAssets, eq(productImages.mediaId, mediaAssets.id))
-        .where(inArray(productImages.productId, rows.map((r) => r.productId)))
-        .orderBy(asc(productImages.position), asc(mediaAssets.createdAt));
-    const firstImg = new Map<string, string>();
-    for (const r of imgRows) if (!firstImg.has(r.productId)) firstImg.set(r.productId, r.r2Key);
+    return { items: await attachFirstImages(db, rows), total };
+}
 
-    return { items: rows.map((r) => ({ ...r, imageUrl: firstImg.get(r.productId) ?? null })), total };
+export interface SearchFilters {
+    marketCode: string;
+    locale?: string;
+    q: string;
+    limit?: number;
+    offset?: number;
+}
+
+/**
+ * 站内搜索：对当前语言文案 title+description 做英文 FTS（websearch_to_tsquery，参数绑定、免注入），
+ * 按 ts_rank 相关度降序。空查询短路返回空。
+ * 无 GIN 表达式索引（小规模目录够用）；量大时在迁移 SQL 里补 generated tsvector 列 + GIN。
+ */
+export async function searchProducts(db: Db | Tx, f: SearchFilters): Promise<BrowseResult> {
+    const locale = f.locale ?? "en";
+    const q = f.q.trim();
+    if (!q) return { items: [], total: 0 };
+    const market = (await db.select({ id: markets.id }).from(markets).where(eq(markets.code, f.marketCode)).limit(1))[0];
+    if (!market) return { items: [], total: 0 };
+
+    const tsvec = sql`to_tsvector('english', coalesce(${productTranslations.title}, '') || ' ' || coalesce(${productTranslations.description}, ''))`;
+    const tsq = sql`websearch_to_tsquery('english', ${q})`;
+    const match = sql`${tsvec} @@ ${tsq}`;
+
+    const rows = await db
+        .select({
+            productId: products.id,
+            slug: slugs.slug,
+            title: productTranslations.title,
+            description: productTranslations.description,
+            priceCents: variantMarketPrices.listPriceCents,
+            currency: variantMarketPrices.currency,
+        })
+        .from(products)
+        .innerJoin(productVariants, and(eq(productVariants.productId, products.id), eq(productVariants.isPrimary, true)))
+        .innerJoin(variantMarketPrices, and(eq(variantMarketPrices.variantId, productVariants.id), eq(variantMarketPrices.marketId, market.id)))
+        .innerJoin(productTranslations, and(eq(productTranslations.productId, products.id), eq(productTranslations.locale, locale)))
+        .innerJoin(slugs, and(eq(slugs.entityId, products.id), eq(slugs.entityType, "product"), eq(slugs.locale, locale), eq(slugs.isCurrent, true)))
+        .where(and(eq(products.status, "active"), match))
+        .orderBy(sql`ts_rank(${tsvec}, ${tsq}) desc`, asc(productTranslations.title))
+        .limit(f.limit ?? 60)
+        .offset(f.offset ?? 0);
+
+    const totalRow = await db
+        .select({ c: count() })
+        .from(products)
+        .innerJoin(productVariants, and(eq(productVariants.productId, products.id), eq(productVariants.isPrimary, true)))
+        .innerJoin(variantMarketPrices, and(eq(variantMarketPrices.variantId, productVariants.id), eq(variantMarketPrices.marketId, market.id)))
+        .innerJoin(productTranslations, and(eq(productTranslations.productId, products.id), eq(productTranslations.locale, locale)))
+        .where(and(eq(products.status, "active"), match));
+    const total = totalRow[0]?.c ?? 0;
+
+    return { items: await attachFirstImages(db, rows), total };
 }
 
 /** 某市场全部可售商品（首页用；保持原签名，内部走 browseProducts）。 */
