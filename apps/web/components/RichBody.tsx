@@ -10,7 +10,7 @@ interface PMNode {
     attrs?: Record<string, unknown>;
 }
 
-/** 把 Tiptap/ProseMirror JSON 渲染成 React 元素（逐块、结构化，不注入原始 HTML）。 */
+/** 把 Tiptap/ProseMirror JSON 渲染成 React 元素（逐块、结构化，不注入原始 HTML）。PDP 与 CMS 内容页共用。 */
 export function RichBody({ doc }: { doc: unknown }) {
     if (!doc || typeof doc !== "object") return null;
     const root = doc as PMNode;

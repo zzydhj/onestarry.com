@@ -8,7 +8,7 @@ import { createDb, getProductById, getSeoMeta, listApprovedReviews, listProductI
 import { Button, Input } from "@onestarry/ui";
 import { addToCartAction } from "../../cart/actions";
 import { applySeoMeta } from "@/lib/seo";
-import { RichBody } from "./RichBody";
+import { RichBody } from "@/components/RichBody";
 
 // ISR（方案 B）：动态路由无 generateStaticParams → 构建期不预渲染，首请求才渲染并存入 R2，每 60s 后台刷新。
 // 商品页对所有人一致、慢变、无写副作用 → 符合可缓存判据。价格/库存最多陈旧 60s（电商可接受）。
