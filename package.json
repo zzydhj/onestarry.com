@@ -13,7 +13,9 @@
         "clean": "turbo run clean && rm -rf node_modules",
         "db:generate": "pnpm --filter @onestarry/db db:generate",
         "db:migrate": "pnpm --filter @onestarry/db db:migrate",
-        "db:seed": "pnpm --filter @onestarry/db db:seed"
+        "db:partition": "pnpm --filter @onestarry/db db:partition",
+        "db:studio": "pnpm --filter @onestarry/db db:studio",
+        "seed:all": "pnpm --filter @onestarry/db seed:ledger && pnpm --filter @onestarry/db seed:catalog && pnpm --filter @onestarry/db seed:demo && pnpm --filter @onestarry/admin seed:admin"
     },
     "devDependencies": {
         "turbo": "^2.3.3",

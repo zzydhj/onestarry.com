@@ -1,0 +1,11 @@
+# apps/web/.dev.vars —— 本地模拟 Workers 环境用（opennextjs-cloudflare preview / wrangler dev）
+# 日常 `pnpm dev` 走 next dev 读仓库根 .env.local，不需要本文件。
+# 用法：cp .dev.vars.example .dev.vars
+#
+# Hyperdrive binding 的本地连接串（wrangler 变量名格式：
+#   CLOUDFLARE_HYPERDRIVE_LOCAL_CONNECTION_STRING_<BINDING_NAME>）
+# 建议用 Neon 直连端点，本地避开池化端点长连接被踢。
+CLOUDFLARE_HYPERDRIVE_LOCAL_CONNECTION_STRING_HYPERDRIVE=postgresql://neondb_owner:CHANGE_ME@ep-CHANGE_ME.c-6.us-east-2.aws.neon.tech/neondb?sslmode=require
+
+# Better Auth 密钥（与 .env.local 里 BETTER_AUTH_SECRET 同值即可）
+BETTER_AUTH_SECRET=CHANGE_ME_LOCAL_DEV_ONLY_BASE64_32B

@@ -1,0 +1,4 @@
+# apps/jobs/.dev.vars —— 本地模拟 Workers 环境用（pnpm dev = wrangler dev）
+# 用法：cp .dev.vars.example .dev.vars
+# jobs Worker 每分钟唤醒扫 outbox、重算全包价；本地起它才能验 relay 逻辑。
+CLOUDFLARE_HYPERDRIVE_LOCAL_CONNECTION_STRING_HYPERDRIVE=postgresql://neondb_owner:CHANGE_ME@ep-CHANGE_ME.c-6.us-east-2.aws.neon.tech/neondb?sslmode=require
