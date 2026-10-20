@@ -358,7 +358,7 @@ export const reviews = pgTable(
         id: id(),
         productId: uuid("product_id").notNull().references(() => products.id, { onDelete: "cascade" }),
         variantId: uuid("variant_id").references(() => productVariants.id),
-        customerId: uuid("customer_id"),
+        customerId: text("customer_id"), // Better Auth customer 用户 id（text/nanoid，非 uuid）
         orderId: uuid("order_id"),
         verifiedPurchase: boolean("verified_purchase").notNull().default(false),
         rating: integer("rating").notNull(), // 1–5

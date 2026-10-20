@@ -1,0 +1,1 @@
+ALTER TABLE "reviews" ALTER COLUMN "customer_id" SET DATA TYPE text;

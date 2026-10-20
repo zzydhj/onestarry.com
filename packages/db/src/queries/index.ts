@@ -1,5 +1,6 @@
 export * from "./slug";
 export * from "./authz";
+export * from "./reviews";
 export * from "./category";
 export * from "./brand";
 export * from "./product";
