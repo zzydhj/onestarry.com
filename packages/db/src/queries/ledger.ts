@@ -15,6 +15,7 @@ export const STANDARD_LEDGER_ACCOUNTS: {
         { code: "tax_payable", type: "liability", name: "Tax Payable" },
         { code: "duty_collected", type: "liability", name: "Duty Collected" },
         { code: "carrier_payable", type: "liability", name: "Carrier Payable" },
+        { code: "external_ap_clearing", type: "liability", name: "External AP Clearing" }, // 入库：借 inventory_asset / 贷此（§13）
         { code: "revenue", type: "revenue", name: "Revenue" },
         { code: "shipping_revenue", type: "revenue", name: "Shipping Revenue" },
         { code: "cogs", type: "expense", name: "COGS" },
