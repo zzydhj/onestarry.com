@@ -9,11 +9,14 @@ export function SiteHeader() {
                     onestarry
                 </Link>
                 <nav className="flex items-center gap-5 text-sm text-muted">
-                    <Link href="/" className="transition hover:text-accent">
-                        Shop
-                    </Link>
                     <Link href="/products" className="transition hover:text-accent">
                         Products
+                    </Link>
+                    <Link href="/categories" className="transition hover:text-accent">
+                        Categories
+                    </Link>
+                    <Link href="/brands" className="transition hover:text-accent">
+                        Brands
                     </Link>
                     <Link href="/cart" className="transition hover:text-accent">
                         Cart

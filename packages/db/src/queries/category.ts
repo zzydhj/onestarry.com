@@ -1,5 +1,5 @@
-import { asc, eq, isNull } from "drizzle-orm";
-import { attributeDefinitions, categories, categoryAttributeSets } from "../schema";
+import { and, asc, eq, isNull } from "drizzle-orm";
+import { attributeDefinitions, categories, categoryAttributeSets, slugs } from "../schema";
 import { setEntitySlug } from "./slug";
 import type { Db, Tx } from "../client";
 
@@ -14,6 +14,29 @@ export async function listAllCategories(db: Db | Tx) {
     return db
         .select({ id: categories.id, name: categories.name, parentId: categories.parentId, level: categories.level })
         .from(categories)
+        .orderBy(asc(categories.level), asc(categories.name));
+}
+
+/** 类目 + 当前 en slug（前台目录索引页用；无 slug 的行 urlSlug 为 null）。 */
+export async function listCategoriesWithSlug(db: Db | Tx) {
+    return db
+        .select({
+            id: categories.id,
+            name: categories.name,
+            parentId: categories.parentId,
+            level: categories.level,
+            urlSlug: slugs.slug,
+        })
+        .from(categories)
+        .leftJoin(
+            slugs,
+            and(
+                eq(slugs.entityId, categories.id),
+                eq(slugs.entityType, "category"),
+                eq(slugs.locale, "en"),
+                eq(slugs.isCurrent, true),
+            ),
+        )
         .orderBy(asc(categories.level), asc(categories.name));
 }
 
