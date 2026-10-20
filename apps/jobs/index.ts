@@ -1,6 +1,9 @@
 import { and, eq, sql } from "drizzle-orm";
-import { createDb, transactionalOutbox } from "@onestarry/db";
+import { createDb, runDataRetention, transactionalOutbox } from "@onestarry/db";
 import { relayHandlers, runRelayBatch } from "@onestarry/jobs";
+
+/** 每日数据保留清理的 cron 表达式（须与 wrangler.jsonc crons 中那条一致）。 */
+const RETENTION_CRON = "20 4 * * *";
 
 export interface Env {
     HYPERDRIVE: Hyperdrive;
@@ -9,12 +12,17 @@ export interface Env {
 
 /**
  * Cloudflare Cron Trigger Worker：
- * - scheduled：每分钟被唤醒，消费 outbox 待办事件（与触发方式解耦）。
- * - fetch：只读健康端点，回 outbox 待办计数，用于验证 Worker↔HyperdriveNeon 连通。
+ * - scheduled：每分钟消费 outbox 待办事件；每日一条 cron 跑数据保留清理（按 event.cron 分流）。
+ * - fetch：只读健康端点，回 outbox 待办计数，用于验证 Worker↔Hyperdrive→Neon 连通。
  */
 export default {
-    async scheduled(_event: ScheduledController, env: Env, _ctx: ExecutionContext): Promise<void> {
+    async scheduled(event: ScheduledController, env: Env, _ctx: ExecutionContext): Promise<void> {
         const db = createDb(env.HYPERDRIVE.connectionString);
+        if (event.cron === RETENTION_CRON) {
+            const r = await runDataRetention(db);
+            console.log(`[retention] idempotencyKeys=${r.idempotencyKeys} outbox=${r.outbox} webhookEvents=${r.webhookEvents}`);
+            return;
+        }
         const limit = Number(env.RELAY_BATCH_LIMIT ?? "500");
         const summary = await runRelayBatch(db, relayHandlers, { limit });
         console.log(`[relay] processed=${summary.processed} ok=${summary.succeeded} fail=${summary.failed}`);

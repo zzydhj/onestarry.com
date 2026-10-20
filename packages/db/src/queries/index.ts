@@ -2,6 +2,7 @@ export * from "./slug";
 export * from "./authz";
 export * from "./reviews";
 export * from "./content";
+export * from "./retention";
 export * from "./category";
 export * from "./brand";
 export * from "./product";
