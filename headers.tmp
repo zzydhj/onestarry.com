@@ -1,0 +1,18 @@
+HTTP/1.1 200 OK
+Date: Wed, 21 Oct 2026 15:53:27 GMT
+Content-Type: application/json
+Transfer-Encoding: chunked
+Connection: keep-alive
+Strict-Transport-Security: max-age=63072000; includeSubDomains
+Vary: rsc, next-router-state-tree, next-router-prefetch, next-router-segment-prefetch
+permissions-policy: camera=(), microphone=(), geolocation=()
+referrer-policy: strict-origin-when-cross-origin
+x-content-type-options: nosniff
+x-frame-options: SAMEORIGIN
+x-opennext: 1
+Report-To: {"group":"cf-nel","max_age":604800,"endpoints":[{"url":"https://a.nel.cloudflare.com/report/v4?s=gN18K8lbAf9KjklpXHyVPr%2BosLCDYGLxlR%2B9T1ACiEz314SC%2BUQCSR9qQXgITsbnFA2mRjfj%2BrNoKppBuW%2FlXkcVHkpwuf9kAwG7T%2BT0lxRBe7Rf9JHcej2d4tabZzeKGpghWcohfKWjQLmd"}]}
+Nel: {"report_to":"cf-nel","success_fraction":0.0,"max_age":604800}
+Server: cloudflare
+CF-RAY: a4e16f60aea76c48-SJC
+alt-svc: h3=":443"; ma=86400
+

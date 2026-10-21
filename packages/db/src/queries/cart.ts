@@ -1,4 +1,4 @@
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq, inArray, sql } from "drizzle-orm";
 import { inventory, markets, productTranslations, productVariants, variantMarketPrices } from "../schema";
 import type { Db, Tx } from "../client";
 
@@ -21,8 +21,13 @@ export async function getCartLines(
     locale = "en",
 ): Promise<CartLine[]> {
     if (variantIds.length === 0) return [];
-    const market = (await db.select({ id: markets.id }).from(markets).where(eq(markets.code, marketCode)).limit(1))[0];
-    if (!market) return [];
+    // market 查找内联成子查询：旧写法先单独 SELECT markets 再查行 = 2 次跨区往返，
+    // 合成 1 条后只要一次（结账页是用户“准备付钱”那一步，每省一个往返都是转化率）。
+    const marketId = db
+        .select({ id: markets.id })
+        .from(markets)
+        .where(eq(markets.code, marketCode))
+        .limit(1);
 
     const rows = await db
         .select({
@@ -37,7 +42,7 @@ export async function getCartLines(
         })
         .from(productVariants)
         .innerJoin(productTranslations, and(eq(productTranslations.productId, productVariants.productId), eq(productTranslations.locale, locale)))
-        .innerJoin(variantMarketPrices, and(eq(variantMarketPrices.variantId, productVariants.id), eq(variantMarketPrices.marketId, market.id)))
+        .innerJoin(variantMarketPrices, and(eq(variantMarketPrices.variantId, productVariants.id), eq(variantMarketPrices.marketId, sql`(${marketId})`)))
         .leftJoin(inventory, eq(inventory.variantId, productVariants.id))
         .where(inArray(productVariants.id, variantIds));
 

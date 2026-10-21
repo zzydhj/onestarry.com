@@ -11,7 +11,8 @@
         "typecheck": "tsc --noEmit"
     },
     "peerDependencies": {
-        "react": "^19.0.0"
+        "react": "^19.0.0",
+        "react-dom": "^19.0.0"
     },
     "dependencies": {
         "clsx": "^2.1.1",
@@ -20,7 +21,9 @@
     "devDependencies": {
         "@onestarry/config": "workspace:*",
         "@types/react": "^19.0.2",
+        "@types/react-dom": "^19.0.2",
         "react": "^19.0.0",
+        "react-dom": "^19.0.0",
         "typescript": "^5.7.2"
     }
 }

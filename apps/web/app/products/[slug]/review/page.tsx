@@ -1,11 +1,9 @@
-import { headers } from "next/headers";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import type { Metadata } from "next";
-import { getCloudflareContext } from "@opennextjs/cloudflare";
-import { createCustomerAuth } from "@onestarry/auth";
 import { createDb, getProductById, resolveSlug } from "@onestarry/db";
 import { Button, Input } from "@onestarry/ui";
+import { readCustomerSession } from "@/lib/session";
 import { submitReviewAction } from "./actions";
 
 export const dynamic = "force-dynamic"; // 读客户会话，不缓存
@@ -15,17 +13,10 @@ export const metadata: Metadata = { title: "Write a review", robots: { index: fa
 /** 发表评价页（需登录客户）：评分 + 标题 + 正文 → 提交进待审核队列。 */
 export default async function ReviewFormPage({ params }: { params: Promise<{ slug: string }> }) {
     const { slug } = await params;
-    const { env } = getCloudflareContext();
-    const h = await headers();
-    const auth = createCustomerAuth({
-        connString: env.HYPERDRIVE.connectionString,
-        baseURL: `https://${h.get("host") ?? "localhost"}`,
-        secret: env.BETTER_AUTH_SECRET,
-    });
-    const session = await auth.api.getSession({ headers: h });
-    if (!session?.user) redirect("/signin");
+    const session = await readCustomerSession();
+    if (!session) redirect("/signin");
 
-    const db = createDb(env.HYPERDRIVE.connectionString);
+    const db = createDb(session.env.HYPERDRIVE.connectionString);
     const res = await resolveSlug(db, { entityType: "product", locale: "en", slug });
     if (!res || res.status === "redirect") redirect(`/products/${slug}`);
     const p = await getProductById(db, res.entityId, "us", "en");
@@ -67,7 +58,7 @@ export default async function ReviewFormPage({ params }: { params: Promise<{ slu
                 </label>
                 <Button type="submit">Submit review</Button>
             </form>
-            <p className="mt-3 text-xs text-muted">Your review will appear after moderation. Signed in as {session.user.email}.</p>
+            <p className="mt-3 text-xs text-muted">Your review will appear after moderation. Signed in as {session.email}.</p>
         </div>
     );
 }

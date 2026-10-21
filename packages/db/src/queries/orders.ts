@@ -177,20 +177,23 @@ export async function createOrder(db: Db | Tx, input: CreateOrderInput): Promise
 export async function getOrderByNumber(db: Db | Tx, orderNumber: string) {
     const order = (await db.select().from(orders).where(eq(orders.orderNumber, orderNumber)).limit(1))[0];
     if (!order) return null;
-    const lines = await db.select().from(orderLines).where(eq(orderLines.orderId, order.id));
-    const items = await db
-        .select({
-            id: orderItems.id,
-            quantity: orderItems.quantity,
-            unitPriceCents: orderItems.unitPriceCents,
-            title: productTranslations.title,
-        })
-        .from(orderItems)
-        .leftJoin(productVariants, eq(orderItems.variantId, productVariants.id))
-        .leftJoin(
-            productTranslations,
-            and(eq(productTranslations.productId, productVariants.productId), eq(productTranslations.locale, order.locale)),
-        )
-        .where(eq(orderItems.orderId, order.id));
+    // 明细行与商品行互不依赖：并行发出（旧写法是串行等两次跨区往返，共 3 次 → 现在 2 步）。
+    const [lines, items] = await Promise.all([
+        db.select().from(orderLines).where(eq(orderLines.orderId, order.id)),
+        db
+            .select({
+                id: orderItems.id,
+                quantity: orderItems.quantity,
+                unitPriceCents: orderItems.unitPriceCents,
+                title: productTranslations.title,
+            })
+            .from(orderItems)
+            .leftJoin(productVariants, eq(orderItems.variantId, productVariants.id))
+            .leftJoin(
+                productTranslations,
+                and(eq(productTranslations.productId, productVariants.productId), eq(productTranslations.locale, order.locale)),
+            )
+            .where(eq(orderItems.orderId, order.id)),
+    ]);
     return { order, lines, items };
 }

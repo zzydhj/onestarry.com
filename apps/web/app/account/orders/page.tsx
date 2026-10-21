@@ -1,10 +1,8 @@
-import { headers } from "next/headers";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { getCloudflareContext } from "@opennextjs/cloudflare";
-import { createCustomerAuth } from "@onestarry/auth";
 import { createDb, listOrdersByCustomer } from "@onestarry/db";
+import { readCustomerSession } from "@/lib/session";
 
 export const dynamic = "force-dynamic";
 
@@ -16,24 +14,17 @@ function money(cents: number, cur: string): string {
 
 /** 我的订单（前台，需客户登录）：按 customerId 列订单，点进确认页。 */
 export default async function AccountOrders() {
-    const { env } = getCloudflareContext();
-    const h = await headers();
-    const auth = createCustomerAuth({
-        connString: env.HYPERDRIVE.connectionString,
-        baseURL: `https://${h.get("host") ?? "localhost"}`,
-        secret: env.BETTER_AUTH_SECRET,
-    });
-    const session = await auth.api.getSession({ headers: h });
-    if (!session?.user) redirect("/signin");
+    const session = await readCustomerSession();
+    if (!session) redirect("/signin");
 
-    const db = createDb(env.HYPERDRIVE.connectionString);
-    const rows = await listOrdersByCustomer(db, session.user.id);
+    const db = createDb(session.env.HYPERDRIVE.connectionString);
+    const rows = await listOrdersByCustomer(db, session.userId);
 
     return (
         <div className="mx-auto max-w-2xl px-4 py-8">
             <Link href="/" className="text-sm text-muted transition hover:text-accent">← Home</Link>
             <h1 className="mt-2 text-2xl font-semibold tracking-tight">My orders</h1>
-            <p className="mt-1 text-sm text-muted">{session.user.email}</p>
+            <p className="mt-1 text-sm text-muted">{session.email}</p>
 
             {rows.length === 0 ? (
                 <p className="mt-6 text-muted">No orders yet.</p>
