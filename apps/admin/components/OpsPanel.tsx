@@ -28,12 +28,18 @@ export function OpsPanel({ window: win, outbox }: { window: MaintenanceWindow; o
     const now = new Date();
     const backlogBad = outbox.dead > 0 || outbox.failed > 0 || outbox.pending > 0;
 
+    // 进入排期区间但颜色仍绿（>60 天）时，提为黄色“该排期了”——因为维护者只看后台。
+    const pill =
+        win.needsAction && win.status === "ok"
+            ? { cls: STATUS_STYLE.warn, text: `Next ${win.major} · 该排期升级了（建议 ${win.actionFrom} 前开工）` }
+            : { cls: STATUS_STYLE[win.status], text: `Next ${win.major} · ${WINDOW_STATUS_LABELS[win.status]}` };
+
     return (
         <section className="mt-8 grid gap-4 lg:grid-cols-2">
             <div className="rounded-xl border border-line bg-white p-4">
                 <h2 className="text-sm font-semibold text-muted">依赖支持窗口</h2>
-                <div className={`mt-3 inline-flex items-center gap-2 rounded-lg border px-2 py-1 text-xs font-medium ${STATUS_STYLE[win.status]}`}>
-                    Next {win.major} · {WINDOW_STATUS_LABELS[win.status]}
+                <div className={`mt-3 inline-flex items-center gap-2 rounded-lg border px-2 py-1 text-xs font-medium ${pill.cls}`}>
+                    {pill.text}
                 </div>
                 <dl className="mt-3 space-y-1 text-sm">
                     <div className="flex justify-between gap-4">
@@ -48,9 +54,13 @@ export function OpsPanel({ window: win, outbox }: { window: MaintenanceWindow; o
                         <dt className="text-muted">剩余天数</dt>
                         <dd className="font-semibold tabular-nums">{win.daysLeft === null ? "—" : `${win.daysLeft} 天`}</dd>
                     </div>
+                    <div className="flex justify-between gap-4">
+                        <dt className="text-muted">建议开工日</dt>
+                        <dd className="font-semibold tabular-nums">{win.actionFrom ?? "—"}</dd>
+                    </div>
                 </dl>
                 <p className="mt-3 text-xs text-muted">
-                    超窗后 OpenNext 会在构建第一步直接拒绝部署。到期前 60 天本卡转黄；本地/CI 可跑 <code>pnpm deps:window</code> 复核。
+                    超窗后 OpenNext 会在构建第一步直接拒部署（现网不会挂，但新代码上不去）。提醒提前 180 天开始亮 —— 看到黄条就可以安排一次升级，不必等到红。
                 </p>
             </div>
 

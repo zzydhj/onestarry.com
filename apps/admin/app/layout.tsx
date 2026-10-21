@@ -3,6 +3,7 @@ import type { ReactNode } from "react";
 import "./globals.css";
 import { AdminNav } from "@/components/AdminNav";
 import { readAdminSession } from "@/lib/auth";
+import { maintenanceAlert, PERMISSIONS } from "@onestarry/core";
 
 export const metadata: Metadata = {
     title: "onestarry · Admin",
@@ -21,10 +22,14 @@ export const dynamic = "force-dynamic";
  */
 export default async function RootLayout({ children }: { children: ReactNode }) {
     const session = await readAdminSession();
+    // 维护窗口提醒同样只给 config:write（升级是超管的责任）。
+    // 本模板的维护者不看依赖报告、不做月度巡检 —— 后台导航条就是唯一触发器，
+    // 所以文案里必须带**具体开工日**而不是“还剩几天”。
+    const alert = session?.permissions.has(PERMISSIONS.configWrite) ? maintenanceAlert() : null;
     return (
         <html lang="zh">
             <body className="min-h-screen bg-white text-fg antialiased">
-                <AdminNav permissions={session ? [...session.permissions] : []} />
+                <AdminNav permissions={session ? [...session.permissions] : []} alert={alert} />
                 {children}
             </body>
         </html>

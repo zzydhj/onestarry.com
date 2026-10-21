@@ -462,7 +462,7 @@ onestarry.com/
 | T18 | 正解：升 Next 16.4.2 | ✅ **已完成（2026-10-21，分支 `chore/next-16`）** | 实装 next **16.4.2** / react 19.3.1（peer 未变，无需动）/ wrangler **4.151.3**；root `engines.node` 提到 `>=20.9`。**命中面核查全部免改**：24 处 `params/searchParams` 已 Promise+await、cookies/headers 已 await、无 opengraph-image/icon、sitemap 无 `id`、无 experimental_ppr/unstable_/next lint、无自定义 webpack。**验证**：`pnpm typecheck` 8/8、`pnpm test` 28/28、admin `next build` ✓、web `next build` ✓（**构建期连真 Neon 预渲染 10/10 页**）、`cf:build` 已过版本闸门（日志 `Next.js version : 16.4.2` → 进入 Bundling），只剩 Windows symlink EPERM（D17；Linux CI 无此问题） |
 | T19 | 稳态：`pnpm deps:window` 自检脚本 | ✅ **已实现（2026-10-21）** | 真源 = `packages/core/src/maintenance.ts`（纯函数：`NEXT_MAJOR_RELEASE_DATES` 抄自 OpenNext + `computeMaintenanceWindow` + `requiredWranglerMin` + `compatDateStale`）；CLI = `packages/core/src/scripts/deps-window.ts`，根脚本 `pnpm deps:window`（默认 warn-only 退 0，`--strict` 才拦）。实测输出：next 16.4.2 → 支持至 2027-10-21 → 剩余 364 天 [ok]；wrangler 4.151.3 ≥ 4.59.2 [ok]；三处 `compat_date 2026-01-01` [warn]。**另带漂移护栏**：`maintenance.test.ts` 直接读 `apps/web/package.json` 断言 `DECLARED_NEXT_MAJOR` 与实际主版本一致 —— 把「日期一到突然 exit 1」的外部门变成提前 ≥60 天的内部信号；建议把它放进 CI Build command（warn-only、不拦） |
 | T20 | 节奏：文档写死「≤2 年必须做一次 Next 主版本升级」+ 升级 runbook（分支预演 → 迁移在 Neon branch 跑 → typecheck/test/build → Versions 放量） | P1 | 模板的长期可维护性说明，见 §12.6 |
-| T21 | **预警可见面放后台**（用户 2026-10-21 提问触发）：超管概览页加一张只读「维护窗口」卡 —— 当前 Next 版本 / 支持到期日 / 剩余天数（>60 灰、<60 黄、<30 红），同卡附两个已有真数据的健康信号：`transactional_outbox` 积压（jobs `/health` 已返回 `pending`）+ 最近一次 Cron 成功时间 | ✅ **已实现（2026-10-21）** | 光靠 CI 日志/本地脚本，用户平时看不到。权限：仅对 `config:write`（super_admin）渲染。局限：卡上日期是**我们登记的静态预测**（抄自 OpenNext 发布日表），不是真相源 —— 所以 T19 脚本与 T21 卡两者都要（脚本给 CI/校验，卡给人看） |
+| T21 | **预警可见面放后台**（用户 2026-10-21 提问触发）→ 同日按用户定调**重做**：“后台是唯一触发器” | ✅ **已实现并按新前提加强（2026-10-21）** | 实现：`core/maintenance.ts`（纯函数真源）+ `deps-window.ts`（CLI）+ `OpsPanel`（概览卡）+ `AdminNav` 导航条提醒 + `getOutboxHealth`。**加强理由**：用户明确“不会每月看一次依赖”，所以只提前 60 天不够 → 新增 `ACTION_LEAD_DAYS=180`，**提前半年就亮黄条**，且文案必须给**具体开工日**（例：`建议 2027-04-24 前开始升级`）而不是“还剩 N 天”；提醒不只住在概览页，**任何页面的导航条**都挂黄/红条 + 入口小徽章（仅 `config:write` 可见）。单测 40/40（含开工日计算与 181/180 边界）。已知局限：不上后台就看不到 —— Resend 接线（N9）后把窗口告警推邮件 |
 | T22 | **lint 面从未接通**（本轮新发现，2026-10-21） | 🔴 | 只有 `packages/config` 装了 eslint（^9.17.0）并写了 `eslint.config.mjs`（已导出 `@onestarry/config/eslint`，注释里还写了用法）；但 **9 个包/应用没有一个建自己的 `eslint.config.mjs`**，其中 auth/core/db/jobs 四个声明了 `"lint": "eslint ."` 却**没有 eslint 依赖**，且根 `node_modules/.bin/eslint` 不存在 → `pnpm lint` 必报「'eslint' 不是内部或外部命令」（turbo 实测：1 task / 0 成功 / EXIT 1）。web/admin/ui 则根本无 lint 脚本 | 所以 **CI 门禁里暂不含 lint**（否则一上就红）。修法：各包加 3 行 `eslint.config.mjs`（`import base from "@onestarry/config/eslint"`）+ devDep `eslint ^9`，然后一次清掉暴露的告警。→ 不属今日关键路径，单独一批做 |
 
 ### 12.5 建议施工顺序（把上面 22 项收敛成一条线）
@@ -486,3 +486,20 @@ onestarry.com/
 3. **升级本身保持小而 boring**：一次只做「依赖对齐」一个提交，业务代码不动；破坏性变更集中在 `params/searchParams` 异步化与 lint/TS 版本，本项目命中面很小（已核：全站无 middleware.ts，`params` 已是 async 写法）。
 4. **预警而非救火**：T19 的 `deps:window` 把外部时间闸门变成内部信号，剩余天数进 CI 日志。
 5. **模板层面写死**：本节 + 架构文档 §1 的「以 OpenNext 当前稳定支持版本为准，不死守 15」—— 让下一个拿走模板的人不会在同一个日期撞上同一面墙。
+
+### 12.7 升级节奏决定（2026-10-21，用户定调）
+
+用户明确：**没时间每月看一次依赖**，只在看到提醒时才行动。据此定下三条：
+
+1. **不装 dependabot** —— PR 无人看会堆积，反而制造虚假安全感；宁可不要。
+2. **后台导航条是唯一触发器**（T21）：提前 180 天亮黄条并给出具体开工日，超窗亮红条。因此 `ACTION_LEAD_DAYS` 重估为半年，不再是 60 天。
+3. **主版本升级走四道闸**（详见架构文档 §15.2 ⑯）：分支先构建（已启用）→ 门禁 typecheck/test/build → **Workers Versions 分阶段放量** → Neon PITR 兜底；发版窗口选**北京时间上午 09:00–11:30**（美国深夜低峰，本站是纯海外市场）。关键认知：**部署失败 ≠ 站挂**（今天 CI 连红 4 次而站点 200 就是实证），真风险是“坏版本一上线就 100% 接手”，所以放量+秒级回滚是重点。
+
+## 13. 维护说明（本文档如何保持不过时）
+
+> 本节曾因 §12 插入时的替换错误被误吞（2026-10-21 发现并恢复），故保留在此以免再丢。
+
+- 本文档描述“当前代码事实”，不是计划。任何“未接线/待补”都以仓库实际扫描为准，不手写印象。
+- 若后续又有施工，请连同架构文档 §15 一起更新本文件的 §2/§3/§8/§9/§10/§12；三者一致性由 `pnpm typecheck` + `pnpm test` + 静态审计把关。
+- 本文件与架构文档冲突时，**以本文件为准**（它更贴近代码），并回改架构文档。
+- **改本文档前先用 grep 定位锚点**（教训：Read 对旧文件可能返回过期内容，§13 就是这样丢过一次；改完跑 `git diff --stat` 确认行数变化符合预期）。

@@ -12,8 +12,10 @@
 import { readFileSync } from "node:fs";
 import {
     DECLARED_NEXT_MAJOR,
+    ACTION_LEAD_DAYS,
     compatDateStale,
     computeMaintenanceWindow,
+    maintenanceAlert,
     requiredWranglerMin,
     wranglerRequirementMet,
     WINDOW_STATUS_LABELS,
@@ -64,8 +66,10 @@ const nextMajor = majorOf(nextInstalled);
 const win = computeMaintenanceWindow(nextMajor, now);
 if (win.status === "expired" || win.status === "unknown") expired = true;
 lines.push(
-    `next            ${nextInstalled.padEnd(12)} 支持至 ${win.supportEndDate ?? "—"}   剩余 ${win.daysLeft ?? "?"} 天   [${win.status}] ${WINDOW_STATUS_LABELS[win.status]}`,
+    `next            ${nextInstalled.padEnd(12)} 支持至 ${win.supportEndDate ?? "—"}   剩余 ${win.daysLeft ?? "?"} 天   建议 ${win.actionFrom ?? "—"} 开工（提前 ${ACTION_LEAD_DAYS} 天）   [${win.status}] ${WINDOW_STATUS_LABELS[win.status]}`,
 );
+const alert = maintenanceAlert(nextMajor, now);
+if (alert) lines.push(`  ↳ 后台提醒（${alert.level === "expired" ? "红" : "黄"}）：${alert.text}`);
 if (nextMajor !== DECLARED_NEXT_MAJOR) {
     expired = true;
     lines.push(`⚠ 漂移：core/maintenance.ts 的 DECLARED_NEXT_MAJOR=${DECLARED_NEXT_MAJOR} 与实际 ${nextMajor} 不一致，请同步`);

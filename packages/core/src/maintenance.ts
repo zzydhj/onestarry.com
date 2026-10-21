@@ -27,8 +27,16 @@ export const DECLARED_NEXT_MAJOR = 16;
 /** Next.js 官方支持政策：每个主版本自发布起维护 2 年。 */
 export const SUPPORT_YEARS = 2;
 
-/** 剩余天数 ≤ 此值即转「warn」（提前预警窗口）。 */
+/** 剩余天数 ≤ 此值即转「warn」（颜色级别的硬告警线）。 */
 export const WARN_DAYS_BEFORE_EXPIRY = 60;
+
+/**
+ * 该开始排期升级的提前量（天）。
+ * 为什么定 180：本模板的维护者**不看依赖报告、不做月度巡检**，唯一触发器就是后台提醒；
+ * 若只提前 60 天提示，对方“半年上线看一次”就会错过窗口。所以提前半年就提醒，
+ * 并给出一个**具体开工日期**（而不是“还剩 N 天”）。
+ */
+export const ACTION_LEAD_DAYS = 180;
 
 /** Next ≥ 16.1 需要 wrangler ≥ 4.59.2（workerd 的 setImmediate 修复，OpenNext 只 warn 不拦）。 */
 export const WRANGLER_MIN_FOR_NEXT_16_1 = "4.59.2";
@@ -47,7 +55,17 @@ export interface MaintenanceWindow {
     supportEndDate: string | null;
     /** 剩余天数（可为负 = 已过期）；未登记则为 null */
     daysLeft: number | null;
+    /** 建议开工日（= 支持截止日 - ACTION_LEAD_DAYS）；未登记则为 null */
+    actionFrom: string | null;
+    /** 是否已进入该排期升级的区间（含已过期） */
+    needsAction: boolean;
     status: WindowStatus;
+}
+
+/** 给导航/卡片用的一行提醒文案；无需行动时 null。 */
+export interface MaintenanceAlert {
+    level: "soon" | "expired";
+    text: string;
 }
 
 const DAY_MS = 86_400_000;
@@ -68,12 +86,21 @@ export function windowStatusForDays(daysLeft: number): WindowStatus {
     return "ok";
 }
 
+/** 建议开工日（YYYY-MM-DD）= 支持截止日往前推 ACTION_LEAD_DAYS 天。 */
+export function actionDateForMajor(major: number): string | null {
+    const end = supportEndForMajor(major);
+    if (!end) return null;
+    end.setUTCDate(end.getUTCDate() - ACTION_LEAD_DAYS);
+    return end.toISOString().slice(0, 10);
+}
+
 /** 计算某主版本的维护窗口（默认用本项目的声明版本）。 */
 export function computeMaintenanceWindow(major: number = DECLARED_NEXT_MAJOR, now: Date = new Date()): MaintenanceWindow {
     const release = NEXT_MAJOR_RELEASE_DATES[major] ?? null;
     const end = supportEndForMajor(major);
+    const actionFrom = actionDateForMajor(major);
     if (!end || !release) {
-        return { major, releaseDate: release, supportEndDate: null, daysLeft: null, status: "unknown" };
+        return { major, releaseDate: release, supportEndDate: null, daysLeft: null, actionFrom, needsAction: true, status: "unknown" };
     }
     const daysLeft = Math.floor((end.getTime() - now.getTime()) / DAY_MS);
     return {
@@ -81,8 +108,28 @@ export function computeMaintenanceWindow(major: number = DECLARED_NEXT_MAJOR, no
         releaseDate: release,
         supportEndDate: end.toISOString().slice(0, 10),
         daysLeft,
+        actionFrom,
+        needsAction: daysLeft <= ACTION_LEAD_DAYS,
         status: windowStatusForDays(daysLeft),
     };
+}
+
+/**
+ * 一行提醒（导航徽章 / 顶部提示条用）。
+ * 未登记主版本也当作“需要行动”——它同样会被 OpenNext 拦住。
+ */
+export function maintenanceAlert(major: number = DECLARED_NEXT_MAJOR, now: Date = new Date()): MaintenanceAlert | null {
+    const w = computeMaintenanceWindow(major, now);
+    if (w.status === "expired") {
+        return { level: "expired", text: `Next ${w.major} 支持窗已过（${w.supportEndDate}）· 部署会被 OpenNext 拦下，请立即升级` };
+    }
+    if (w.status === "unknown") {
+        return { level: "expired", text: `Next ${w.major} 未登记在支持表内 · OpenNext 会判为不支持，请同步 core/maintenance.ts 与 OpenNext 版本` };
+    }
+    if (w.needsAction) {
+        return { level: "soon", text: `Next ${w.major} 支持至 ${w.supportEndDate}（剩 ${w.daysLeft} 天）· 建议 ${w.actionFrom} 前开始升级` };
+    }
+    return null;
 }
 
 /** 简易 semver 比较（只比 major.minor.patch，忽略预发布后缀）：a>b→1，a<b→-1，相等→0。 */

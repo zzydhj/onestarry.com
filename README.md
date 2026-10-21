@@ -90,6 +90,8 @@ Workers Builds 环境变量（**Variables and Secrets → Secrets**）：
 
 > ✅ **过桥 flag 已摘除**（2026-10-21 升到 Next 16.4.2 后）：`cf:build` 现为干净的 `opennextjs-cloudflare build`。历史：Next 15 支持窗于 2026-10-21 过完时，CI 曾在构建第一步 `exit 1`；当时靠 `--dangerouslyUseUnsupportedNextVersion` 过桥。**下次到期前（≈2027-08）请重跑升级而不是永久加 flag**（追踪：`docs/IMPLEMENTATION.md` §12.4/§12.6）。另：`pnpm lint` 目前仍会报错（eslint 从未接通，见 T22），所以**没放进 CI 门禁**。
 
+> **维护节奏（本模板定调）**：不做月度依赖巡检、不装 dependabot。**唯一触发器是后台导航条**：到期前 **180 天亮黄条**（带具体开工日，例 `建议 2027-04-24 前开始升级`）、超窗亮红条，仅 `config:write` 可见；想主动核一遍就跑 `pnpm deps:window`。升级时记住：**部署失败不会让现网挂**（Workers 保留上一版本：新代码上不去，已上线的照跑），真正的风险是“坏版本一上线就 100% 接手”→ 用 **Workers Versions 分阶段放量**（出事秒级把上一版本调回 100%，不重新构建）。发版窗口选**北京时间上午 09:00–11:30**（本站纯欧美市场，此时是美东深夜低峰）。详见架构文档 §15.2 ⑯。
+
 Hyperdrive / R2 / Durable Object 都在 `wrangler.jsonc` 声明，不用 secret。
 
 ---

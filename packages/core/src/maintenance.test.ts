@@ -3,8 +3,10 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import {
     DECLARED_NEXT_MAJOR,
+    actionDateForMajor,
     compatDateStale,
     computeMaintenanceWindow,
+    maintenanceAlert,
     requiredWranglerMin,
     semverCompare,
     supportEndForMajor,
@@ -45,6 +47,29 @@ test("状态阈值：61 天 ok / 60 天 warn / 0 天 warn / 负数 expired", () 
     assert.equal(windowStatusForDays(60), "warn");
     assert.equal(windowStatusForDays(0), "warn");
     assert.equal(windowStatusForDays(-1), "expired");
+});
+
+test("建议开工日 = 支持截止日往前 180 天（维护者只看后台，必须提前半年提醒）", () => {
+    assert.equal(actionDateForMajor(16), "2027-04-24");
+    assert.equal(actionDateForMajor(15), "2026-04-24");
+    assert.equal(actionDateForMajor(99), null);
+});
+
+test("needsAction 边界：剩 181 天不提醒，180 天起提醒（颜色仍可绿）", () => {
+    const end = new Date("2027-10-21T00:00:00Z");
+    const at = (daysAhead: number) => new Date(end.getTime() - daysAhead * 86_400_000);
+    assert.equal(computeMaintenanceWindow(16, at(181)).needsAction, false);
+    assert.equal(computeMaintenanceWindow(16, at(180)).needsAction, true);
+    assert.equal(computeMaintenanceWindow(16, at(180)).status, "ok");
+});
+
+test("提醒文案：窗口内 null · 进排期区给具体开工日 · 过期与未登记给红色", () => {
+    assert.equal(maintenanceAlert(16, NOON_2026_10_21), null); // 剩 364 天
+    const soon = maintenanceAlert(16, new Date("2027-05-01T00:00:00Z"));
+    assert.equal(soon?.level, "soon");
+    assert.match(soon?.text ?? "", /2027-04-24/);
+    assert.equal(maintenanceAlert(15, NOON_2026_10_21)?.level, "expired");
+    assert.equal(maintenanceAlert(99, NOON_2026_10_21)?.level, "expired");
 });
 
 test("semverCompare 只比前三段", () => {
