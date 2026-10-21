@@ -70,18 +70,23 @@ pnpm dev
 
 前台/后台/jobs 各建一个 Cloudflare Workers Builds 项目连本仓库（详见架构 §15.1‑1 与本仓库 `apps/*/wrangler.jsonc`）：
 
-| Worker | Root directory | Framework preset | Build command | Deploy command |
+| Worker | Root | Preset | Build command | Deploy command |
 |---|---|---|---|---|
-| `onestarry-com`（web） | `/` | None | `pnpm install --frozen-lockfile && pnpm --filter @onestarry/web build` | `pnpm --filter @onestarry/web exec wrangler deploy` |
-| `onestarry-admin` | `/` | None | `pnpm install --frozen-lockfile && pnpm --filter @onestarry/admin build` | `pnpm --filter @onestarry/admin exec wrangler deploy` |
+| `onestarry-com`（web） | `/` | None | `pnpm install --frozen-lockfile && pnpm --filter @onestarry/web exec opennextjs-cloudflare build` ✅已核对 | `pnpm --filter @onestarry/web exec wrangler deploy` |
+| `onestarry-admin` | `/` | None | 同 web 模式，把 `web` 换成 `admin`（❗待你顺手核对一次） | `pnpm --filter @onestarry/admin exec wrangler deploy` |
 | `onestarry-jobs` | `/` | None | `pnpm install --frozen-lockfile` | `pnpm --filter @onestarry/jobs-worker exec wrangler deploy` |
+
+另：Workers Builds 的**版本命令**（Preview/本地调试用）web/admin 填 `pnpm --filter @onestarry/<app> exec wrangler dev`；jobs 无。非生产分支构建已勾选 ⇒ 任何分支 push 都会自动跑一次完整构建（生产 Worker 不动），这是升级/重构的第一道回归网；Preview 环境（Set up Worker Previews）未启用。
+
+> ❗ **关键认知（踩过）**：CI 直接调 `exec opennextjs-cloudflare build`，**不走** `package.json` 里的 `deploy` 脚本。所以任何要加给构建的 CLI 参数（如 `--dangerouslyUseUnsupportedNextVersion`）**写在 npm 脚本里对 CI 无效**，必须同时改 Dashboard 命令；建议把构建收进一个 `cf:build` 脚本、Dashboard 只调 `run cf:build`，以后参数增删全在 git 里可审计，Dashboard 不再动。
+> 另：`opennextjs-cloudflare build` 的**第一步**就是 Next 版本支持窗校验（见 `docs/IMPLEMENTATION.md` §12.4），它挂了部署就挂。
 
 Workers Builds 环境变量（**Variables and Secrets → Secrets**）：
 
 - `DATABASE_URL`：**Neon 池化端点**（host 含 `-pooler`），构建期用于 ISR 预渲染。**值不要带引号**（血泪：带引号 → 28P01 认证失败）。
 - `BETTER_AUTH_SECRET`：admin 与 web 各一个（32 字节 base64）。
 
-> ⚠️ **本表待核对（T3）**：上列 Build command 写的是 `next build`，但 `wrangler.jsonc` 的 `main` 指 `.open-next/worker.js` —— 该目录只有 `opennextjs-cloudflare build` 才产出（即 `pnpm --filter @onestarry/web deploy` 的前半段）。站点确实能 push 即部署 ⇒ **Dashboard 里的真实命令与本表不一致**，请从 Workers Builds 项目抄回实际命令再修正本表。另：闸门在 `opennextjs-cloudflare build` 的**第一步**，因此部署路径必过（见 §12.4）。
+> ⚠️ **构建期会连真库**：OpenNext 在构建期预渲染 ISR 页时会用 `DATABASE_URL` 连生产 Neon；secret 值损坏不是降级而是直接构建失败（历史血泪：28P01，见 §12.4 与记忆《Cloudflare Build Secret 中 DATABASE_URL 的值格式规范》）。
 
 Hyperdrive / R2 / Durable Object 都在 `wrangler.jsonc` 声明，不用 secret。
 

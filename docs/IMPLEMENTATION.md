@@ -420,8 +420,8 @@ onestarry.com/
 |---|---|---|---|---|
 | T1 | 站级身份单一真源 | 🟡 半成 | `packages/core/src/site.ts` 已集中 `SITE_ORIGIN / SITE_NAME / MEDIA_PUBLIC_BASE`，web 的 layout / sitemap / robots / PDP 均已从中取（true-brand 扫描不再命中它们）；**但仍有 8 处代码字面量绕过它**：`apps/admin/app/layout.tsx`（title `onestarry · Admin` + description `OneStarry 管理后台`）、`apps/admin/components/AdminNav.tsx:47` 顶栏、`apps/web/app/search/page.tsx:10` 描述、`SiteFooter.tsx:9`、`SiteHeader.tsx:9`、`packages/auth/src/index.ts:19,30` 两个 `appName` | 换皮者照文档只改 site.ts → 后台标题、页脚、auth 发出的邮件品牌仍是旧名。建议这 8 处统一 `import { SITE_NAME }`。（wrangler 里的 worker/桶名、`api/health` 与 jobs 的 `service` 字段、importProviders 的 UA 属**基础设施命名**，保持字面量即可） |
 | T2 | 换皮主文档过时 | 🔴 | `docs/REBRAND.md` §1 写着「`SITE` 常量散在前台」并给 9 文件批量替换表 + 「重构机会」注 —— 实际该重构**早已完成** | 换皮者按表全量 replace 会误伤（把 site.ts 之外不该动的一起改）。→ 本轮已改写 §1 |
-| T3 | README 部署表与事实不符 | 🔴 | 表里 web/admin 的 Build command = `pnpm --filter @onestarry/web build`（= `next build`），但 `apps/web/wrangler.jsonc` 的 `main` 指 `.open-next/worker.js`，只有 `opennextjs-cloudflare build` 才产出它；而站点确实能 push 即部署 ⇒ Dashboard 里的真实命令 ≠ 表格 | 模板门面步骤被照抄就必炸。→ 需人工到 Workers Builds 抄一次实际 Build/Deploy 命令回写 README（CLI 读不到 Builds 项目配置，我没擅自改） |
-| T4 | LICENSE | 🔴 缺 | 仓库根只有 README / .env.example / pnpm-* / tsconfig.base / neon.ts，**无 LICENSE** | 「可长期复用模板」若无授权声明，给外部/别的法人用是法务空白。→ 需你定（内部模板声明 or MIT or 保留所有权利） |
+| T3 | README 部署表与事实不符 | ✅ 已核对并回写（2026-10-21） | 表里 web/admin 的 Build command = `pnpm --filter @onestarry/web build`（= `next build`），但 `apps/web/wrangler.jsonc` 的 `main` 指 `.open-next/worker.js`，只有 `opennextjs-cloudflare build` 才产出它；而站点确实能 push 即部署 ⇒ Dashboard 里的真实命令 ≠ 表格 | 模板门面步骤被照抄就必炸。→ 用户已从 Dashboard 抄回真实命令：**Build = `pnpm install --frozen-lockfile && pnpm --filter @onestarry/web exec opennextjs-cloudflare build`**、Deploy = `... exec wrangler deploy`、版本命令 = `... exec wrangler dev`、根目录 `/`。README 已按实回写（admin 仍标“待核对”）。**关键发现**：CI 直调 `opennextjs-cloudflare build`，**不走 npm 的 `deploy` 脚本** ⇒ 任何构建期 CLI 参数写在 `package.json` 里对 CI 无效；建议把构建收进 `cf:build` 脚本、Dashboard 只调 `run cf:build`，以后参数增删全在 git 里可审计 |
+| T4 | LICENSE | 🟡 已定：仅内部使用（2026-10-21） | 仓库根只有 README / .env.example / pnpm-* / tsconfig.base / neon.ts，**无 LICENSE** | 「可长期复用模板」若无授权声明，给外部/别的法人用是法务空白。→ 用户明确“只给自己用、不对外”。→ 建议仅放一份 3 行 `LICENSE.md`（专有 · 仅内部使用 · 未经授权不得分发），价值不在法务而在防误操作（仓库转 public / 外包 fork / 误发 npm）；不要授权文本则可本行标“已确认无需” |
 | T5 | 跨平台可跑性 | 🟡 | 根 `clean` = `turbo run clean && rm -rf node_modules`，PowerShell/cmd 无 `rm -rf` | Windows 用户跑 `pnpm clean` 直接报错。→ 换 node 实现或删掉 rm 部分 |
 | T6 | 死配置 | 🟡 | `turbo.json` `globalEnv` 含 `NEXT_PUBLIC_APP_URL`、`NEXT_PUBLIC_DEFAULT_LOCALE`；但**全仓 `NEXT_PUBLIC_*` 引用数 = 0**，`.env.example` 里也没这两项 | 新人会改完发现不生效。→ 删掉，或真做成「前端可配的站点 URL/默认语言」 |
 | T7 | `@onestarry/shared` 空壳 | 🔴 | `packages/shared/src` 不存在（Test-Path False）；`apps/{web,admin}/next.config.ts` 的 `transpilePackages` 仍列它；根 `pnpm typecheck` / `pnpm build` **整仓红**（改动前既已存在，见 D14/N17） | 「一键绿」是模板的门面，也是别人判断这模板健不健全的第一印象。→ 要么把业务常量真迁进去，要么删包 + 清 4 处引用 |
@@ -431,7 +431,7 @@ onestarry.com/
 | # | 项 | 状态 | 本轮证据 | 影响 / 建议动作 |
 |---|---|---|---|---|
 | T8 | CI 里没有测试 | 🔴 | 无 `.github/`；Workers Builds 只跑 build+deploy；`turbo.json` **没有 `test` task**；根 `package.json` **没有 `test` 脚本** | core 的 28 个单测与 db 的 10 个 `smoke:*` 全靠人肉跑（§7）。这也是「升 Next 不敢按」的根因 —— 没有回归网，任何版本变动都是盲跳。→ 加 `test` 脚本 + turbo task，并把 `typecheck && lint && test` 挂进 Workers Builds 的 Build command（build 之前失败就不会部署） |
-| T9 | 无预览环境 / 无 e2e | 🟡 | web/admin 各只有一个生产 Worker；本地 `opennextjs-cloudflare preview` 在 Windows 因 symlink EPERM 跑不通（D17）；无 Playwright（本轮验证靠静态审计 + 连库断言 + 手工截图） | 改动只能在生产验证。→ 要么起 `*-preview` Worker，要么用 Workers「Versions 分阶段放量 0%→10%→100%」当轻量预览 + 秒级回滚 |
+| T9 | 无预览环境 / 无 e2e | 🟡 已找到原生入口 | web/admin 各只有一个生产 Worker；本地 `opennextjs-cloudflare preview` 在 Windows 因 symlink EPERM 跑不通（D17）；无 Playwright。**但 Dashboard 实测：「非生产分支构建」已勾选**（任何分支 push 自动跑完整构建、生产不动）；**「Set up Worker Previews」存在且未启用** | 分支构建就是升级的第一道回归网（typecheck+build 失败=构建失败）。Preview 建议启用，但 ⚠️ **preview Worker 沿用同一套 Hyperdrive/R2 绑定 ⇒ 连的是生产 Neon**，只能验证渲染/交互，**不得在 preview 上下单/改价/发货**，除非同时接 Neon 分支隔离 |
 | T10 | 后台缺错误边界 | 🟡 | `apps/admin/app/not-found.tsx`、`error.tsx` **均不存在**（web 侧 `not-found/error/global-error` 三件套齐全 ✓） | 后台任一渲染异常 = 整页白屏，运营会以为挂了 |
 
 ### 12.3 C 组 · 上线要过的安全与运维默认值
@@ -454,6 +454,7 @@ onestarry.com/
 - 逃生阀 `--dangerouslyUseUnsupportedNextVersion` 的默认值是硬编码 `false`，**不读环境变量**（对比同文件的 `skipWranglerConfigCheck` 会读 `SKIP_WRANGLER_CONFIG_CHECK`）⇒ 只能写进命令行（package.json 脚本 or CI 的 Build/Deploy command）。
 - 还有第二道：`ensureNextjsVersionSupported` 硬拦 `next < 14.2`，并对 **Next ≥16.1 要求 wrangler ≥4.59.2**（workerd 的 setImmediate 修复，cloudflare/dist/cli/utils/nextjs-support.js）；本仓三处均声明 `wrangler ^4.28.1`，registry 最新 `4.151.3`。
 - `opennextjs-cloudflare build` 的**第一步**就是这道闸门（cli/build/build.js:34-38）⇒ 部署路径必过 ⇒ 从今天起任何新部署失败。**现网不受影响**：Workers 保留历史版本，控制台 Versions 可把上一版本调回 100%。
+- ✅ **已核对 CI 实际命令（T3）**：web 的 Build command = `pnpm install --frozen-lockfile && pnpm --filter @onestarry/web exec opennextjs-cloudflare build` ⇒ 确认部署路径逐次经过这道闸门，Dashboard 已出现“上一次构建失败”红条。⚠️ 它**不走** `package.json` 的 `deploy` 脚本 → **只改 npm 脚本无法给 CI 过桥**；要么改 Dashboard 命令，要么新增 `cf:build` 脚本并把 Dashboard 改指 `run cf:build`（后者只需改一次，以后 flag 的加与删都在 git 里）。
 
 | # | 项 | 优先级 | 一句话 |
 |---|---|---|---|
@@ -461,8 +462,9 @@ onestarry.com/
 | T18 | 正解：升 Next 16.4.2（同批 bump wrangler ≥4.59.2，实到 ^4.151） | P0（半天级） | 买到 2027-10-21 前的窗口；风险由 T8 的测试门禁兜住，**所以顺序是先 T8 后 T18** |
 | T19 | 稳态：`pnpm deps:window` 自检脚本（内置 NEXT_RELEASE_DATES 表 → 打印当前主版本支持到期日与剩余天数，<60 天在 CI 里 warn） | P1 | 把「外置的、日期一到突然 exit 1」的闸门，变成「自己提前 60 天知道」的预警 |
 | T20 | 节奏：文档写死「≤2 年必须做一次 Next 主版本升级」+ 升级 runbook（分支预演 → 迁移在 Neon branch 跑 → typecheck/test/build → Versions 放量） | P1 | 模板的长期可维护性说明，见 §12.6 |
+| T21 | **预警可见面放后台**（用户 2026-10-21 提问触发）：超管概览页加一张只读「维护窗口」卡 —— 当前 Next 版本 / 支持到期日 / 剩余天数（>60 灰、<60 黄、<30 红），同卡附两个已有真数据的健康信号：`transactional_outbox` 积压（jobs `/health` 已返回 `pending`）+ 最近一次 Cron 成功时间 | P1 | 光靠 CI 日志/本地脚本，用户平时看不到。权限：仅对 `config:write`（super_admin）渲染。局限：卡上日期是**我们登记的静态预测**（抄自 OpenNext 发布日表），不是真相源 —— 所以 T19 脚本与 T21 卡两者都要（脚本给 CI/校验，卡给人看） |
 
-### 12.5 建议施工顺序（把上面 20 项收敛成一条线）
+### 12.5 建议施工顺序（把上面 21 项收敛成一条线）
 
 ```
 ① T7 shared 空壳        —— 先让 pnpm -r typecheck/build 一键全绿（后面所有验证的前提）
