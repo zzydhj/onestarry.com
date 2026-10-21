@@ -9,3 +9,4 @@ export * from "./rbac";
 export * from "./media";
 export * from "./csv";
 export * from "./maintenance";
+export * from "./health";

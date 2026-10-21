@@ -1,10 +1,13 @@
 import type { NextConfig } from "next";
+import { buildStamp } from "../../scripts/build-stamp.mjs";
 
 const nextConfig: NextConfig = {
     // 图片走 Cloudflare Images / R2 loader（后续接）；先不启用 Vercel 优化器
     images: { unoptimized: true },
     // 内部 workspace 包以 TS 源码导出，需让 Next 转译
     transpilePackages: ["@onestarry/db", "@onestarry/auth", "@onestarry/core", "@onestarry/ui"],
+    // 构建期注入提交号与构建时间，供 /api/health 回答“线上跑的是哪个版本”（放量时用）
+    env: buildStamp(),
     // 安全响应头（全路由附加头，不碰 Cache-Control）。注：ISR 页 s-maxage 是剩余新鲜度倒计时，
     // 接近过期时看到小值属正常，非缓存回归。暂不加严格 CSP（需 nonce，易与 Next 水合冲突）。
     async headers() {
