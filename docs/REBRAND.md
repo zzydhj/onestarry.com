@@ -17,18 +17,18 @@
 rg -n "(?<!@)onestarry[\w.-]*" apps packages --glob '!cloudflare-env.d.ts'
 ```
 
-**仍需人工过一眼的残留**（本轮实测，8 处代码 + 基础设施命名）：
+**2026-10-21 已收口（模板待办 T1 已做完）**：下面前五类文案已全部改为从 `SITE_NAME` 派生，**换皮时不用手改**；只剩“基础设施命名”三类仍需人工改（它们故意不经 `site.ts`）：
 
 | 文件 | 现值 | 处置 |
 |---|---|---|
-| `apps/admin/app/layout.tsx` | `title: "onestarry · Admin"` / `description: "OneStarry 管理后台"` | 建议改 `import { SITE_NAME } from "@onestarry/core"`（模板待办 **T1**） |
-| `apps/admin/components/AdminNav.tsx` | 顶栏 `<span>onestarry · 后台</span>` | 同上 |
-| `apps/web/app/search/page.tsx` | `description: "Search the onestarry catalog."` | 同上 |
-| `apps/web/components/SiteFooter.tsx` / `SiteHeader.tsx` | 页脚 © 与顶栏品牌字 | 同上 |
-| `packages/auth/src/index.ts` | `appName: "onestarry"` / `"onestarry-admin"` | 同上（**auth 发出的邮件里会用 appName**） |
-| `apps/{web,admin,jobs}/wrangler.jsonc` | `name` / `bucket_name` / `services[].service` | 属 Worker 与桶命名，见下面 §2/§3，**不经 site.ts** |
-| `apps/web/app/api/health/route.ts`、`apps/jobs/index.ts` | 响应里 `service: "onestarry-web" / "onestarry-jobs"` | 与 Worker 名保持一致即可 |
-| `apps/admin/lib/importProviders.ts` | 抓取 UA `onestarry-import/1.0` | 可选 |
+| `apps/admin/app/layout.tsx` | `title` / `description` | ✅ 已改为 `${SITE_NAME} · Admin` / `${SITE_NAME} 管理后台`，不用手改 |
+| `apps/admin/components/AdminNav.tsx` | 顶栏品牌字 | ✅ 已用 `{SITE_NAME}` |
+| `apps/web/app/search/page.tsx` | 描述文案 | ✅ 已用 `${SITE_NAME}` |
+| `apps/web/components/SiteFooter.tsx` / `SiteHeader.tsx` | 页脚 © 与顶栏品牌字 | ✅ 已用 `{SITE_NAME}` |
+| `packages/auth/src/index.ts` | `appName`×2（**auth 发出的邮件里会用**） | ✅ 已用 `SITE_NAME` / `` `${SITE_NAME}-admin` `` |
+| `apps/{web,admin,jobs}/wrangler.jsonc` | `name` / `bucket_name` / `services[].service` | ⚠️ **仍需手改**（Worker 与桶命名），见下面 §2/§3 |
+| `apps/{web,admin}/app/api/health/route.ts`、`apps/jobs/index.ts` | `service: "onestarry-web" / "onestarry-admin" / "onestarry-jobs"` | ⚠️ **仍需手改**：这是**部署标识不是品牌文案**，改了要跟 Worker 名同步（否则监控对不上号） |
+| `apps/admin/lib/importProviders.ts` | 抓取 UA `onestarry-import/1.0` | 可选（对外可见的标识，建议跟着品牌改） |
 
 > 历史注：本节旧版本列过一张「`SITE` 常量散在 9 个前台文件、建议顺手重构」的批量替换表。该重构**已经做完**（统一到 `site.ts`），再照旧表做全局 replace 会误伤无关文件。详见 `docs/IMPLEMENTATION.md` §12.1 T1/T2。
 

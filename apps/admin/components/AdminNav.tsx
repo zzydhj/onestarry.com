@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { makeAuthClient } from "@onestarry/auth/client";
+import { SITE_NAME } from "@onestarry/core";
 import type { MaintenanceAlert, PermissionKey } from "@onestarry/core";
 
 const authClient = makeAuthClient();
@@ -51,7 +52,7 @@ export function AdminNav({ permissions = [], alert = null }: { permissions?: Per
         <header className="border-b border-line bg-white">
             <div className="mx-auto flex max-w-5xl items-center justify-between px-4 py-3">
                 <div className="flex items-center gap-6">
-                    <span className="text-lg font-semibold tracking-tight text-brand">onestarry · 后台</span>
+                    <span className="text-lg font-semibold tracking-tight text-brand">{SITE_NAME} · 后台</span>
                     <nav className="flex items-center gap-4 text-sm">
                         {links.map((l) => {
                             const active = l.href === "/" ? pathname === "/" : pathname.startsWith(l.href);

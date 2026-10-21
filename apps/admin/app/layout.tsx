@@ -3,11 +3,11 @@ import type { ReactNode } from "react";
 import "./globals.css";
 import { AdminNav } from "@/components/AdminNav";
 import { readAdminSession } from "@/lib/auth";
-import { maintenanceAlert, PERMISSIONS } from "@onestarry/core";
+import { maintenanceAlert, PERMISSIONS, SITE_NAME } from "@onestarry/core";
 
 export const metadata: Metadata = {
-    title: "onestarry · Admin",
-    description: "OneStarry 管理后台",
+    title: `${SITE_NAME} · Admin`,
+    description: `${SITE_NAME} 管理后台`,
     robots: { index: false, follow: false },
 };
 

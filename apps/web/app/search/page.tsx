@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { searchProducts } from "@onestarry/db";
+import { SITE_NAME } from "@onestarry/core";
 import { getDb } from "@/lib/db";
 import { ProductGrid } from "@/components/ProductGrid";
 
@@ -7,7 +8,7 @@ export const dynamic = "force-dynamic"; // 搜索词多变、按需查库（Hype
 
 export const metadata: Metadata = {
     title: "Search",
-    description: "Search the onestarry catalog.",
+    description: `Search the ${SITE_NAME} catalog.`,
     robots: { index: false, follow: false },
 };
 

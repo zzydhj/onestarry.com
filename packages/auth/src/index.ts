@@ -1,6 +1,7 @@
 import { betterAuth } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import { createDb, customerAuthSchema, adminAuthSchema } from "@onestarry/db";
+import { SITE_NAME } from "@onestarry/core";
 
 /**
  * Better Auth 双实例工厂（Workers 友好）。
@@ -51,7 +52,8 @@ const ADVANCED = {
 export function createCustomerAuth({ connString, baseURL, secret }: AuthEnvConfig) {
     const db = createDb(connString);
     return betterAuth({
-        appName: "onestarry",
+        // appName 会出现在重置密码邮件等对外文案里 → 跟着品牌走，不写字面量
+        appName: SITE_NAME,
         baseURL,
         secret,
         database: drizzleAdapter(db, { provider: "pg", schema: customerAuthSchema }),
@@ -64,7 +66,7 @@ export function createCustomerAuth({ connString, baseURL, secret }: AuthEnvConfi
 export function createAdminAuth({ connString, baseURL, secret }: AuthEnvConfig) {
     const db = createDb(connString);
     return betterAuth({
-        appName: "onestarry-admin",
+        appName: `${SITE_NAME}-admin`,
         baseURL,
         secret,
         database: drizzleAdapter(db, { provider: "pg", schema: adminAuthSchema }),
