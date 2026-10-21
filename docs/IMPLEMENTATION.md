@@ -40,7 +40,7 @@
 ```
 onestarry.com/
 ├── apps/
-│   ├── web/        前台（Next 15 + OpenNext → Worker `onestarry-com`）  51 个 ts/tsx
+│   ├── web/        前台（Next 16 + OpenNext → Worker `onestarry-com`）  51 个 ts/tsx
 │   ├── admin/      后台（Worker `onestarry-admin`）                      48 个 ts/tsx
 │   └── jobs/       Cron Worker `onestarry-jobs`（纯 Worker，非 Next）     1 个 index.ts
 ├── packages/
@@ -367,7 +367,7 @@ onestarry.com/
 | N13 | 集成 API 严格验签 | `integration/_lib/access.ts` 补 JWKS 校验 + scope + IP allowlist |
 | N14 | CMS 阶段2/3 | `ContentEditor` 加 Image 扩展 + 上传 action（R2 key `content/{contentId}/`）；content 的 seo_meta 面板复用 `upsertSeoMeta` |
 | N15 | 测试进流水线 | `turbo.json` 加 `test` 任务；（可选）把 `tsx --test` 换 Vitest 以对齐文档，或改文档 §12 |
-| N16 | **Next 15 支持窗已过 → CI 构建失败**（已实测确认） | ⛳ **正解**：升 Next 16.4.2 + wrangler ≥4.59.2（T18，本批执行）；✅ **过桥已改方案**：新增 `cf:build` 脚本承载 flag（T17）。⚠️ **旧写法已推翻**：只改 `preview`/`deploy` 脚本**修不好 CI** —— 已核 Dashboard 的 Build command 是 `exec opennextjs-cloudflare build`，不走 npm 脚本；必须把 Dashboard 改指 `run cf:build`（已实测确认，详 §12.4） |
+| N16 | ~~Next 15 支持窗已过 → CI 构建失败~~ | ✅ **已解 2026-10-21**：升到 Next 16.4.2 + wrangler 4.151.3，`cf:build` 的过桥 flag 已摘（详 §12.4 T18）。保留的教训（写进§12.6）：**CI 直调 `exec opennextjs-cloudflare build`、不走 npm 脚本** —— 构建期参数写在 `package.json` 里对 CI 无效，要么改 Dashboard、要么把构建收进 `cf:build` 并改指一次 |
 | N17 | ~~`pnpm typecheck` 被空壳包卡住~~ | ✅ **已结案 2026-10-21**：选②（删包 + 清 `transpilePackages` 引用），根 `pnpm typecheck` 8/8 全绿。若将来真需要 money/i18n/pagination 共享工具，放 `packages/core`（单入口），不再保留两个“共享包” |
 
 ---
@@ -391,7 +391,7 @@ onestarry.com/
 | D13 | §3.7 | customer 业务属性进 `customer_profiles` | 表在，零引用（前后台都没读写） | 偏好语言/市场/营销开关无处落 | 接前台偏好时一并启用 |
 | D14 | §13 | 集成契约 zod 单一真源进 `packages/shared` + OpenAPI | `packages/shared` 是**空壳**（package.json 指向不存在的 src） | 外部程序无契约可依 | ✅ **2026-10-21 已删包**（走“从文档删掉这条承诺”路线）；契约层若要做，放 `packages/core` 或新建 `packages/contract`，别再用 shared 这个名字 |
 | D15 | §7/§15.2 | 后台强制 2FA/Passkey、审计 diff、财务限额；**不开放公开注册** | ✅ 注册面已封（HTTP 层 `/sign-up*` → 403，`lib/authGuard.ts`）；❌ 2FA/审计/限额仍 ❌ | 原风险：任何人可自助注册后台账号 | HTTP 拦截已上；**未用 better-auth `disableSignUp`**（会连带拒掉进程内建号 → 团队页就废了）；2FA/限额待开工 |
-| D16 | §1 L30 | "以 OpenNext 当前稳定支持版本为准，不死守 15" | 实际钉在 Next 15.5.28；**2026-10-21 起 OpenNext 拒绝构建 15.x**（支持窗口 = 发布 +2 年） | CI 下一次部署直接失败 | 见 N16：已过桥（`cf:build`）+ 本批执行升 16.4.2；§1 的“不死守 15”承诺正式落地 |
+| D16 | §1 L30 | "以 OpenNext 当前稳定支持版本为准，不死守 15" | ✅ **已落地**：实装 Next **16.4.2**（支持窗至 2027-10-21）+ wrangler 4.151.3；此前钉在 15.5.28 且 2026-10-21 起被 OpenNext 拒构建 | 部署能力恢复（待分支合并后由 CI 验证） | N16 结案；下一次升级请提前 6 个月（≈2027-04 开始） |
 | D17 | 无（本轮新发现） | — | 本地 Windows 跑不了 `opennextjs-cloudflare build`：Next standalone tracing 建符号链接 `EPERM`（需开发者模式/管理员） | admin 的 worker 本地预览不可用，e2e 只能靠真机部署或连库脚本 | 要本地预览：开 Windows 开发者模式或用 WSL；不阻塞交付 |
 
 ---
@@ -458,8 +458,8 @@ onestarry.com/
 
 | # | 项 | 优先级 | 一句话 |
 |---|---|---|---|
-| T17 | 过桥：构建收进 `cf:build` 脚本 | 🟡 仓库侧已落地（2026-10-21），**差你改一次 Dashboard** | web/admin 各新增 `"cf:build": "opennextjs-cloudflare build --dangerouslyUseUnsupportedNextVersion"`，且 `preview`/`deploy` 改为复用它（flag 只一处） | 你要做的：把两个 Builds 项目的 Build command 末尾改成 `run cf:build`（**只需这一次**）。之后升完 Next 我把 flag 从脚本里删掉，Dashboard 不再动 —— flag 的存在/消失全在 git 历史里可审计。**到期即删**：T18 完成后立即摘 |
-| T18 | 正解：升 Next 16.4.2（同批 bump wrangler ≥4.59.2，实到 ^4.151） | P0（半天级） | 买到 2027-10-21 前的窗口；风险由 T8 的测试门禁兜住，**所以顺序是先 T8 后 T18** |
+| T17 | 过桥：构建收进 `cf:build` 脚本 | ✅ **已拆桥**（2026-10-21）：flag 已随升级删除，`cf:build` 现为干净的 `opennextjs-cloudflare build` | 历史：升级期间靠该 flag 恢复部署能力；因 CI 直调 `exec opennextjs-cloudflare build`，**写在 npm 脚本里的 flag 对 CI 无效**（这是本轮最值钱的一条认知） | 遗留动作（非应急）：把 Dashboard 的 Build command 改指 `run cf:build` + 加 `pnpm typecheck && pnpm test` 两步，收益是参数只住仓库、门禁前置；**不改也能部署**（旧命令在 Next 16 上能过闸门） |
+| T18 | 正解：升 Next 16.4.2 | ✅ **已完成（2026-10-21，分支 `chore/next-16`）** | 实装 next **16.4.2** / react 19.3.1（peer 未变，无需动）/ wrangler **4.151.3**；root `engines.node` 提到 `>=20.9`。**命中面核查全部免改**：24 处 `params/searchParams` 已 Promise+await、cookies/headers 已 await、无 opengraph-image/icon、sitemap 无 `id`、无 experimental_ppr/unstable_/next lint、无自定义 webpack。**验证**：`pnpm typecheck` 8/8、`pnpm test` 28/28、admin `next build` ✓、web `next build` ✓（**构建期连真 Neon 预渲染 10/10 页**）、`cf:build` 已过版本闸门（日志 `Next.js version : 16.4.2` → 进入 Bundling），只剩 Windows symlink EPERM（D17；Linux CI 无此问题） |
 | T19 | 稳态：`pnpm deps:window` 自检脚本（内置 NEXT_RELEASE_DATES 表 → 打印当前主版本支持到期日与剩余天数，<60 天在 CI 里 warn） | P1 | 把「外置的、日期一到突然 exit 1」的闸门，变成「自己提前 60 天知道」的预警 |
 | T20 | 节奏：文档写死「≤2 年必须做一次 Next 主版本升级」+ 升级 runbook（分支预演 → 迁移在 Neon branch 跑 → typecheck/test/build → Versions 放量） | P1 | 模板的长期可维护性说明，见 §12.6 |
 | T21 | **预警可见面放后台**（用户 2026-10-21 提问触发）：超管概览页加一张只读「维护窗口」卡 —— 当前 Next 版本 / 支持到期日 / 剩余天数（>60 灰、<60 黄、<30 红），同卡附两个已有真数据的健康信号：`transactional_outbox` 积压（jobs `/health` 已返回 `pending`）+ 最近一次 Cron 成功时间 | P1 | 光靠 CI 日志/本地脚本，用户平时看不到。权限：仅对 `config:write`（super_admin）渲染。局限：卡上日期是**我们登记的静态预测**（抄自 OpenNext 发布日表），不是真相源 —— 所以 T19 脚本与 T21 卡两者都要（脚本给 CI/校验，卡给人看） |

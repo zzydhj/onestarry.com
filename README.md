@@ -11,7 +11,7 @@
 
 | 层 | 选型 |
 |---|---|
-| 前台/后台 | Next.js 15（App Router + RSC + Server Actions）+ OpenNext on Cloudflare Workers ⚠️ **Next 主版本只维护 2 年**：15.x 的支持窗于 2026-10-21 已过，OpenNext 构建会因此 `exit 1`；升版规则与待办见 `docs/IMPLEMENTATION.md` §12.4（T17–T20） |
+| 前台/后台 | Next.js 16（App Router + RSC + Server Actions，**Turbopack 默认**）+ OpenNext on Cloudflare Workers ⚠️ **Next 主版本只维护 2 年**：16.4.2 的支持窗到 **2027-10-21**，到期前必须再升一次（机制与待办见 `docs/IMPLEMENTATION.md` §12.4） |
 | 数据 | Neon PostgreSQL（US-East，池化端点 + Hyperdrive）+ Drizzle ORM |
 | 认证 | Better Auth（双实例：customer / admin） |
 | 存储 | Cloudflare R2（媒体 + ISR 整页缓存） |
@@ -40,7 +40,7 @@ packages/
 
 ## 本地跑起来
 
-**前置**：Node ≥20、pnpm 9.15+、一个 Neon project、一个 Cloudflare account（Hyperdrive + 2 个 R2 + Durable Object）。
+**前置**：Node ≥20.9（Next 16 硬性要求）、pnpm 9.15+、一个 Neon project、一个 Cloudflare account（Hyperdrive + 2 个 R2 + Durable Object）。
 
 ```bash
 # 1. 装依赖
@@ -79,7 +79,7 @@ pnpm dev
 另：Workers Builds 的**版本命令**（Preview/本地调试用）web/admin 填 `pnpm --filter @onestarry/<app> exec wrangler dev`；jobs 无。非生产分支构建已勾选 ⇒ 任何分支 push 都会自动跑一次完整构建（生产 Worker 不动），这是升级/重构的第一道回归网；Preview 环境（Set up Worker Previews）未启用。
 
 > ❗ **关键认知（踩过）**：CI 直接调 `exec opennextjs-cloudflare build`，**不走** `package.json` 里的 `deploy` 脚本。所以任何要加给构建的 CLI 参数（如 `--dangerouslyUseUnsupportedNextVersion`）**写在 npm 脚本里对 CI 无效**，必须同时改 Dashboard 命令；建议把构建收进一个 `cf:build` 脚本、Dashboard 只调 `run cf:build`，以后参数增删全在 git 里可审计，Dashboard 不再动。
-> 另：`opennextjs-cloudflare build` 的**第一步**就是 Next 版本支持窗校验（见 `docs/IMPLEMENTATION.md` §12.4），它挂了部署就挂。
+> 另：`opennextjs-cloudflare build` 的**第一步**就是 Next 版本支持窗校验（见 `docs/IMPLEMENTATION.md` §12.4），它挂了部署就挂。—— 升到 Next 16 后，**旧的 `exec opennextjs-cloudflare build` 也能正常过闸门**，所以改 Dashboard 不再是“不改进不了”的应急项；改它的收益是：把 `typecheck + test` 纳入构建前置（挂了就不部署）+ 让未来任何构建参数的增删都只改仓库脚本、不动 Dashboard。
 
 Workers Builds 环境变量（**Variables and Secrets → Secrets**）：
 
@@ -88,7 +88,7 @@ Workers Builds 环境变量（**Variables and Secrets → Secrets**）：
 
 > ⚠️ **构建期会连真库**：OpenNext 在构建期预渲染 ISR 页时会用 `DATABASE_URL` 连生产 Neon；secret 值损坏不是降级而是直接构建失败（历史血泪：28P01，见 §12.4 与记忆《Cloudflare Build Secret 中 DATABASE_URL 的值格式规范》）。
 
-> 🔴 **`cf:build` 里现在带了一个临时过桥 flag**：`opennextjs-cloudflare build --dangerouslyUseUnsupportedNextVersion`，因为 Next 15 的 2 年支持窗已于 2026-10-21 过完（OpenNext 对 15.x 直接 `exit 1`）。**升到受支持主版本后必须摘掉它**（追踪：`docs/IMPLEMENTATION.md` §12.4 T17/T18）。另：`pnpm lint` 目前仍会报错（eslint 从未接通，见 T22），所以**没放进 CI 门禁**。
+> ✅ **过桥 flag 已摘除**（2026-10-21 升到 Next 16.4.2 后）：`cf:build` 现为干净的 `opennextjs-cloudflare build`。历史：Next 15 支持窗于 2026-10-21 过完时，CI 曾在构建第一步 `exit 1`；当时靠 `--dangerouslyUseUnsupportedNextVersion` 过桥。**下次到期前（≈2027-08）请重跑升级而不是永久加 flag**（追踪：`docs/IMPLEMENTATION.md` §12.4/§12.6）。另：`pnpm lint` 目前仍会报错（eslint 从未接通，见 T22），所以**没放进 CI 门禁**。
 
 Hyperdrive / R2 / Durable Object 都在 `wrangler.jsonc` 声明，不用 secret。
 
