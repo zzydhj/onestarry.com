@@ -10,32 +10,27 @@
 
 ### 1. 站点域名（决定 SEO/canonical/sitemap/robots/OG）
 
-单一真源在 `packages/core/src/media.ts` 之外还有一处 `SITE` 常量散在前台。批量替换（PowerShell + ripgrep 示例，把 `onestarry.com` → 你的 `newshop.io`）：
+**单一真源已抽好（2026-10-21 核对代码）**：`packages/core/src/site.ts` 的三个常量 —— `SITE_ORIGIN`（scheme+host）/ `SITE_NAME`（品牌名）/ `MEDIA_PUBLIC_BASE`（图床基址，`media.ts` 由它拼 URL）。前台 `layout.tsx` 的 `metadataBase`+title 模板+og:site_name、`page.tsx` 的 WebSite/Organization JSON-LD、`sitemap.ts`、`robots.ts`、`products|categories|brands/[slug]` 的 canonical+OG —— **这 8 个文件全部从它派生**，换域名只改 `site.ts` 一处：
 
 ```powershell
-# 先 dry-run 看会命中哪些行
-rg -n "onestarry\.com" apps packages --type-add 'src:*.{ts,tsx,css,jsonc}' -t src
-
-# 全局替换（谨慎：先 git 干净、后 diff 复查）
-Get-ChildItem apps,packages -Recurse -Include *.ts,*.tsx,*.jsonc,*.md `
-  | ForEach-Object { (Get-Content $_) -replace 'https://onestarry\.com','https://newshop.io' -replace 'https://media\.onestarry\.com','https://cdn.newshop.io' | Set-Content $_ }
+# 先看 site.ts 之外还剩哪些真品牌字面量（排除 @onestarry/* 包名导入）
+rg -n "(?<!@)onestarry[\w.-]*" apps packages --glob '!cloudflare-env.d.ts'
 ```
 
-**要人工过一眼的具体位置**：
+**仍需人工过一眼的残留**（本轮实测，8 处代码 + 基础设施命名）：
 
-| 文件 | 出现 | 备注 |
+| 文件 | 现值 | 处置 |
 |---|---|---|
-| `packages/core/src/media.ts` | `MEDIA_PUBLIC_BASE = "https://media.onestarry.com"` | **商品图 CDN 单一真源**，改这里一处 |
-| `apps/web/app/layout.tsx` | `metadataBase: new URL("https://onestarry.com")` / `title.default` / `title.template "%s · onestarry"` / `openGraph.siteName` | 品牌字面量集中在这 |
-| `apps/web/app/page.tsx` | `SITE_JSONLD.url / publisher.url / publisher.name` | Organization 结构化数据 |
-| `apps/web/app/sitemap.ts` | `const BASE = "https://onestarry.com"` | 生成 sitemap.xml 里的绝对 URL |
-| `apps/web/app/robots.ts` | `sitemap: "https://onestarry.com/sitemap.xml"` | robots.txt 指向 |
-| `apps/web/app/products/[slug]/page.tsx` | `const SITE = "https://onestarry.com"` | canonical + OG |
-| `apps/web/app/categories/[slug]/page.tsx` | `const SITE = "https://onestarry.com"` | 同上 |
-| `apps/web/app/brands/[slug]/page.tsx` | `const SITE = "https://onestarry.com"` | 同上 |
-| `apps/admin/components/AdminNav.tsx` | `<span>onestarry · 后台</span>` | 后台顶部品牌字样 |
+| `apps/admin/app/layout.tsx` | `title: "onestarry · Admin"` / `description: "OneStarry 管理后台"` | 建议改 `import { SITE_NAME } from "@onestarry/core"`（模板待办 **T1**） |
+| `apps/admin/components/AdminNav.tsx` | 顶栏 `<span>onestarry · 后台</span>` | 同上 |
+| `apps/web/app/search/page.tsx` | `description: "Search the onestarry catalog."` | 同上 |
+| `apps/web/components/SiteFooter.tsx` / `SiteHeader.tsx` | 页脚 © 与顶栏品牌字 | 同上 |
+| `packages/auth/src/index.ts` | `appName: "onestarry"` / `"onestarry-admin"` | 同上（**auth 发出的邮件里会用 appName**） |
+| `apps/{web,admin,jobs}/wrangler.jsonc` | `name` / `bucket_name` / `services[].service` | 属 Worker 与桶命名，见下面 §2/§3，**不经 site.ts** |
+| `apps/web/app/api/health/route.ts`、`apps/jobs/index.ts` | 响应里 `service: "onestarry-web" / "onestarry-jobs"` | 与 Worker 名保持一致即可 |
+| `apps/admin/lib/importProviders.ts` | 抓取 UA `onestarry-import/1.0` | 可选 |
 
-> ⚠️ **重构机会**：`SITE` / `BASE` / `MEDIA_PUBLIC_BASE` 目前**是硬编码字符串**（多页各写一遍）。改皮建议先做一次小重构：把这些抽到 `packages/core/src/site.ts`（`export const SITE_ORIGIN / SITE_NAME / MEDIA_PUBLIC_BASE`），一次改到底。若不想动就照上表逐处替换。
+> 历史注：本节旧版本列过一张「`SITE` 常量散在 9 个前台文件、建议顺手重构」的批量替换表。该重构**已经做完**（统一到 `site.ts`），再照旧表做全局 replace 会误伤无关文件。详见 `docs/IMPLEMENTATION.md` §12.1 T1/T2。
 
 ### 2. Cloudflare Worker 名（`wrangler.jsonc` 里的 `name`）
 

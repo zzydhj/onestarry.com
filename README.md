@@ -3,6 +3,7 @@
 纯海外、自营单卖家、多品类、单一自有库存、中国仓直发的**可复用电商模板**。架构与设计见 [`全球电商模板-架构方案-交叉验证版.md`](./全球电商模板-架构方案-交叉验证版.md)（v13 冻结）。
 
 > 想以此为起点改造成别的站？看 [`docs/REBRAND.md`](./docs/REBRAND.md)。
+> 想知道**代码真实现状 / 还欠什么**？看 [`docs/IMPLEMENTATION.md`](./docs/IMPLEMENTATION.md)（实现地图；§9 未接线清单、§10 偏差登记、**§12 模板完备性体检**）。
 
 ---
 
@@ -10,7 +11,7 @@
 
 | 层 | 选型 |
 |---|---|
-| 前台/后台 | Next.js 15（App Router + RSC + Server Actions）+ OpenNext on Cloudflare Workers |
+| 前台/后台 | Next.js 15（App Router + RSC + Server Actions）+ OpenNext on Cloudflare Workers ⚠️ **Next 主版本只维护 2 年**：15.x 的支持窗于 2026-10-21 已过，OpenNext 构建会因此 `exit 1`；升版规则与待办见 `docs/IMPLEMENTATION.md` §12.4（T17–T20） |
 | 数据 | Neon PostgreSQL（US-East，池化端点 + Hyperdrive）+ Drizzle ORM |
 | 认证 | Better Auth（双实例：customer / admin） |
 | 存储 | Cloudflare R2（媒体 + ISR 整页缓存） |
@@ -79,6 +80,8 @@ Workers Builds 环境变量（**Variables and Secrets → Secrets**）：
 
 - `DATABASE_URL`：**Neon 池化端点**（host 含 `-pooler`），构建期用于 ISR 预渲染。**值不要带引号**（血泪：带引号 → 28P01 认证失败）。
 - `BETTER_AUTH_SECRET`：admin 与 web 各一个（32 字节 base64）。
+
+> ⚠️ **本表待核对（T3）**：上列 Build command 写的是 `next build`，但 `wrangler.jsonc` 的 `main` 指 `.open-next/worker.js` —— 该目录只有 `opennextjs-cloudflare build` 才产出（即 `pnpm --filter @onestarry/web deploy` 的前半段）。站点确实能 push 即部署 ⇒ **Dashboard 里的真实命令与本表不一致**，请从 Workers Builds 项目抄回实际命令再修正本表。另：闸门在 `opennextjs-cloudflare build` 的**第一步**，因此部署路径必过（见 §12.4）。
 
 Hyperdrive / R2 / Durable Object 都在 `wrangler.jsonc` 声明，不用 secret。
 

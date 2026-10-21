@@ -31,6 +31,8 @@
 
 **术语已过时**（架构文档正文仍这么写，代码已替代）：Inngest → **Workers Cron**；Typesense → **Postgres FTS**；Upstash Redis → **未使用**；Vitest → **node:test（tsx --test）**；GitHub Actions → **Cloudflare Workers Builds**；`packages/email`/`packages/authz`/`tools/scraper` → **不存在**。
 
+**作为一份可交付模板，还欠 20 项**（→ **§12 模板完备性体检**，T1–T20 分四组：换皮彻底性 / 质量门禁 / 安全默认值 / 版本时间炸弹；本轮新发现的硬阻塞是 **T7 `@onestarry/shared` 空壳使 `pnpm -r typecheck/build` 整仓红**、**T8 CI 不跑任何测试**、**T18 Next 15 支持窗已过 → 部署闸门 exit 1**）。
+
 ---
 
 ## 1. 仓库布局实况
@@ -405,3 +407,79 @@ onestarry.com/
   Select-String -Path packages/db/src/queries/*.ts -Pattern '^export (async function|const) (\w+)'
   Select-String -Path apps/admin/app/**/actions.ts -Pattern 'requirePermission|requireAdmin|getSession'
   ```
+
+---
+
+## 12. 模板完备性体检（2026-10-21 · 视角＝「别人拿走能不能立起一个站」）
+
+> 与 §9 的分工：§9 列的是**业务功能**没通电；本节列的是**作为一份可交付模板**还缺什么 —— 换皮彻底性、质量门禁、安全默认值、版本时间炸弹。每项都带本轮**实测证据**（扫描命令/文件行号/真实输出），不是印象。
+
+### 12.1 A 组 · 换皮可交付性
+
+| # | 项 | 状态 | 本轮证据 | 影响 / 建议动作 |
+|---|---|---|---|---|
+| T1 | 站级身份单一真源 | 🟡 半成 | `packages/core/src/site.ts` 已集中 `SITE_ORIGIN / SITE_NAME / MEDIA_PUBLIC_BASE`，web 的 layout / sitemap / robots / PDP 均已从中取（true-brand 扫描不再命中它们）；**但仍有 8 处代码字面量绕过它**：`apps/admin/app/layout.tsx`（title `onestarry · Admin` + description `OneStarry 管理后台`）、`apps/admin/components/AdminNav.tsx:47` 顶栏、`apps/web/app/search/page.tsx:10` 描述、`SiteFooter.tsx:9`、`SiteHeader.tsx:9`、`packages/auth/src/index.ts:19,30` 两个 `appName` | 换皮者照文档只改 site.ts → 后台标题、页脚、auth 发出的邮件品牌仍是旧名。建议这 8 处统一 `import { SITE_NAME }`。（wrangler 里的 worker/桶名、`api/health` 与 jobs 的 `service` 字段、importProviders 的 UA 属**基础设施命名**，保持字面量即可） |
+| T2 | 换皮主文档过时 | 🔴 | `docs/REBRAND.md` §1 写着「`SITE` 常量散在前台」并给 9 文件批量替换表 + 「重构机会」注 —— 实际该重构**早已完成** | 换皮者按表全量 replace 会误伤（把 site.ts 之外不该动的一起改）。→ 本轮已改写 §1 |
+| T3 | README 部署表与事实不符 | 🔴 | 表里 web/admin 的 Build command = `pnpm --filter @onestarry/web build`（= `next build`），但 `apps/web/wrangler.jsonc` 的 `main` 指 `.open-next/worker.js`，只有 `opennextjs-cloudflare build` 才产出它；而站点确实能 push 即部署 ⇒ Dashboard 里的真实命令 ≠ 表格 | 模板门面步骤被照抄就必炸。→ 需人工到 Workers Builds 抄一次实际 Build/Deploy 命令回写 README（CLI 读不到 Builds 项目配置，我没擅自改） |
+| T4 | LICENSE | 🔴 缺 | 仓库根只有 README / .env.example / pnpm-* / tsconfig.base / neon.ts，**无 LICENSE** | 「可长期复用模板」若无授权声明，给外部/别的法人用是法务空白。→ 需你定（内部模板声明 or MIT or 保留所有权利） |
+| T5 | 跨平台可跑性 | 🟡 | 根 `clean` = `turbo run clean && rm -rf node_modules`，PowerShell/cmd 无 `rm -rf` | Windows 用户跑 `pnpm clean` 直接报错。→ 换 node 实现或删掉 rm 部分 |
+| T6 | 死配置 | 🟡 | `turbo.json` `globalEnv` 含 `NEXT_PUBLIC_APP_URL`、`NEXT_PUBLIC_DEFAULT_LOCALE`；但**全仓 `NEXT_PUBLIC_*` 引用数 = 0**，`.env.example` 里也没这两项 | 新人会改完发现不生效。→ 删掉，或真做成「前端可配的站点 URL/默认语言」 |
+| T7 | `@onestarry/shared` 空壳 | 🔴 | `packages/shared/src` 不存在（Test-Path False）；`apps/{web,admin}/next.config.ts` 的 `transpilePackages` 仍列它；根 `pnpm typecheck` / `pnpm build` **整仓红**（改动前既已存在，见 D14/N17） | 「一键绿」是模板的门面，也是别人判断这模板健不健全的第一印象。→ 要么把业务常量真迁进去，要么删包 + 清 4 处引用 |
+
+### 12.2 B 组 · 质量门禁（决定别人敢不敢动代码）
+
+| # | 项 | 状态 | 本轮证据 | 影响 / 建议动作 |
+|---|---|---|---|---|
+| T8 | CI 里没有测试 | 🔴 | 无 `.github/`；Workers Builds 只跑 build+deploy；`turbo.json` **没有 `test` task**；根 `package.json` **没有 `test` 脚本** | core 的 28 个单测与 db 的 10 个 `smoke:*` 全靠人肉跑（§7）。这也是「升 Next 不敢按」的根因 —— 没有回归网，任何版本变动都是盲跳。→ 加 `test` 脚本 + turbo task，并把 `typecheck && lint && test` 挂进 Workers Builds 的 Build command（build 之前失败就不会部署） |
+| T9 | 无预览环境 / 无 e2e | 🟡 | web/admin 各只有一个生产 Worker；本地 `opennextjs-cloudflare preview` 在 Windows 因 symlink EPERM 跑不通（D17）；无 Playwright（本轮验证靠静态审计 + 连库断言 + 手工截图） | 改动只能在生产验证。→ 要么起 `*-preview` Worker，要么用 Workers「Versions 分阶段放量 0%→10%→100%」当轻量预览 + 秒级回滚 |
+| T10 | 后台缺错误边界 | 🟡 | `apps/admin/app/not-found.tsx`、`error.tsx` **均不存在**（web 侧 `not-found/error/global-error` 三件套齐全 ✓） | 后台任一渲染异常 = 整页白屏，运营会以为挂了 |
+
+### 12.3 C 组 · 上线要过的安全与运维默认值
+
+| # | 项 | 状态 | 本轮证据 | 影响 / 建议动作 |
+|---|---|---|---|---|
+| T11 | Better Auth 未限流 | 🔴 | `packages/auth/src/index.ts` 全文无 `rateLimit`、无 plugins 配置，customer/admin 两实例都是裸的 | 后台登录口可被爆破，且模板的安全默认值应该是「开箱就防」。→ 配 `rateLimit: { enabled: true, window: 60, max: 10 }`（或在 CF 侧对 `/api/auth/*` 上速率规则；注意 Worker 内限流需 KV/DO 存计数） |
+| T12 | 后台不开放注册 | ✅ | 本轮已封（§4.1：HTTP 层 403 `/sign-up*`）；前台 customer 注册仍开放，符合预期 | 核对项，非缺陷 |
+| T13 | 真收款 | 🔴 | webhook `pickProvider` 恒返回 Fake（N1） | 作为「演示模板」够用，作为「能开张的店」不够。→ 与 §9 的 N1 同一条 |
+| T14 | 错误可观测 | 🔴 | 无 `apps/web/instrumentation.ts`、无 Sentry/任何告警；Cron relay 失败只落在 Workers 日志里 | 静默失败 = 价格不更新/订单不落账而没人知道。→ 模板应内置最小告警：jobs Cron 批次失败 → 一次出站通知（邮件 or Slack webhook），并把 Workers 日志接入 Grafana/Loki 写成文档步骤 |
+| T15 | 财税冷备自动化 | 🟡 | DR-RUNBOOK §2/§7 标 🟥（手动 `pg_dump`）；且 §7 仍写「GitHub Actions 定时 workflow」= 过时术语（本仓无 GH Actions） | 与 N12 同条。→ 顺手把该句改成「Workers Cron 或外部定时任务」 |
+| T16 | workerd 兼容日期 | 🟢 | `compatibility_date: 2026-01-01`（距今 >6 个月），OpenNext 构建对此**只 warn 不拦** | 不升不炸，建议随 T18 一起更新 |
+
+### 12.4 D 组 · 版本时间炸弹（本轮事故的机制说明，逐条实测）
+
+- `@opennextjs/aws@4.1.11` 的 `NEXT_RELEASE_DATES` **只登记到 16**（`16: "2025-10-21"`、`15: "2024-10-21"`），判定式为 `now <= release + 2 年`（helper.js:229-256）。
+- **未登记的主版本一律 `return false`（判为不支持）**（helper.js:249-251）—— 也就是说「装一个更新的 Next」并不自动过关，还得有更新版 OpenNext。
+- 本机实测：`NOW_UTC=2026-10-21T11:47Z` → Next 15.5.28 `SUPPORTED_NOW=False`；不允许时 `process.exit(1)`（helper.js:280）。
+- registry 现状：`next@latest = 16.4.2`；`@opennextjs/cloudflare@latest = 1.20.12`（**正是我们已装版本**），其依赖硬锁 `@opennextjs/aws@4.1.11` ⇒ 没有「更新的表」可拿，只能升 Next 或走 flag。
+- 逃生阀 `--dangerouslyUseUnsupportedNextVersion` 的默认值是硬编码 `false`，**不读环境变量**（对比同文件的 `skipWranglerConfigCheck` 会读 `SKIP_WRANGLER_CONFIG_CHECK`）⇒ 只能写进命令行（package.json 脚本 or CI 的 Build/Deploy command）。
+- 还有第二道：`ensureNextjsVersionSupported` 硬拦 `next < 14.2`，并对 **Next ≥16.1 要求 wrangler ≥4.59.2**（workerd 的 setImmediate 修复，cloudflare/dist/cli/utils/nextjs-support.js）；本仓三处均声明 `wrangler ^4.28.1`，registry 最新 `4.151.3`。
+- `opennextjs-cloudflare build` 的**第一步**就是这道闸门（cli/build/build.js:34-38）⇒ 部署路径必过 ⇒ 从今天起任何新部署失败。**现网不受影响**：Workers 保留历史版本，控制台 Versions 可把上一版本调回 100%。
+
+| # | 项 | 优先级 | 一句话 |
+|---|---|---|---|
+| T17 | 过桥：web/admin 的 `preview`/`deploy` 加 `--dangerouslyUseUnsupportedNextVersion` | P0（分钟级） | 立刻恢复部署，代价＝继续跑在停止安全维护的 15.5.28 上；**必须同时**写下「到期即删」的追踪条（本节） |
+| T18 | 正解：升 Next 16.4.2（同批 bump wrangler ≥4.59.2，实到 ^4.151） | P0（半天级） | 买到 2027-10-21 前的窗口；风险由 T8 的测试门禁兜住，**所以顺序是先 T8 后 T18** |
+| T19 | 稳态：`pnpm deps:window` 自检脚本（内置 NEXT_RELEASE_DATES 表 → 打印当前主版本支持到期日与剩余天数，<60 天在 CI 里 warn） | P1 | 把「外置的、日期一到突然 exit 1」的闸门，变成「自己提前 60 天知道」的预警 |
+| T20 | 节奏：文档写死「≤2 年必须做一次 Next 主版本升级」+ 升级 runbook（分支预演 → 迁移在 Neon branch 跑 → typecheck/test/build → Versions 放量） | P1 | 模板的长期可维护性说明，见 §12.6 |
+
+### 12.5 建议施工顺序（把上面 20 项收敛成一条线）
+
+```
+① T7 shared 空壳        —— 先让 pnpm -r typecheck/build 一键全绿（后面所有验证的前提）
+② T8 测试门禁 + turbo test —— 建回归网（也是升 Next 的安全垫）
+③ T17 过桥 → 恢复部署      —— 期间任何改动都能上线，不再被阻塞
+④ T18 升 Next 16.4.2       —— 在 ② 的网上做，逐包 typecheck + 两站 build + smoke
+⑤ T1/T2/T3/T4 换皮彻底性   —— site.ts 收口 8 处 + README 部署命令核对 + LICENSE
+⑥ T11 限流 / T14 告警 / T10 后台错误边界 —— 上线前安全默认值
+⑦ T19 deps:window / T5 / T6 / T15 / T16 / T9 —— 卫生与运维
+```
+
+### 12.6 「下一次过期怎么办」的稳态答案
+
+这道 2 年窗口是 **Next 官方支持策略**（每个主版本自发布起维护 2 年）在构建工具里的体现，**无法被永久绕开**：任何钉住的主版本都会在某个日期到期，而 OpenNext 的支持表还会滞后于新主版本发布。所以稳态不是「一劳永逸」，而是**把它变成一项有节奏、可验证、可回滚的常规维护**：
+
+1. **频率**：约每年看一次小版本（`next@16.x`，零风险、拿安全补丁），约每 2 年一次主版本（必须）。目标是在到期前 **≥6 个月**完成升级，而不是当天被 `exit 1` 通知。
+2. **安全网（先有网，再动手）**：CI 门禁 `typecheck + lint + test + build`（T8）→ Neon 分支预演迁移（架构 §15.1 分支工作流）→ 部署用 Workers **Versions 分阶段放量**，出问题控制台一键把上一版本调回 100%（秒级、不重新构建）→ 数据侧 Neon PITR 回滚点（DR-RUNBOOK 场景 A）。
+3. **升级本身保持小而 boring**：一次只做「依赖对齐」一个提交，业务代码不动；破坏性变更集中在 `params/searchParams` 异步化与 lint/TS 版本，本项目命中面很小（已核：全站无 middleware.ts，`params` 已是 async 写法）。
+4. **预警而非救火**：T19 的 `deps:window` 把外部时间闸门变成内部信号，剩余天数进 CI 日志。
+5. **模板层面写死**：本节 + 架构文档 §1 的「以 OpenNext 当前稳定支持版本为准，不死守 15」—— 让下一个拿走模板的人不会在同一个日期撞上同一面墙。
