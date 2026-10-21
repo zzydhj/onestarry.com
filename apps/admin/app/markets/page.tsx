@@ -1,5 +1,6 @@
 import { createDb, listLegalEntities, listMarkets } from "@onestarry/db";
-import { requireAdmin } from "@/lib/auth";
+import { PERMISSIONS } from "@onestarry/core";
+import { requirePermission } from "@/lib/auth";
 import { Button, Input, Select, TableFrame, THead, Th, Tr, Td } from "@onestarry/ui";
 import { createMarketAction } from "./actions";
 
@@ -7,7 +8,7 @@ export const dynamic = "force-dynamic";
 
 /** 市场配置（受保护）：列市场 + 新建（选法人/定价模式/关税呈现）。 */
 export default async function MarketsPage() {
-    const { env } = await requireAdmin();
+    const { env } = await requirePermission(PERMISSIONS.marketWrite);
     const db = createDb(env.HYPERDRIVE.connectionString);
     const [markets, entities] = await Promise.all([listMarkets(db), listLegalEntities(db)]);
     const entityName = (id: string) => entities.find((e) => e.id === id)?.displayName ?? id;

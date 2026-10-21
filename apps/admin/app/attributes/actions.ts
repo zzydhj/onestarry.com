@@ -9,7 +9,8 @@ import {
     updateAttributeDefinition,
     type AttributeDefInput,
 } from "@onestarry/db";
-import { requireAdmin } from "@/lib/auth";
+import { requirePermission } from "@/lib/auth";
+import { PERMISSIONS } from "@onestarry/core";
 
 const DATA_TYPES = ["text", "number", "select", "multi_select", "boolean", "range"];
 
@@ -36,9 +37,9 @@ function parseInput(fd: FormData): Omit<AttributeDefInput, "slug"> & { slug: str
     };
 }
 
-/** 新增属性（slug 重复则跳回并带 ?error=duplicate）。 */
+/** 新增属性（slug 重复则跳回并带 ?error=duplicate）。属性定义 = 目录 schema，属 super_admin（configWrite）。 */
 export async function createAttributeAction(fd: FormData): Promise<void> {
-    const { env } = await requireAdmin();
+    const { env } = await requirePermission(PERMISSIONS.configWrite);
     const input = parseInput(fd);
     if (!input.slug || !input.name) return;
     const db = createDb(env.HYPERDRIVE.connectionString);
@@ -49,7 +50,7 @@ export async function createAttributeAction(fd: FormData): Promise<void> {
 
 /** 更新属性（slug 不变）。 */
 export async function updateAttributeAction(fd: FormData): Promise<void> {
-    const { env } = await requireAdmin();
+    const { env } = await requirePermission(PERMISSIONS.configWrite);
     const id = String(fd.get("id") ?? "");
     if (!id) return;
     const input = parseInput(fd);
@@ -61,7 +62,7 @@ export async function updateAttributeAction(fd: FormData): Promise<void> {
 
 /** 删除属性（连带解绑引用）。 */
 export async function deleteAttributeAction(fd: FormData): Promise<void> {
-    const { env } = await requireAdmin();
+    const { env } = await requirePermission(PERMISSIONS.configWrite);
     const id = String(fd.get("id") ?? "");
     if (!id) return;
     const db = createDb(env.HYPERDRIVE.connectionString);

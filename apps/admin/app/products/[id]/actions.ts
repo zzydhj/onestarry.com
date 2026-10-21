@@ -1,29 +1,18 @@
 "use server";
 
-import { headers } from "next/headers";
-import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { eq } from "drizzle-orm";
-import { getCloudflareContext } from "@opennextjs/cloudflare";
-import { createAdminAuth } from "@onestarry/auth";
-import { mediaUrl } from "@onestarry/core";
+import { mediaUrl, PERMISSIONS } from "@onestarry/core";
 import { createDb, attachProductImage, deleteProductImage, moveProductImage, products, setProductCatalog, setProductRichBody, setVariantOnHand, updateVariantBasePrice, upsertSeoMeta } from "@onestarry/db";
 import { runRelayBatch, relayHandlers } from "@onestarry/jobs";
+import { requirePermission } from "@/lib/auth";
 
 /**
  * 后台改某变体基价 → 事务内改 basePriceCents + 对所有市场发 price.recompute 事件；
  * 提交后 ctx.waitUntil(runRelayBatch) 即时派发重算（写时自派发，秒级生效；Cron 每分钟兜底）。
  */
 export async function updateBasePriceAction(formData: FormData): Promise<void> {
-    const { env, ctx } = getCloudflareContext();
-    const h = await headers();
-    const auth = createAdminAuth({
-        connString: env.HYPERDRIVE.connectionString,
-        baseURL: `https://${h.get("host") ?? "localhost"}`,
-        secret: env.BETTER_AUTH_SECRET,
-    });
-    const session = await auth.api.getSession({ headers: h });
-    if (!session?.user) redirect("/signin");
+    const { env, ctx, userId } = await requirePermission(PERMISSIONS.productWrite);
 
     const variantId = String(formData.get("variantId") ?? "");
     const productId = String(formData.get("productId") ?? "");
@@ -32,7 +21,7 @@ export async function updateBasePriceAction(formData: FormData): Promise<void> {
 
     const db = createDb(env.HYPERDRIVE.connectionString);
     await db.transaction(async (tx) => {
-        await updateVariantBasePrice(tx, { variantId, basePriceCents: cents, changedBy: session.user!.id });
+        await updateVariantBasePrice(tx, { variantId, basePriceCents: cents, changedBy: userId });
     });
 
     // 写时自派发：立即消费 outbox 重算价格缓存（与请求解耦，失败有 Cron 兜底）
@@ -49,15 +38,7 @@ type ProductStatus = (typeof STATUSES)[number];
  * 故无需发事件——前台下次请求自动跟随（draft/archived 不可售）。
  */
 export async function setProductStatusAction(formData: FormData): Promise<void> {
-    const { env } = getCloudflareContext();
-    const h = await headers();
-    const auth = createAdminAuth({
-        connString: env.HYPERDRIVE.connectionString,
-        baseURL: `https://${h.get("host") ?? "localhost"}`,
-        secret: env.BETTER_AUTH_SECRET,
-    });
-    const session = await auth.api.getSession({ headers: h });
-    if (!session?.user) redirect("/signin");
+    const { env } = await requirePermission(PERMISSIONS.productWrite);
 
     const productId = String(formData.get("productId") ?? "");
     const status = String(formData.get("status") ?? "");
@@ -77,15 +58,7 @@ export async function setProductStatusAction(formData: FormData): Promise<void> 
  * 可售性读时现算→前台下次请求自动跟随，无需发事件。
  */
 export async function updateInventoryAction(formData: FormData): Promise<void> {
-    const { env } = getCloudflareContext();
-    const h = await headers();
-    const auth = createAdminAuth({
-        connString: env.HYPERDRIVE.connectionString,
-        baseURL: `https://${h.get("host") ?? "localhost"}`,
-        secret: env.BETTER_AUTH_SECRET,
-    });
-    const session = await auth.api.getSession({ headers: h });
-    if (!session?.user) redirect("/signin");
+    const { env, userId } = await requirePermission(PERMISSIONS.productWrite);
 
     const variantId = String(formData.get("variantId") ?? "");
     const productId = String(formData.get("productId") ?? "");
@@ -94,7 +67,7 @@ export async function updateInventoryAction(formData: FormData): Promise<void> {
 
     const db = createDb(env.HYPERDRIVE.connectionString);
     await db.transaction(async (tx) => {
-        await setVariantOnHand(tx, { variantId, onHand, changedBy: session.user!.id });
+        await setVariantOnHand(tx, { variantId, onHand, changedBy: userId });
     });
 
     if (productId) revalidatePath(`/products/${productId}`);
@@ -104,15 +77,7 @@ const MAX_UPLOAD_BYTES = 8 * 1024 * 1024; // 8MB 上限（前端已压图，服�
 
 /** 上传一张商品图：校验 → 存 R2（按 §10.3 key）→ 登记 media_assets + product_images。 */
 export async function uploadProductImageAction(formData: FormData): Promise<void> {
-    const { env } = getCloudflareContext();
-    const h = await headers();
-    const auth = createAdminAuth({
-        connString: env.HYPERDRIVE.connectionString,
-        baseURL: `https://${h.get("host") ?? "localhost"}`,
-        secret: env.BETTER_AUTH_SECRET,
-    });
-    const session = await auth.api.getSession({ headers: h });
-    if (!session?.user) redirect("/signin");
+    const { env } = await requirePermission(PERMISSIONS.productWrite);
 
     const productId = String(formData.get("productId") ?? "");
     const file = formData.get("image");
@@ -135,15 +100,7 @@ export async function uploadProductImageAction(formData: FormData): Promise<void
 
 /** 保存图文详情（前端 Tiptap 传 JSON 字符串）→ 写 product_translations.rich_body。 */
 export async function saveRichBodyAction(formData: FormData): Promise<void> {
-    const { env } = getCloudflareContext();
-    const h = await headers();
-    const auth = createAdminAuth({
-        connString: env.HYPERDRIVE.connectionString,
-        baseURL: `https://${h.get("host") ?? "localhost"}`,
-        secret: env.BETTER_AUTH_SECRET,
-    });
-    const session = await auth.api.getSession({ headers: h });
-    if (!session?.user) redirect("/signin");
+    const { env } = await requirePermission(PERMISSIONS.productWrite);
 
     const productId = String(formData.get("productId") ?? "");
     const raw = String(formData.get("body") ?? "");
@@ -163,15 +120,7 @@ export async function saveRichBodyAction(formData: FormData): Promise<void> {
 
 /** 富文本内插图：上传到 R2（products/{id}/content/…）→ 返回可访问 URL，供编辑器插入。 */
 export async function uploadRichImageAction(formData: FormData): Promise<{ url: string; error?: string }> {
-    const { env } = getCloudflareContext();
-    const h = await headers();
-    const auth = createAdminAuth({
-        connString: env.HYPERDRIVE.connectionString,
-        baseURL: `https://${h.get("host") ?? "localhost"}`,
-        secret: env.BETTER_AUTH_SECRET,
-    });
-    const session = await auth.api.getSession({ headers: h });
-    if (!session?.user) return { url: "", error: "未登录" };
+    const { env } = await requirePermission(PERMISSIONS.productWrite);
 
     const productId = String(formData.get("productId") ?? "");
     const file = formData.get("image");
@@ -190,15 +139,7 @@ export async function uploadRichImageAction(formData: FormData): Promise<{ url: 
 
 /** 删除一张商品图：解除关联 + 删 media_assets + 尽力删 R2 对象。 */
 export async function deleteProductImageAction(formData: FormData): Promise<void> {
-    const { env } = getCloudflareContext();
-    const h = await headers();
-    const auth = createAdminAuth({
-        connString: env.HYPERDRIVE.connectionString,
-        baseURL: `https://${h.get("host") ?? "localhost"}`,
-        secret: env.BETTER_AUTH_SECRET,
-    });
-    const session = await auth.api.getSession({ headers: h });
-    if (!session?.user) redirect("/signin");
+    const { env } = await requirePermission(PERMISSIONS.productWrite);
 
     const productId = String(formData.get("productId") ?? "");
     const mediaId = String(formData.get("mediaId") ?? "");
@@ -218,15 +159,7 @@ export async function deleteProductImageAction(formData: FormData): Promise<void
 
 /** 上移/下移一张商品图。 */
 export async function moveProductImageAction(formData: FormData): Promise<void> {
-    const { env } = getCloudflareContext();
-    const h = await headers();
-    const auth = createAdminAuth({
-        connString: env.HYPERDRIVE.connectionString,
-        baseURL: `https://${h.get("host") ?? "localhost"}`,
-        secret: env.BETTER_AUTH_SECRET,
-    });
-    const session = await auth.api.getSession({ headers: h });
-    if (!session?.user) redirect("/signin");
+    const { env } = await requirePermission(PERMISSIONS.productWrite);
 
     const productId = String(formData.get("productId") ?? "");
     const mediaId = String(formData.get("mediaId") ?? "");
@@ -240,15 +173,7 @@ export async function moveProductImageAction(formData: FormData): Promise<void> 
 
 /** 保存商品 SEO 覆盖（写 seo_meta，locale=en、市场级 NULL）；全空则删除→前台回退自动生成。 */
 export async function saveSeoMetaAction(formData: FormData): Promise<void> {
-    const { env } = getCloudflareContext();
-    const h = await headers();
-    const auth = createAdminAuth({
-        connString: env.HYPERDRIVE.connectionString,
-        baseURL: `https://${h.get("host") ?? "localhost"}`,
-        secret: env.BETTER_AUTH_SECRET,
-    });
-    const session = await auth.api.getSession({ headers: h });
-    if (!session?.user) redirect("/signin");
+    const { env } = await requirePermission(PERMISSIONS.seoWrite);
 
     const productId = String(formData.get("productId") ?? "");
     if (!productId) return;
@@ -271,15 +196,7 @@ export async function saveSeoMetaAction(formData: FormData): Promise<void> {
 
 /** 设置商品归属类目 / 品牌（空串=清空）。仅写 products 行，可售/重算不受影响。 */
 export async function assignCatalogAction(formData: FormData): Promise<void> {
-    const { env } = getCloudflareContext();
-    const h = await headers();
-    const auth = createAdminAuth({
-        connString: env.HYPERDRIVE.connectionString,
-        baseURL: `https://${h.get("host") ?? "localhost"}`,
-        secret: env.BETTER_AUTH_SECRET,
-    });
-    const session = await auth.api.getSession({ headers: h });
-    if (!session?.user) redirect("/signin");
+    const { env } = await requirePermission(PERMISSIONS.productWrite);
 
     const productId = String(formData.get("productId") ?? "");
     if (!productId) return;

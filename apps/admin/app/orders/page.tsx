@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { createDb, listRecentOrders } from "@onestarry/db";
-import { requireAdmin } from "@/lib/auth";
+import { PERMISSIONS } from "@onestarry/core";
+import { requirePermission } from "@/lib/auth";
 import { TableFrame, THead, Th, Tr, Td } from "@onestarry/ui";
 
 export const dynamic = "force-dynamic";
@@ -11,7 +12,7 @@ function money(cents: number, cur: string): string {
 
 /** 后台订单列表（受保护）：最近订单，点进详情。 */
 export default async function AdminOrders() {
-    const { env } = await requireAdmin();
+    const { env } = await requirePermission(PERMISSIONS.orderWrite);
     const db = createDb(env.HYPERDRIVE.connectionString);
     const rows = await listRecentOrders(db, 200);
 

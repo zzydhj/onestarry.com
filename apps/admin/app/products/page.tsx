@@ -1,14 +1,15 @@
 import Link from "next/link";
 import { and, desc, eq } from "drizzle-orm";
 import { createDb, products, productTranslations } from "@onestarry/db";
-import { requireAdmin } from "@/lib/auth";
+import { PERMISSIONS } from "@onestarry/core";
+import { requirePermission } from "@/lib/auth";
 import { buttonVariants, TableFrame, THead, Th, Tr, Td } from "@onestarry/ui";
 
 export const dynamic = "force-dynamic";
 
 /** 后台商品列表（受保护）：未登录跳登录页；读全部商品（跨市场/状态）。 */
 export default async function AdminProducts() {
-    const { env } = await requireAdmin();
+    const { env } = await requirePermission(PERMISSIONS.productWrite);
     const db = createDb(env.HYPERDRIVE.connectionString);
     const rows = await db
         .select({

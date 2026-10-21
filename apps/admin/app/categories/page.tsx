@@ -1,6 +1,7 @@
 import { createDb, getEntitySlug, listAllCategories } from "@onestarry/db";
 import Link from "next/link";
-import { requireAdmin } from "@/lib/auth";
+import { PERMISSIONS } from "@onestarry/core";
+import { requirePermission } from "@/lib/auth";
 import { Button, Input, Select } from "@onestarry/ui";
 import { createCategoryAction, updateCategoryAction } from "./actions";
 
@@ -8,7 +9,7 @@ export const dynamic = "force-dynamic";
 
 /** 类目管理（受保护）：树状列表 + 新增（选父级/slug）+ 改名/改 slug。 */
 export default async function CategoriesPage() {
-    const { env } = await requireAdmin();
+    const { env } = await requirePermission(PERMISSIONS.categoryWrite);
     const db = createDb(env.HYPERDRIVE.connectionString);
     const cats = await listAllCategories(db);
     const slugs = await Promise.all(cats.map((c) => getEntitySlug(db, { entityType: "category", entityId: c.id })));

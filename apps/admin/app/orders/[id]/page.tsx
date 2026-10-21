@@ -1,7 +1,8 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { createDb, getOrderDetail } from "@onestarry/db";
-import { requireAdmin } from "@/lib/auth";
+import { PERMISSIONS } from "@onestarry/core";
+import { requirePermission } from "@/lib/auth";
 import { Button, Input, TableFrame, THead, Th, Tr, Td } from "@onestarry/ui";
 import { markShippedAction } from "./actions";
 
@@ -14,7 +15,7 @@ function money(cents: number, cur: string): string {
 /** 订单详情（受保护）：明细/行/地址/发货信息 + 已支付未发货时提供"标记发货"。 */
 export default async function AdminOrderDetail({ params }: { params: Promise<{ id: string }> }) {
     const { id } = await params;
-    const { env } = await requireAdmin();
+    const { env } = await requirePermission(PERMISSIONS.orderWrite);
 
     const db = createDb(env.HYPERDRIVE.connectionString);
     const detail = await getOrderDetail(db, id);

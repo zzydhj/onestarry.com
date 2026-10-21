@@ -1,9 +1,5 @@
 "use server";
 
-import { headers } from "next/headers";
-import { redirect } from "next/navigation";
-import { getCloudflareContext } from "@opennextjs/cloudflare";
-import { createAdminAuth } from "@onestarry/auth";
 import { csvToObjects, PERMISSIONS } from "@onestarry/core";
 import { createDb, attachProductImage, upsertProductFromRow, type ImportRowInput } from "@onestarry/db";
 import { runRelayBatch, relayHandlers } from "@onestarry/jobs";
@@ -54,15 +50,7 @@ function toInt(v: string | undefined): number | null {
 
 /** 批量导入：解析 CSV → 按 SKU upsert 每行（各自事务）→ 末尾统一重算价格缓存 → 返回结果报告。 */
 export async function importProductsAction(formData: FormData): Promise<ImportSummary> {
-    const { env } = getCloudflareContext();
-    const h = await headers();
-    const auth = createAdminAuth({
-        connString: env.HYPERDRIVE.connectionString,
-        baseURL: `https://${h.get("host") ?? "localhost"}`,
-        secret: env.BETTER_AUTH_SECRET,
-    });
-    const session = await auth.api.getSession({ headers: h });
-    if (!session?.user) redirect("/signin");
+    const { env, userId } = await requirePermission(PERMISSIONS.productWrite);
 
     const summary: ImportSummary = { total: 0, created: 0, updated: 0, imagesImported: 0, failed: [], imageFailed: [] };
     const file = formData.get("file");
@@ -94,7 +82,7 @@ export async function importProductsAction(formData: FormData): Promise<ImportSu
             weightG: toInt(o.weight),
             onHand: toInt(o.onhand ?? o.stock),
             status,
-            changedBy: session.user.id,
+            changedBy: userId,
         };
         try {
             const res = await db.transaction(async (tx) => upsertProductFromRow(tx, input));

@@ -1,9 +1,9 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { eq, inArray } from "drizzle-orm";
-import { mediaUrl } from "@onestarry/core";
+import { mediaUrl, PERMISSIONS } from "@onestarry/core";
 import { createDb, getSeoMeta, inventory, listAllBrands, listAllCategories, listProductImages, productTranslations, productVariants, products } from "@onestarry/db";
-import { requireAdmin } from "@/lib/auth";
+import { requirePermission } from "@/lib/auth";
 import { Button, Input, Select, TableFrame, THead, Th, Tr, Td } from "@onestarry/ui";
 import { assignCatalogAction, saveSeoMetaAction, setProductStatusAction, updateBasePriceAction, updateInventoryAction } from "./actions";
 import { ImageUploader } from "./ImageUploader";
@@ -14,7 +14,7 @@ export const dynamic = "force-dynamic";
 /** 后台商品详情（受保护）：展示变体，每个变体可改基价（→触发重算+写时自派发）。 */
 export default async function AdminProductDetail({ params }: { params: Promise<{ id: string }> }) {
     const { id } = await params;
-    const { env } = await requireAdmin();
+    const { env } = await requirePermission(PERMISSIONS.productWrite);
 
     const db = createDb(env.HYPERDRIVE.connectionString);
     const product = (await db.select().from(products).where(eq(products.id, id)).limit(1))[0];

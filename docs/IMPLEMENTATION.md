@@ -18,14 +18,14 @@
 **已经真跑通的主干**（可当模板直接复用）：
 站级单一真源 → Neon/Hyperdrive/Drizzle/UUIDv7 → 目录（类目/品牌/属性/slug/媒体/译文）→ 库存 → 全包价物化管道（outbox+cron relay+写时自派发）→ 前台 ISR 浏览/搜索/PDP/JSON-LD/seo_meta/sitemap/robots/同意横幅/法律页 → 购物车→下单→假 PSP 回调→**两段式账本+连号发票**→后台标记发货（收入/COGS/扣库存/sale 流水）→ CMS → 评论 → 集成 API → 数据保留 job → 三 Worker 部署 + DB 角色分离。
 
-**六个"看着有、其实没通电"的关键点**（详见 §10 偏差登记表）：
+**五个"看着有、其实没通电"的关键点 + 一个已收口的 P0**（详见 §10 偏差登记表）：
 
 | # | 事项 | 真相 |
 |---|---|---|
 | D01 | 税/关税/运费/汇率 | `taxRate:0 / dutyRate:0 / shippingCents:0 / fxRate:1` **硬编码占位**（`queries/pricing.ts` L152-159）→ 现在"全包价 = 基价原样" |
 | D02 | `computeSellability` | 函数+单测都在，但**没有任何读取路径调用它**；`product_market_availability` 表零引用。可售性实际只看 `variant_market_prices.blocked` + `products.status` |
 | D03 | 结账 | 运费**硬编码 500 分**、市场**硬编码 `us`**、`idempotencyKey = crypto.randomUUID()` 每次新建 → **幂等键不防重复提交**；无库存预留 |
-| D04 | 权限点强制 | 8 个写动作文件里只有 **3 个**用了 `requirePermission`（content/markets/orders-import/reviews/team 共 6 文件）；**商品编辑 10 个动作、下单发货 `markShippedAction`、新建商品、类目/品牌/属性/法律页 = 只校验"已登录"**，违反架构文档铁律② |
+| D04 | 权限点强制 | ✅ **已于 2026-10-21 收口**（原先：34 个后台写动作中仅 12 个校权限点）。现**全 34 个动作 = `requirePermission(...)`**，13 个页面同步升级，AdminNav 按权限过滤（详 §4） |
 | D05 | 底座配置表 | **12 张表有表无代码**（shippingZones/shippingRates/carriers/dutyRules/taxRatesConfig/taxRegistrations/deMinimisRules/marketComplianceProfiles/paymentProviderAccounts/locales/marketCountries/marketLocales + promotions/customerProfiles/consents 部分）→ §14"加国家=纯配置"目前**只在 markets 表列层面成立** |
 | D06 | 步骤 13 邮件/退款/争议/PDF | `Resend`、`refunds`、`disputes`、`payouts`、发票 PDF → R2 **全部无实现**；退款权限点 `refund:write` 定义了但没有退款动作 |
 
@@ -105,7 +105,7 @@ onestarry.com/
 | 项 | 位置 | 状态 |
 |---|---|---|
 | 实例工厂 | `packages/auth/src/index.ts` → `createCustomerAuth` / `createAdminAuth`（每次请求按 `env.HYPERDRIVE.connectionString` 构造，Workers 无常驻） | ✅ |
-| 路由 | `apps/web/app/api/auth/[...all]/route.ts`、`apps/admin/app/api/auth/[...all]/route.ts` | ✅ 前台开放注册、后台同（**后台注册可关闭性未做**：admin 实例未设 `emailAndPassword.disableSignUp`） |
+| 路由 | `apps/web/app/api/auth/[...all]/route.ts`、`apps/admin/app/api/auth/[...all]/route.ts` | ✅ 前台开放注册；✅ **后台 HTTP 层封公开注册**（`lib/authGuard.ts` `isBlockedPublicAuthPath` → `/sign-up*` 一律 403）。⚠️ 故意**不用** better-auth 的 `disableSignUp`：它会连进程内 `auth.api.signUpEmail` 一起拒，而团队页建员工/seed-admin 正是走进程内调用（已核 better-auth 1.7.10 `sign-up.mjs:145`） |
 | 客户端 | `packages/auth/src/client.ts` → `makeAuthClient`（后台登出用） | ✅ |
 | 登录页 | 后台 `apps/admin/app/signin/page.tsx`（中文、无注册入口 UI）；前台 `apps/web/app/signin/page.tsx`（最简 demo，Sign up/Sign in/Sign out） | 🟡 前台页 UI 未设计化 |
 | 2FA/Passkey/step-up/IP 告警 | — | ❌ 架构文档 §7 要求，未实现 |
@@ -115,8 +115,9 @@ onestarry.com/
 |---|---|---|
 | 权限点/角色单一真源 | `packages/core/src/rbac.ts`：`PERMISSIONS`(8 点) / `ROLES`(3) / `ROLE_PERMISSIONS`（staff = productWrite, orderWrite, categoryWrite, seoWrite）/ `roleHasPermission` | ✅ |
 | seed 与查询 | `packages/db/src/queries/authz.ts`：`seedRbac` `getPrincipalPermissions` `getPrincipalRoles` `assignRole` `revokeRole` `listAdminMembers` | ✅ 连库验证过 |
-| 守卫工具 | `apps/admin/lib/auth.ts`：`requireAdmin()`（会话+权限集）/ `requirePermission(perm)`（不足抛 `FORBIDDEN`） | ✅ |
-| **覆盖矩阵** | 见 §4 | 🔴 **P0 缺口** |
+| 守卫工具 | `apps/admin/lib/auth.ts`：`readAdminSession()`（**会话+权限集单一读取点**，未登录返回 null 不跳转）/ `requireAdmin()`（= 前者 + 未登录跳 /signin）/ `requirePermission(perm)`（不足抛 `FORBIDDEN:<perm>`） | ✅ |
+| 导航按权限过滤 | `apps/admin/app/layout.tsx`（异步软取会话 + `export const dynamic="force-dynamic"`）→ `<AdminNav permissions={[...]} />`；`components/AdminNav.tsx` 每个入口标 `perm` 并过滤（已补「法律」入口） | ✅ |
+| **覆盖矩阵** | 见 §4 | ✅ **已收口**（34/34 动作 + 13/13 页面） |
 
 ### 3.4 目录（商品/类目/品牌/属性/媒体/slug/译文）
 | 能力 | 位置 | 状态 |
@@ -229,20 +230,20 @@ onestarry.com/
 | OpenAPI + zod 契约进 `packages/shared` | — | ❌ |
 | "销售速度"派生指标（`daily_sales_stats` rollup） | — | ❌ 表都没建 |
 
-### 3.16 后台页面清单（18 页 · 守卫级别如实标注）
+### 3.16 后台页面清单（18 页 · 守卫已全部收口）
 | 路由 | 页面守卫 | 动作守卫 |
 |---|---|---|
-| `/`（概览） | requireAdmin | — |
-| `/products` `/products/[id]` `/products/new` `/products/import` | requireAdmin | import=`productWrite`；`new` 与 `[id]` 的 **10 个动作仅会话** ⚠️ |
-| `/orders` `/orders/[id]` | requireAdmin | `markShippedAction` **仅会话** ⚠️（涉收入确认+扣库存） |
-| `/categories` `/categories/[id]/attributes` | requireAdmin | 仅 requireAdmin ⚠️ |
-| `/brands` `/attributes` | requireAdmin | 仅 requireAdmin ⚠️ |
-| `/legal` | requireAdmin（且**不在 AdminNav**，需手输 URL） | 仅 requireAdmin ⚠️ |
-| `/content` `/content/[id]` | **requirePermission(seoWrite)** | 同 ✅ |
-| `/reviews` | **requirePermission(productWrite)** | 同 ✅ |
-| `/markets` | requireAdmin（页面可见） | `createMarketAction`=`marketWrite` ✅ |
-| `/team` | **requirePermission(roleManage)** | 3 动作全 `roleManage` ✅ |
-> AdminNav 10 个入口**不按权限过滤**（staff 能看到"市场/团队"链接；团队页会抛 FORBIDDEN，市场页能进但提交被拒）。
+| `/`（概览） | `requireAdmin`（任意已登录后台账号，有意保留） | — |
+| `/products` `/products/[id]` `/products/new` `/products/import` | `requirePermission(productWrite)` | 13 动作：`[id]` 10（其中 `saveSeoMetaAction` = `seoWrite`）+ `new` 1 + import 2 = `productWrite` |
+| `/orders` `/orders/[id]` | `requirePermission(orderWrite)` | `markShippedAction` = `orderWrite` |
+| `/categories` `/categories/[id]/attributes` `/brands` | `requirePermission(categoryWrite)` | 6 动作 = `categoryWrite` |
+| `/attributes` | `requirePermission(configWrite)`（**staff 连页面都进不去**） | 3 动作 = `configWrite` |
+| `/legal` | `requirePermission(seoWrite)`；**已加进 AdminNav** | `saveLegalDocAction` = `seoWrite` |
+| `/content` `/content/[id]` | `requirePermission(seoWrite)` | 5 动作 = `seoWrite` |
+| `/reviews` | `requirePermission(productWrite)` | 1 动作 = `productWrite` |
+| `/markets` | `requirePermission(marketWrite)`（staff 进不去，修正以前"能看不能提交"的不一致） | `createMarketAction` = `marketWrite` |
+| `/team` | `requirePermission(roleManage)` | 3 动作 = `roleManage` |
+> AdminNav 已按传入权限集过滤入口；**隐藏只是体验，硬强制在页面/动作的 `requirePermission`**（两者已逐项对应）。
 
 ### 3.17 前台页面清单
 `/`（首页 Hero/分类入口/精选/信任条）· `/products` `/products/[slug]` · `/search` · `/categories` `/categories/[slug]` · `/brands` `/brands/[slug]` · `/blog` `/blog/[slug]` · `/[slug]`（page/landing）· `/cart` · `/checkout` · `/order/[orderNumber]` · `/account/orders` · `/signin` · `/legal/[type]`（terms/privacy/returns/withdrawal）· `/api/{health,db-check,auth/[...all],webhooks/[provider]}` · `/integration/*`
@@ -250,23 +251,29 @@ onestarry.com/
 
 ---
 
-## 4. 权限守卫覆盖矩阵（P0）
+## 4. 权限守卫覆盖矩阵
 
-| 写动作 | 文件 | 当前守卫 | 应有权限点 |
-|---|---|---|---|
-| 改基价 / 上下架 / 改库存 / 传图 / 删图 / 移图 / 存富文本 / 存 SEO / 挂类目品牌 | `app/products/[id]/actions.ts`（10 个） | **仅 `getSession`** | `product:write`（SEO 那个 `seo:write`） |
-| 新建商品 | `app/products/new/actions.ts` | 仅 `getSession` | `product:write` |
-| **标记发货**（账本+库存） | `app/orders/[id]/actions.ts` | 仅 `getSession` | `order:write` |
-| 类目增改 / 类目↔属性挂载 | `app/categories/**` | `requireAdmin`（无权限点） | `category:write` |
-| 品牌增改 / 属性定义增删改 | `app/brands` `app/attributes` | `requireAdmin` | `category:write` |
-| 法律文档保存 | `app/legal` | `requireAdmin` | `seo:write` |
-| 内容 CRUD/发布 | `app/content` | ✅ `seoWrite` | — |
-| 评论审核 | `app/reviews` | ✅ `productWrite` | — |
-| 市场创建 | `app/markets` | ✅ `marketWrite` | — |
-| 团队/角色 | `app/team` | ✅ `roleManage` | — |
-| CSV/URL 导入 | `app/products/import` | ✅ `productWrite` | — |
+### 4.1 收口后的现状（2026-10-21）
+| 写动作 | 文件 | 强制的权限点 |
+|---|---|---|
+| 改基价 / 上下架 / 改库存 / 传图 / 删图 / 移图 / 存富文本 / 富文本插图 / 挂类目品牌 | `app/products/[id]/actions.ts`（10） | ✅ `product:write` |
+| 存商品 SEO 覆盖 | 同上文件 | ✅ `seo:write` |
+| 新建商品 | `app/products/new/actions.ts` | ✅ `product:write` |
+| **标记发货**（账本+库存） | `app/orders/[id]/actions.ts` | ✅ `order:write` |
+| CSV / URL 导入 | `app/products/import/actions.ts`（2） | ✅ `product:write` |
+| 类目增改 / 类目↔属性挂载（4）/ 品牌增改（2） | `app/categories/**` `app/brands` | ✅ `category:write` |
+| 属性定义增删改 | `app/attributes/actions.ts`（3） | ✅ `config:write`（**由“运营可用”收紧为 super_admin 专属**，对齐 §7：定义目录 schema = 配置权） |
+| 法律文档保存 | `app/legal/actions.ts` | ✅ `seo:write` |
+| 内容 CRUD/发布 | `app/content/actions.ts`（5） | ✅ `seo:write` |
+| 评论审核 | `app/reviews/actions.ts` | ✅ `product:write` |
+| 市场创建 | `app/markets/actions.ts` | ✅ `market:write` |
+| 团队/角色 | `app/team/actions.ts`（3） | ✅ `role:manage` |
 
-**风险评估**：当前 staff 角色恰好拥有 product/order/category/seo 四点，所以**今天没有实际越权损失**；但：① 违反架构文档铁律②"每个 Server Action 内部强制 authz"；② 一旦新增低权角色（客服/只读/外包运营）就会立刻全线破防；③ 退款/争议等敏感动作将来接上时容易漏加。**建议**：全站统一改 `requirePermission(...)`（上表"应有权限点"），并把 AdminNav 按权限过滤，作为模板的**硬约束范式**（模板的价值就在于后人照着写不出错）。
+**静态审计结果**（逐文件正则）：13 个 `actions.ts` 共 **34 个导出动作，`requirePermission` 出现 34 次**，`requireAdmin` 与裸 `getSession` 均为 **0**。
+**验证**（真实 DB 账号）：`staff@test.local` 运行时权限集 = `{category,order,product,seo}:write` → 新守卫会拒 config/market/role，放行其余 4 项；两个 super_admin 账号 = 全 8 权。另 7 包 `typecheck` 全过 + admin `next build` 过 + core 28 单测全过。
+
+### 4.2 仍属未开工（不属本次范围）
+❌ 2FA/Passkey、step-up、会话撤销 UI、审计 diff、**退款限额**（`refund:write` 已定义但无退款动作可守 → 接退款时必须同时加限额守卫）、Cloudflare Access 包住 admin 子域。
 
 ---
 
@@ -276,7 +283,7 @@ onestarry.com/
 |---|---|
 | Workers | `onestarry-com`（web）· `onestarry-admin`（admin）· `onestarry-jobs`（cron，crons `* * * * *` + `20 4 * * *`） |
 | 绑定 | web：Hyperdrive `797e79…` + R2 `onestarry-media` + R2 `onestarry-isr-cache` + DO `NEXT_CACHE_DO_QUEUE` + service 自引用；admin：Hyperdrive + R2 `onestarry-media`；jobs：仅 Hyperdrive |
-| CI | **Cloudflare Workers Builds**（三 Worker 各自"就地连接 Git"，push main 自动构建）；**无 `.github/workflows`** → lint/typecheck/test 只在本地跑 |
+| CI | **Cloudflare Workers Builds**（三 Worker 各自"就地连接 Git"，push main 自动构建）；**无 `.github/workflows`** → lint/typecheck/test 只在本地跑。⚠️ **今日发现：Next 15 支持窗口（发布 +2 年）到 2026-10-21 正好到期** → `opennextjs-cloudflare build` 的 `checkNextVersionSupport` 直接 `process.exit(1)` → **下一次 CI 构建会失败**（需决策：升 Next 16 还是临时加 `--dangerouslyUseUnsupportedNextVersion`，详 §10 D16 / §9 N16） |
 | R2 桶 | 只有**公开桶** `onestarry-media`（+ ISR 桶 `onestarry-isr-cache`）；架构文档 §10.3 计划的**私有桶 `onestarry-files` 未建**（发票 PDF/导入暂存/未发布上传无处可放） |
 | 图片管线 | 客户端 `apps/admin/lib/image.ts` `downscaleImage`（最长边 ≤1600 → webp q0.82）→ Server Action 上传 R2；URL 导入侧 `importImage` 下载外链转存 R2。**无 Cloudflare Images/缩略变体** |
 | DB 角色 | `app_rw` 已上线（只追加表禁 UPDATE/DELETE；outbox 保 UPDATE；orders 保 DELETE）；DDL 走 `neondb_owner` |
@@ -308,7 +315,7 @@ onestarry.com/
 | 层 | 真相 |
 |---|---|
 | 单测 | `packages/core/src/*.test.ts` **6 个**（pricing/sellability/shipping/shippingProvider/payments/csv），跑法 `tsx --test`（**node:test，不是 Vitest**）；`pnpm --filter @onestarry/core test` |
-| turbo | `turbo.json` **无 test 任务** → `pnpm test` 不进流水线 |
+| turbo | `turbo.json` **无 test 任务** → `pnpm test` 不进流水线；⚠️ `pnpm typecheck` 目前会被 **`@onestarry/shared`（空壳包，package.json 指向不存在的 src）拉失败**，绕过法：逐包 `pnpm --filter <pkg> typecheck`（core/db/auth/jobs/ui/web/admin 均 OK）——属 D14 待处理 |
 | 集成 | 靠 11 个 smoke 脚本连真实 Neon（人工触发） |
 | e2e / 压测 / a11y | Playwright ❌ k6 ❌ axe ❌（架构文档 §12 要求，未开工）；历史上用浏览器子代理手工点过结账（截图已 gitignore） |
 
@@ -323,7 +330,7 @@ onestarry.com/
 | 3 db 基础设施 + 异步 | ✅ | Drizzle+Hyperdrive+UUIDv7+迁移+角色分离+分区（**Inngest → Workers Cron**） |
 | 4 配置底座 | 🟡 | 表全建、`markets` 列（pricing_mode/duty_presentation/over_threshold_policy）**在用**；其余 12 张配置表 ⛔ 零代码 |
 | 5 账本+发票序列 | ✅ | 两段式分录+连号取号+借贷平衡校验 |
-| 6 认证与 RBAC | 🟡 | 双实例+三档+权限点表 ✅；§4 的守卫缺口 + 无 2FA/step-up/审计 |
+| 6 认证与 RBAC | ✅（本轮补） | 双实例+三档+权限点表 ✅；**§4 守卫已全量收口**（34 动作 + 13 页 + 导航过滤 + HTTP 注册封）；仍缺 2FA/step-up/审计/退款限额 |
 | 7 商品目录 | ✅ | 含属性定义/slug 单一真源/媒体/译文；变体矩阵 `productOptions/optionValues` ⛔ 未用 |
 | 8 库存 | 🟡 | 水位+流水+发货扣减 ✅；预留/原子扣减/秒杀 ❌ |
 | 9 定价与可售性 | 🟡 | 物化管道+inputsHash+price_history ✅；四个 provider 占位（D01）、`computeSellability` 未接（D02） |
@@ -348,7 +355,7 @@ onestarry.com/
 | N3 | 运费进结账 | `core/shipping.ts` `computeShipping` + `shipping_rates.rate_table` 已在；调用点在 `web/app/cart/page.tsx` 与 `checkout/actions.ts` 的 `SHIPPING_CENTS = 500` 处替换 |
 | N4 | 可售性接线 | `core/sellability.ts` → `browseProducts`/`getProductById`/`getCartLines` 三处读取路径 + `product_market_availability` 表启用 |
 | N5 | 真实幂等键 | `checkout/actions.ts`：由客户端提交前生成并复用（同一表单一次提交一个 key），命中 `IDEMPOTENT_REPLAY` 时返回原单号 |
-| N6 | 权限守卫统一 | §4 表格逐文件改 `requirePermission`；`AdminNav` 按 `getPrincipalPermissions` 过滤 |
+| N6 | ~~权限守卫统一~~ ✅ **已完成 2026-10-21** | 34 动作全 `requirePermission` + 13 页升级 + `readAdminSession` 单一读取点 + AdminNav 按权限过滤 + 后台 HTTP 封公开注册（详 §4） |
 | N7 | 内容页进 sitemap | `apps/web/app/sitemap.ts` 加 `listPublishedContent` 的 blog/page/landing |
 | N8 | 退款 | 新建 `queries/refunds.ts`（表已存在）+ 后台退款动作（`refund:write`）+ `creditNotes` |
 | N9 | 交易邮件 | `packages/email`（未建）+ 新增 outbox handler：`order.created/payment.succeeded/order.shipped`（`jobs/src/handlers.ts` 注册表就是为此留的） |
@@ -358,6 +365,8 @@ onestarry.com/
 | N13 | 集成 API 严格验签 | `integration/_lib/access.ts` 补 JWKS 校验 + scope + IP allowlist |
 | N14 | CMS 阶段2/3 | `ContentEditor` 加 Image 扩展 + 上传 action（R2 key `content/{contentId}/`）；content 的 seo_meta 面板复用 `upsertSeoMeta` |
 | N15 | 测试进流水线 | `turbo.json` 加 `test` 任务；（可选）把 `tsx --test` 换 Vitest 以对齐文档，或改文档 §12 |
+| N16 | **Next 15 支持窗口到期（CI 会构建失败）** | ✅ 正解：升 Next 16（架构文档 §1 已预留"以 OpenNext 当前稳定支持版本为准，不死守 15"），需 OpenNext 1.20.12 对 16 的支持核实 + 一轮全量回归；⏱️ 临时：`opennextjs-cloudflare build --dangerouslyUseUnsupportedNextVersion`（只改 web/admin 的 `preview`/`deploy` 脚本即可同时修好 CI）。**需你拍板** |
+| N17 | `pnpm typecheck` 被空壳包卡住 | 三选一：① 真建 `packages/shared/src/{constants,money,i18n,pagination}.ts` 并把硬编码市场/locale/currency 接上去（与 §10.1/N3 合并做）；② 删包并从 `transpilePackages` 移除；③ 清空其 exports 映射与 typecheck 脚本。现状 = 文档 D14 |
 
 ---
 
@@ -368,7 +377,7 @@ onestarry.com/
 | D01 | §3.3/§6.1 | 全包价 = 基价+税+关+运费，税由 Stripe Tax/LandedCost 权威 | `taxRate/dutyRate/shippingCents=0`、`fxRate=1` 硬编码进事件 payload | 展示的"全包价"其实没有税关；US DDP 不成立 | 见 N2；在此之前架构文档 §3.3 标"MVP 占位" |
 | D02 | §5 | `computeSellability` 是四处共用的单一函数 | 零调用；可售性只看 vmp.blocked + status | 商品级市场可用性/禁售类目/配送区覆盖**不生效** | 见 N4 |
 | D03 | §6.1/§6.6 | 结账必算运费、进 VAT 税基、整票阈值分支 | 运费 500 常量、无阈值校验、市场硬编码 us | 多国/多市场立刻失真 | 见 N3/N5 |
-| D04 | 铁律②/§7 | 每个 Server Action 强制 authz | 商品/发货/新建/类目/品牌/属性/法律页只校验登录 | 低权角色一旦上线即全线破防 | 见 N6（**模板级 P0**） |
+| D04 | 铁律②/§7 | 每个 Server Action 强制 authz | ✅ **已收口 2026-10-21**：34/34 动作 + 13/13 页全 `requirePermission`，导航按权限过滤 | （原：低权角色上线即全线破防）| 已完成；回归时只需跑 §4.1 的静态审计正则 |
 | D05 | §14 | 加国家 = 纯配置（运费/税则/合规/PSP 全后台配） | 只有 `markets` 行 + 后台"市场创建"；其余配置表无读代码、无配置页 | "纯配置加国家"目前**不成立** | 分两步：先接线（N2/N3/N4），再补后台配置页 |
 | D06 | §1/§43 §2/§58/§162 | 异步层 = Inngest | Workers Cron + `runRelayBatch`；handler 仅 1 条 | 文档误导后来人 | 文档已在本轮回写（见 §11） |
 | D07 | §1 L37/§5/§10 | 搜索 = Typesense 默认，outbox → Typesense | Postgres FTS（generated tsvector + GIN）；无外发 | 分面/容错/即时建议客户端直连都没有 | 保留为规模路径（§15.1‑5 已注明阈值） |
@@ -379,7 +388,9 @@ onestarry.com/
 | D12 | §12/§1 | core Vitest / CI GitHub Actions | `tsx --test` + Workers Builds；无 workflow、turbo 无 test 任务 | 测试不会自动跑 | 见 N15 |
 | D13 | §3.7 | customer 业务属性进 `customer_profiles` | 表在，零引用（前后台都没读写） | 偏好语言/市场/营销开关无处落 | 接前台偏好时一并启用 |
 | D14 | §13 | 集成契约 zod 单一真源进 `packages/shared` + OpenAPI | `packages/shared` 是**空壳**（package.json 指向不存在的 src） | 外部程序无契约可依 | 要么补 shared/src，要么从文档删掉这条承诺 |
-| D15 | §7/§15.2 | 后台强制 2FA/Passkey、审计 diff、财务限额 | 全 ❌；且后台 admin 实例**未关闭公开注册** | 后台账号可被自助注册（有 Hyperdrive 即可写） | **上线前必核**：`disableSignUp` + 团队页审批流 |
+| D15 | §7/§15.2 | 后台强制 2FA/Passkey、审计 diff、财务限额；**不开放公开注册** | ✅ 注册面已封（HTTP 层 `/sign-up*` → 403，`lib/authGuard.ts`）；❌ 2FA/审计/限额仍 ❌ | 原风险：任何人可自助注册后台账号 | HTTP 拦截已上；**未用 better-auth `disableSignUp`**（会连带拒掉进程内建号 → 团队页就废了）；2FA/限额待开工 |
+| D16 | §1 L30 | "以 OpenNext 当前稳定支持版本为准，不死守 15" | 实际钉在 Next 15.5.28；**2026-10-21 起 OpenNext 拒绝构建 15.x**（支持窗口 = 发布 +2 年） | CI 下一次部署直接失败 | 见 N16（升 16 为正解，需你定） |
+| D17 | 无（本轮新发现） | — | 本地 Windows 跑不了 `opennextjs-cloudflare build`：Next standalone tracing 建符号链接 `EPERM`（需开发者模式/管理员） | admin 的 worker 本地预览不可用，e2e 只能靠真机部署或连库脚本 | 要本地预览：开 Windows 开发者模式或用 WSL；不阻塞交付 |
 
 ---
 

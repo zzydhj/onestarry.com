@@ -1,7 +1,8 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { createDb, getCategoryAttributes, getCategoryById, listAttributeDefinitions } from "@onestarry/db";
-import { requireAdmin } from "@/lib/auth";
+import { PERMISSIONS } from "@onestarry/core";
+import { requirePermission } from "@/lib/auth";
 import { Button, Select } from "@onestarry/ui";
 import { attachCategoryAttributeAction, removeCategoryAttributeAction } from "./actions";
 
@@ -10,7 +11,7 @@ export const dynamic = "force-dynamic";
 /** 类目属性配置（受保护）：把全局属性挂到本类目 / 解除。挂上的属性决定该类目商品可填哪些规格、将来可按哪些筛选。 */
 export default async function CategoryAttributesPage({ params }: { params: Promise<{ id: string }> }) {
     const { id } = await params;
-    const { env } = await requireAdmin();
+    const { env } = await requirePermission(PERMISSIONS.categoryWrite);
     const db = createDb(env.HYPERDRIVE.connectionString);
     const cat = await getCategoryById(db, id);
     if (!cat) notFound();

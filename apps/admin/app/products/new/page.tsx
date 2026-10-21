@@ -1,5 +1,6 @@
 import Link from "next/link";
-import { requireAdmin } from "@/lib/auth";
+import { PERMISSIONS } from "@onestarry/core";
+import { requirePermission } from "@/lib/auth";
 import { Button, Input, Label, Select, Textarea } from "@onestarry/ui";
 import { createProductAction } from "./actions";
 
@@ -7,7 +8,7 @@ export const dynamic = "force-dynamic";
 
 /** 新建商品表单（受保护）。提交 → createProductAction → 成功跳详情。 */
 export default async function NewProduct({ searchParams }: { searchParams: Promise<{ error?: string }> }) {
-    await requireAdmin();
+    await requirePermission(PERMISSIONS.productWrite);
     const { error } = await searchParams;
 
     return (

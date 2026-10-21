@@ -1,5 +1,6 @@
 import { createDb, listAttributeDefinitions } from "@onestarry/db";
-import { requireAdmin } from "@/lib/auth";
+import { PERMISSIONS } from "@onestarry/core";
+import { requirePermission } from "@/lib/auth";
 import { Button, Card, Input, Label, Select } from "@onestarry/ui";
 import { createAttributeAction, updateAttributeAction } from "./actions";
 import { DeleteAttribute } from "./DeleteAttribute";
@@ -19,7 +20,7 @@ const checkCls = "h-4 w-4 accent-accent";
 
 /** 属性管理（受保护）：全局属性库的新增 / 编辑 / 删除。 */
 export default async function AttributesPage({ searchParams }: { searchParams: Promise<{ error?: string }> }) {
-    const { env } = await requireAdmin();
+    const { env } = await requirePermission(PERMISSIONS.configWrite);
     const { error } = await searchParams;
     const db = createDb(env.HYPERDRIVE.connectionString);
     const attrs = await listAttributeDefinitions(db);

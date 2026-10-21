@@ -1,5 +1,6 @@
 import Link from "next/link";
-import { requireAdmin } from "@/lib/auth";
+import { PERMISSIONS } from "@onestarry/core";
+import { requirePermission } from "@/lib/auth";
 import { ImportForm } from "./ImportForm";
 import { UrlImportForm } from "./UrlImportForm";
 
@@ -7,7 +8,7 @@ export const dynamic = "force-dynamic";
 
 /** 批量导入页（受保护）：上传 CSV，按 SKU upsert 商品。 */
 export default async function ImportPage() {
-    await requireAdmin();
+    await requirePermission(PERMISSIONS.productWrite);
 
     return (
         <main className="mx-auto max-w-2xl px-4 py-8">
