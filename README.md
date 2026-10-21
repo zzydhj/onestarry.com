@@ -72,7 +72,7 @@ pnpm dev
 
 | Worker | Root | Preset | Build command | Deploy command |
 |---|---|---|---|---|
-| `onestarry-com`（web） | `/` | None | `pnpm install --frozen-lockfile && pnpm --filter @onestarry/web exec opennextjs-cloudflare build` ✅已核对 | `pnpm --filter @onestarry/web exec wrangler deploy` |
+| `onestarry-com`（web） | `/` | None | **目标配置**：`pnpm install --frozen-lockfile && pnpm typecheck && pnpm test && pnpm --filter @onestarry/web run cf:build`（🟡 当前仍为 `... exec opennextjs-cloudflare build`，待改） | `pnpm --filter @onestarry/web exec wrangler deploy` |
 | `onestarry-admin` | `/` | None | 同 web 模式，把 `web` 换成 `admin`（❗待你顺手核对一次） | `pnpm --filter @onestarry/admin exec wrangler deploy` |
 | `onestarry-jobs` | `/` | None | `pnpm install --frozen-lockfile` | `pnpm --filter @onestarry/jobs-worker exec wrangler deploy` |
 
@@ -87,6 +87,8 @@ Workers Builds 环境变量（**Variables and Secrets → Secrets**）：
 - `BETTER_AUTH_SECRET`：admin 与 web 各一个（32 字节 base64）。
 
 > ⚠️ **构建期会连真库**：OpenNext 在构建期预渲染 ISR 页时会用 `DATABASE_URL` 连生产 Neon；secret 值损坏不是降级而是直接构建失败（历史血泪：28P01，见 §12.4 与记忆《Cloudflare Build Secret 中 DATABASE_URL 的值格式规范》）。
+
+> 🔴 **`cf:build` 里现在带了一个临时过桥 flag**：`opennextjs-cloudflare build --dangerouslyUseUnsupportedNextVersion`，因为 Next 15 的 2 年支持窗已于 2026-10-21 过完（OpenNext 对 15.x 直接 `exit 1`）。**升到受支持主版本后必须摘掉它**（追踪：`docs/IMPLEMENTATION.md` §12.4 T17/T18）。另：`pnpm lint` 目前仍会报错（eslint 从未接通，见 T22），所以**没放进 CI 门禁**。
 
 Hyperdrive / R2 / Durable Object 都在 `wrangler.jsonc` 声明，不用 secret。
 
@@ -104,11 +106,17 @@ Hyperdrive / R2 / Durable Object 都在 `wrangler.jsonc` 声明，不用 secret�
 ## 常用脚本
 
 ```bash
-pnpm -r typecheck          # 全 workspace 类型检查
+pnpm typecheck             # turbo 全仓类型检查（现 8/8 全绿）
+pnpm -r typecheck          # 逐包跑（等价）
+pnpm test                  # turbo 全仓单测（现 28/28）
+pnpm build                 # turbo 全仓构建
+pnpm --filter @onestarry/web cf:build   # OpenNext 构建（CI 用的就是它）
 pnpm --filter @onestarry/db db:studio    # Drizzle Studio 看库
-pnpm --filter @onestarry/db smoke        # 冒烟测试（各模块 smoke:* 见 packages/db/package.json）
+pnpm --filter @onestarry/db smoke        # 冒烟（连真库写数据，**手动跑**、不进 CI）
 pnpm --filter @onestarry/web cf-typegen  # 重生 Workers env 类型
 ```
+
+> ⚠️ `pnpm lint` 暂不可用（各包缺 `eslint.config.mjs` 与 eslint 依赖，详实现地图 §12.2 T22）。
 
 ## 版本与冻结
 

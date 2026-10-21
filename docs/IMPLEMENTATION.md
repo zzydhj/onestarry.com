@@ -31,7 +31,7 @@
 
 **术语已过时**（架构文档正文仍这么写，代码已替代）：Inngest → **Workers Cron**；Typesense → **Postgres FTS**；Upstash Redis → **未使用**；Vitest → **node:test（tsx --test）**；GitHub Actions → **Cloudflare Workers Builds**；`packages/email`/`packages/authz`/`tools/scraper` → **不存在**。
 
-**作为一份可交付模板，还欠 20 项**（→ **§12 模板完备性体检**，T1–T20 分四组：换皮彻底性 / 质量门禁 / 安全默认值 / 版本时间炸弹；本轮新发现的硬阻塞是 **T7 `@onestarry/shared` 空壳使 `pnpm -r typecheck/build` 整仓红**、**T8 CI 不跑任何测试**、**T18 Next 15 支持窗已过 → 部署闸门 exit 1**）。
+**作为一份可交付模板，还欠 22 项**（→ **§12 模板完备性体检**，T1–T22 分四组：换皮彻底性 / 质量门禁 / 安全默认值 / 版本时间炸弹。本轮（2026-10-21）已**结案 T3/T5/T7**（其中 T7 后根 `pnpm typecheck` 首次 8/8 全绿）、**仓库侧门禁 T8 已建**（待你改一次 CI 命令）、过桥 T17 已落地；本轮又新发现 **T22：lint 面从未接通**）。
 
 ---
 
@@ -285,7 +285,7 @@ onestarry.com/
 |---|---|
 | Workers | `onestarry-com`（web）· `onestarry-admin`（admin）· `onestarry-jobs`（cron，crons `* * * * *` + `20 4 * * *`） |
 | 绑定 | web：Hyperdrive `797e79…` + R2 `onestarry-media` + R2 `onestarry-isr-cache` + DO `NEXT_CACHE_DO_QUEUE` + service 自引用；admin：Hyperdrive + R2 `onestarry-media`；jobs：仅 Hyperdrive |
-| CI | **Cloudflare Workers Builds**（三 Worker 各自"就地连接 Git"，push main 自动构建）；**无 `.github/workflows`** → lint/typecheck/test 只在本地跑。⚠️ **今日发现：Next 15 支持窗口（发布 +2 年）到 2026-10-21 正好到期** → `opennextjs-cloudflare build` 的 `checkNextVersionSupport` 直接 `process.exit(1)` → **下一次 CI 构建会失败**（需决策：升 Next 16 还是临时加 `--dangerouslyUseUnsupportedNextVersion`，详 §10 D16 / §9 N16） |
+| CI | **Cloudflare Workers Builds**（三 Worker 各自“就地连接 Git”，push main 自动构建）；**无 `.github/workflows`**。✅ 2026-10-21 仓库侧门禁已就位：`pnpm typecheck`（8/8）+ `pnpm test`（28/28）一键可跑；⚠️ **lint 不在门禁里**（T22：eslint 从未接通）。构建走 `cf:build`（含临时过桥 flag）；**Dashboard 的 Build command 仍待人工改一次**：改成 `pnpm install --frozen-lockfile && pnpm typecheck && pnpm test && pnpm --filter @onestarry/<app> run cf:build` |
 | R2 桶 | 只有**公开桶** `onestarry-media`（+ ISR 桶 `onestarry-isr-cache`）；架构文档 §10.3 计划的**私有桶 `onestarry-files` 未建**（发票 PDF/导入暂存/未发布上传无处可放） |
 | 图片管线 | 客户端 `apps/admin/lib/image.ts` `downscaleImage`（最长边 ≤1600 → webp q0.82）→ Server Action 上传 R2；URL 导入侧 `importImage` 下载外链转存 R2。**无 Cloudflare Images/缩略变体** |
 | DB 角色 | `app_rw` 已上线（只追加表禁 UPDATE/DELETE；outbox 保 UPDATE；orders 保 DELETE）；DDL 走 `neondb_owner` |
@@ -317,7 +317,7 @@ onestarry.com/
 | 层 | 真相 |
 |---|---|
 | 单测 | `packages/core/src/*.test.ts` **6 个**（pricing/sellability/shipping/shippingProvider/payments/csv），跑法 `tsx --test`（**node:test，不是 Vitest**）；`pnpm --filter @onestarry/core test` |
-| turbo | `turbo.json` **无 test 任务** → `pnpm test` 不进流水线；⚠️ `pnpm typecheck` 目前会被 **`@onestarry/shared`（空壳包，package.json 指向不存在的 src）拉失败**，绕过法：逐包 `pnpm --filter <pkg> typecheck`（core/db/auth/jobs/ui/web/admin 均 OK）——属 D14 待处理 |
+| turbo | ✅ 已加 `test` task 与根 `pnpm test`（实测 **28/28 EXIT 0**）；`pnpm typecheck` 现 **8/8 全绿**（shared 空壳已删，D14/N17 结案）。⚠️ `pnpm lint` 仍会红 —— 见 §12.2 T22 |
 | 集成 | 靠 11 个 smoke 脚本连真实 Neon（人工触发） |
 | e2e / 压测 / a11y | Playwright ❌ k6 ❌ axe ❌（架构文档 §12 要求，未开工）；历史上用浏览器子代理手工点过结账（截图已 gitignore） |
 
@@ -367,8 +367,8 @@ onestarry.com/
 | N13 | 集成 API 严格验签 | `integration/_lib/access.ts` 补 JWKS 校验 + scope + IP allowlist |
 | N14 | CMS 阶段2/3 | `ContentEditor` 加 Image 扩展 + 上传 action（R2 key `content/{contentId}/`）；content 的 seo_meta 面板复用 `upsertSeoMeta` |
 | N15 | 测试进流水线 | `turbo.json` 加 `test` 任务；（可选）把 `tsx --test` 换 Vitest 以对齐文档，或改文档 §12 |
-| N16 | **Next 15 支持窗口到期（CI 会构建失败）** | ✅ 正解：升 Next 16（架构文档 §1 已预留"以 OpenNext 当前稳定支持版本为准，不死守 15"），需 OpenNext 1.20.12 对 16 的支持核实 + 一轮全量回归；⏱️ 临时：`opennextjs-cloudflare build --dangerouslyUseUnsupportedNextVersion`（只改 web/admin 的 `preview`/`deploy` 脚本即可同时修好 CI）。**需你拍板** |
-| N17 | `pnpm typecheck` 被空壳包卡住 | 三选一：① 真建 `packages/shared/src/{constants,money,i18n,pagination}.ts` 并把硬编码市场/locale/currency 接上去（与 §10.1/N3 合并做）；② 删包并从 `transpilePackages` 移除；③ 清空其 exports 映射与 typecheck 脚本。现状 = 文档 D14 |
+| N16 | **Next 15 支持窗已过 → CI 构建失败**（已实测确认） | ⛳ **正解**：升 Next 16.4.2 + wrangler ≥4.59.2（T18，本批执行）；✅ **过桥已改方案**：新增 `cf:build` 脚本承载 flag（T17）。⚠️ **旧写法已推翻**：只改 `preview`/`deploy` 脚本**修不好 CI** —— 已核 Dashboard 的 Build command 是 `exec opennextjs-cloudflare build`，不走 npm 脚本；必须把 Dashboard 改指 `run cf:build`（已实测确认，详 §12.4） |
+| N17 | ~~`pnpm typecheck` 被空壳包卡住~~ | ✅ **已结案 2026-10-21**：选②（删包 + 清 `transpilePackages` 引用），根 `pnpm typecheck` 8/8 全绿。若将来真需要 money/i18n/pagination 共享工具，放 `packages/core`（单入口），不再保留两个“共享包” |
 
 ---
 
@@ -389,9 +389,9 @@ onestarry.com/
 | D11 | §10.3 L278-279 | "R2 现状 = 无读写代码、桶内空" | **已过时**：media.ts/上传动作/URL 抓图/公开域 `media.onestarry.com` 全在用 | 文档误导 | 本轮已回写 |
 | D12 | §12/§1 | core Vitest / CI GitHub Actions | `tsx --test` + Workers Builds；无 workflow、turbo 无 test 任务 | 测试不会自动跑 | 见 N15 |
 | D13 | §3.7 | customer 业务属性进 `customer_profiles` | 表在，零引用（前后台都没读写） | 偏好语言/市场/营销开关无处落 | 接前台偏好时一并启用 |
-| D14 | §13 | 集成契约 zod 单一真源进 `packages/shared` + OpenAPI | `packages/shared` 是**空壳**（package.json 指向不存在的 src） | 外部程序无契约可依 | 要么补 shared/src，要么从文档删掉这条承诺 |
+| D14 | §13 | 集成契约 zod 单一真源进 `packages/shared` + OpenAPI | `packages/shared` 是**空壳**（package.json 指向不存在的 src） | 外部程序无契约可依 | ✅ **2026-10-21 已删包**（走“从文档删掉这条承诺”路线）；契约层若要做，放 `packages/core` 或新建 `packages/contract`，别再用 shared 这个名字 |
 | D15 | §7/§15.2 | 后台强制 2FA/Passkey、审计 diff、财务限额；**不开放公开注册** | ✅ 注册面已封（HTTP 层 `/sign-up*` → 403，`lib/authGuard.ts`）；❌ 2FA/审计/限额仍 ❌ | 原风险：任何人可自助注册后台账号 | HTTP 拦截已上；**未用 better-auth `disableSignUp`**（会连带拒掉进程内建号 → 团队页就废了）；2FA/限额待开工 |
-| D16 | §1 L30 | "以 OpenNext 当前稳定支持版本为准，不死守 15" | 实际钉在 Next 15.5.28；**2026-10-21 起 OpenNext 拒绝构建 15.x**（支持窗口 = 发布 +2 年） | CI 下一次部署直接失败 | 见 N16（升 16 为正解，需你定） |
+| D16 | §1 L30 | "以 OpenNext 当前稳定支持版本为准，不死守 15" | 实际钉在 Next 15.5.28；**2026-10-21 起 OpenNext 拒绝构建 15.x**（支持窗口 = 发布 +2 年） | CI 下一次部署直接失败 | 见 N16：已过桥（`cf:build`）+ 本批执行升 16.4.2；§1 的“不死守 15”承诺正式落地 |
 | D17 | 无（本轮新发现） | — | 本地 Windows 跑不了 `opennextjs-cloudflare build`：Next standalone tracing 建符号链接 `EPERM`（需开发者模式/管理员） | admin 的 worker 本地预览不可用，e2e 只能靠真机部署或连库脚本 | 要本地预览：开 Windows 开发者模式或用 WSL；不阻塞交付 |
 
 ---
@@ -422,15 +422,15 @@ onestarry.com/
 | T2 | 换皮主文档过时 | 🔴 | `docs/REBRAND.md` §1 写着「`SITE` 常量散在前台」并给 9 文件批量替换表 + 「重构机会」注 —— 实际该重构**早已完成** | 换皮者按表全量 replace 会误伤（把 site.ts 之外不该动的一起改）。→ 本轮已改写 §1 |
 | T3 | README 部署表与事实不符 | ✅ 已核对并回写（2026-10-21） | 表里 web/admin 的 Build command = `pnpm --filter @onestarry/web build`（= `next build`），但 `apps/web/wrangler.jsonc` 的 `main` 指 `.open-next/worker.js`，只有 `opennextjs-cloudflare build` 才产出它；而站点确实能 push 即部署 ⇒ Dashboard 里的真实命令 ≠ 表格 | 模板门面步骤被照抄就必炸。→ 用户已从 Dashboard 抄回真实命令：**Build = `pnpm install --frozen-lockfile && pnpm --filter @onestarry/web exec opennextjs-cloudflare build`**、Deploy = `... exec wrangler deploy`、版本命令 = `... exec wrangler dev`、根目录 `/`。README 已按实回写（admin 仍标“待核对”）。**关键发现**：CI 直调 `opennextjs-cloudflare build`，**不走 npm 的 `deploy` 脚本** ⇒ 任何构建期 CLI 参数写在 `package.json` 里对 CI 无效；建议把构建收进 `cf:build` 脚本、Dashboard 只调 `run cf:build`，以后参数增删全在 git 里可审计 |
 | T4 | LICENSE | 🟡 已定：仅内部使用（2026-10-21） | 仓库根只有 README / .env.example / pnpm-* / tsconfig.base / neon.ts，**无 LICENSE** | 「可长期复用模板」若无授权声明，给外部/别的法人用是法务空白。→ 用户明确“只给自己用、不对外”。→ 建议仅放一份 3 行 `LICENSE.md`（专有 · 仅内部使用 · 未经授权不得分发），价值不在法务而在防误操作（仓库转 public / 外包 fork / 误发 npm）；不要授权文本则可本行标“已确认无需” |
-| T5 | 跨平台可跑性 | 🟡 | 根 `clean` = `turbo run clean && rm -rf node_modules`，PowerShell/cmd 无 `rm -rf` | Windows 用户跑 `pnpm clean` 直接报错。→ 换 node 实现或删掉 rm 部分 |
+| T5 | 跨平台可跑性 | ✅ 已修（2026-10-21） | 原 `clean` = `turbo run clean && rm -rf node_modules`，PowerShell/cmd 无 `rm -rf` | → 改成 `node -e "require('fs').rmSync('node_modules',{recursive:true,force:true})"`，三平台一致 |
 | T6 | 死配置 | 🟡 | `turbo.json` `globalEnv` 含 `NEXT_PUBLIC_APP_URL`、`NEXT_PUBLIC_DEFAULT_LOCALE`；但**全仓 `NEXT_PUBLIC_*` 引用数 = 0**，`.env.example` 里也没这两项 | 新人会改完发现不生效。→ 删掉，或真做成「前端可配的站点 URL/默认语言」 |
-| T7 | `@onestarry/shared` 空壳 | 🔴 | `packages/shared/src` 不存在（Test-Path False）；`apps/{web,admin}/next.config.ts` 的 `transpilePackages` 仍列它；根 `pnpm typecheck` / `pnpm build` **整仓红**（改动前既已存在，见 D14/N17） | 「一键绿」是模板的门面，也是别人判断这模板健不健全的第一印象。→ 要么把业务常量真迁进去，要么删包 + 清 4 处引用 |
+| T7 | `@onestarry/shared` 空壳 | ✅ 已删包（2026-10-21） | `packages/shared/src` 不存在（Test-Path False）；`apps/{web,admin}/next.config.ts` 的 `transpilePackages` 仍列它；根 `pnpm typecheck` / `pnpm build` **整仓红**（原 D14/N17） | → **已删除**：`packages/shared/package.json` 移除 + 两个 `transpilePackages` 清引用 + `pnpm install` 刷 lockfile。**验收**：`pnpm typecheck`（turbo）**8/8 成功 EXIT 0**、`pnpm -r typecheck` 7 包全 Done —— 仓库级命令首次全绿。注：本地可能残留空目录 `packages/shared/`（git 不跟踪空目录，clone 后不存在），可手工删 |
 
 ### 12.2 B 组 · 质量门禁（决定别人敢不敢动代码）
 
 | # | 项 | 状态 | 本轮证据 | 影响 / 建议动作 |
 |---|---|---|---|---|
-| T8 | CI 里没有测试 | 🔴 | 无 `.github/`；Workers Builds 只跑 build+deploy；`turbo.json` **没有 `test` task**；根 `package.json` **没有 `test` 脚本** | core 的 28 个单测与 db 的 10 个 `smoke:*` 全靠人肉跑（§7）。这也是「升 Next 不敢按」的根因 —— 没有回归网，任何版本变动都是盲跳。→ 加 `test` 脚本 + turbo task，并把 `typecheck && lint && test` 挂进 Workers Builds 的 Build command（build 之前失败就不会部署） |
+| T8 | CI 里没有测试 | 🟡 本地门禁已建，CI 待改 | 无 `.github/`；Workers Builds 只跑 build+deploy；`turbo.json` **没有 `test` task**；根 `package.json` **没有 `test` 脚本** | ✅ **已修仓库侧**：新增根 `"test": "turbo run test"` + `turbo.json` 的 `test` task；`pnpm test` 实测 **28/28 通过 EXIT 0**（目前只有 core 有单测；db/jobs 的 `smoke:*` **故意不进 CI** —— 它们会往真库写数据）。⚠️ **待用户在 Dashboard 改一次**：Build command 改成 `pnpm install --frozen-lockfile && pnpm typecheck && pnpm test && pnpm --filter @onestarry/<app> run cf:build`，这样类型/测试挂了就不会部署 |
 | T9 | 无预览环境 / 无 e2e | 🟡 已找到原生入口 | web/admin 各只有一个生产 Worker；本地 `opennextjs-cloudflare preview` 在 Windows 因 symlink EPERM 跑不通（D17）；无 Playwright。**但 Dashboard 实测：「非生产分支构建」已勾选**（任何分支 push 自动跑完整构建、生产不动）；**「Set up Worker Previews」存在且未启用** | 分支构建就是升级的第一道回归网（typecheck+build 失败=构建失败）。Preview 建议启用，但 ⚠️ **preview Worker 沿用同一套 Hyperdrive/R2 绑定 ⇒ 连的是生产 Neon**，只能验证渲染/交互，**不得在 preview 上下单/改价/发货**，除非同时接 Neon 分支隔离 |
 | T10 | 后台缺错误边界 | 🟡 | `apps/admin/app/not-found.tsx`、`error.tsx` **均不存在**（web 侧 `not-found/error/global-error` 三件套齐全 ✓） | 后台任一渲染异常 = 整页白屏，运营会以为挂了 |
 
@@ -458,13 +458,14 @@ onestarry.com/
 
 | # | 项 | 优先级 | 一句话 |
 |---|---|---|---|
-| T17 | 过桥：web/admin 的 `preview`/`deploy` 加 `--dangerouslyUseUnsupportedNextVersion` | P0（分钟级） | 立刻恢复部署，代价＝继续跑在停止安全维护的 15.5.28 上；**必须同时**写下「到期即删」的追踪条（本节） |
+| T17 | 过桥：构建收进 `cf:build` 脚本 | 🟡 仓库侧已落地（2026-10-21），**差你改一次 Dashboard** | web/admin 各新增 `"cf:build": "opennextjs-cloudflare build --dangerouslyUseUnsupportedNextVersion"`，且 `preview`/`deploy` 改为复用它（flag 只一处） | 你要做的：把两个 Builds 项目的 Build command 末尾改成 `run cf:build`（**只需这一次**）。之后升完 Next 我把 flag 从脚本里删掉，Dashboard 不再动 —— flag 的存在/消失全在 git 历史里可审计。**到期即删**：T18 完成后立即摘 |
 | T18 | 正解：升 Next 16.4.2（同批 bump wrangler ≥4.59.2，实到 ^4.151） | P0（半天级） | 买到 2027-10-21 前的窗口；风险由 T8 的测试门禁兜住，**所以顺序是先 T8 后 T18** |
 | T19 | 稳态：`pnpm deps:window` 自检脚本（内置 NEXT_RELEASE_DATES 表 → 打印当前主版本支持到期日与剩余天数，<60 天在 CI 里 warn） | P1 | 把「外置的、日期一到突然 exit 1」的闸门，变成「自己提前 60 天知道」的预警 |
 | T20 | 节奏：文档写死「≤2 年必须做一次 Next 主版本升级」+ 升级 runbook（分支预演 → 迁移在 Neon branch 跑 → typecheck/test/build → Versions 放量） | P1 | 模板的长期可维护性说明，见 §12.6 |
 | T21 | **预警可见面放后台**（用户 2026-10-21 提问触发）：超管概览页加一张只读「维护窗口」卡 —— 当前 Next 版本 / 支持到期日 / 剩余天数（>60 灰、<60 黄、<30 红），同卡附两个已有真数据的健康信号：`transactional_outbox` 积压（jobs `/health` 已返回 `pending`）+ 最近一次 Cron 成功时间 | P1 | 光靠 CI 日志/本地脚本，用户平时看不到。权限：仅对 `config:write`（super_admin）渲染。局限：卡上日期是**我们登记的静态预测**（抄自 OpenNext 发布日表），不是真相源 —— 所以 T19 脚本与 T21 卡两者都要（脚本给 CI/校验，卡给人看） |
+| T22 | **lint 面从未接通**（本轮新发现，2026-10-21） | 🔴 | 只有 `packages/config` 装了 eslint（^9.17.0）并写了 `eslint.config.mjs`（已导出 `@onestarry/config/eslint`，注释里还写了用法）；但 **9 个包/应用没有一个建自己的 `eslint.config.mjs`**，其中 auth/core/db/jobs 四个声明了 `"lint": "eslint ."` 却**没有 eslint 依赖**，且根 `node_modules/.bin/eslint` 不存在 → `pnpm lint` 必报「'eslint' 不是内部或外部命令」（turbo 实测：1 task / 0 成功 / EXIT 1）。web/admin/ui 则根本无 lint 脚本 | 所以 **CI 门禁里暂不含 lint**（否则一上就红）。修法：各包加 3 行 `eslint.config.mjs`（`import base from "@onestarry/config/eslint"`）+ devDep `eslint ^9`，然后一次清掉暴露的告警。→ 不属今日关键路径，单独一批做 |
 
-### 12.5 建议施工顺序（把上面 21 项收敛成一条线）
+### 12.5 建议施工顺序（把上面 22 项收敛成一条线）
 
 ```
 ① T7 shared 空壳        —— 先让 pnpm -r typecheck/build 一键全绿（后面所有验证的前提）
