@@ -1,11 +1,22 @@
 import Link from "next/link";
+import { PERMISSIONS, computeMaintenanceWindow } from "@onestarry/core";
+import { createDb, getOutboxHealth } from "@onestarry/db";
 import { requireAdmin } from "@/lib/auth";
+import { OpsPanel } from "@/components/OpsPanel";
 
 export const dynamic = "force-dynamic";
 
 /** 后台概览（受保护）：未登录由 requireAdmin 跳转 /signin。 */
 export default async function AdminHome() {
-    await requireAdmin();
+    const { env, permissions } = await requireAdmin();
+
+    // 运维面板（依赖支持窗口 + outbox 流水线健康）只对 config:write 渲染：它暴露版本与内部状态。
+    const ops = permissions.has(PERMISSIONS.configWrite)
+        ? {
+            window: computeMaintenanceWindow(),
+            outbox: await getOutboxHealth(createDb(env.HYPERDRIVE.connectionString)),
+        }
+        : null;
 
     return (
         <div className="mx-auto max-w-5xl px-4 py-8">
@@ -31,6 +42,7 @@ export default async function AdminHome() {
                 ))}
             </div>
             <p className="mt-6 text-sm text-muted">改价 / 上下架 / 库存 / 新建 / 图片 / 图文详情 / 批量导入 均在「商品管理」内。</p>
+            {ops && <OpsPanel window={ops.window} outbox={ops.outbox} />}
         </div>
     );
 }

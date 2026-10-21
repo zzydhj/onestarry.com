@@ -48,3 +48,49 @@ export async function markFailed(db: Db | Tx, id: string, error: string): Promis
         .set({ status: "failed", lastError: error, attempts: sql`${transactionalOutbox.attempts} + 1` })
         .where(eq(transactionalOutbox.id, id));
 }
+
+/** outbox 健康快照（后台运维面板用）：一次聚合查询，不拉行。 */
+export interface OutboxHealth {
+    pending: number;
+    failed: number;
+    dead: number;
+    /** 最老的待办事件发生时间（pending 积压越久越小说明 relay 卡住） */
+    oldestPendingAt: Date | null;
+    /** 最近一次成功派发时间（relay 心跳的代理指标） */
+    lastDispatchedAt: Date | null;
+}
+
+/**
+ * 读 outbox 健康快照（只读，供后台「运维」卡使用）。
+ * 用 Postgres 的 `FILTER` 一次算完各状态计数，避免多次往返。
+ * ⚠️ 聚合表达式（min/max）经 postgres-js 返回的是**文本而非 Date**（已连库实测），
+ *    故不能直接标 sql<Date>，必须过 toDate 归一 —— 否则调用方 .getTime() 会运行时报错。
+ */
+function toDate(v: unknown): Date | null {
+    if (v instanceof Date) return Number.isNaN(v.getTime()) ? null : v;
+    if (typeof v === "string" && v.length > 0) {
+        const d = new Date(v);
+        return Number.isNaN(d.getTime()) ? null : d;
+    }
+    return null;
+}
+
+export async function getOutboxHealth(db: Db | Tx): Promise<OutboxHealth> {
+    const rows = await db
+        .select({
+            pending: sql<number>`count(*) filter (where ${transactionalOutbox.status} = 'pending')::int`,
+            failed: sql<number>`count(*) filter (where ${transactionalOutbox.status} = 'failed')::int`,
+            dead: sql<number>`count(*) filter (where ${transactionalOutbox.status} = 'dead')::int`,
+            oldestPendingAt: sql<unknown>`min(${transactionalOutbox.occurredAt}) filter (where ${transactionalOutbox.status} = 'pending')`,
+            lastDispatchedAt: sql<unknown>`max(${transactionalOutbox.dispatchedAt})`,
+        })
+        .from(transactionalOutbox);
+    const r = rows[0] ?? { pending: 0, failed: 0, dead: 0, oldestPendingAt: null, lastDispatchedAt: null };
+    return {
+        pending: r.pending ?? 0,
+        failed: r.failed ?? 0,
+        dead: r.dead ?? 0,
+        oldestPendingAt: toDate(r.oldestPendingAt),
+        lastDispatchedAt: toDate(r.lastDispatchedAt),
+    };
+}

@@ -9,7 +9,8 @@
     "scripts": {
         "lint": "eslint .",
         "typecheck": "tsc --noEmit",
-        "test": "tsx --test src/sellability.test.ts src/pricing.test.ts src/shipping.test.ts src/shippingProvider.test.ts src/payments.test.ts src/csv.test.ts"
+        "test": "tsx --test src/sellability.test.ts src/pricing.test.ts src/shipping.test.ts src/shippingProvider.test.ts src/payments.test.ts src/csv.test.ts src/maintenance.test.ts",
+        "deps:window": "tsx src/scripts/deps-window.ts"
     },
     "devDependencies": {
         "@onestarry/config": "workspace:*",

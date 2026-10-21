@@ -11,6 +11,7 @@
         "lint": "turbo run lint",
         "test": "turbo run test",
         "typecheck": "turbo run typecheck",
+        "deps:window": "pnpm --filter @onestarry/core deps:window",
         "clean": "turbo run clean && node -e \"require('fs').rmSync('node_modules',{recursive:true,force:true})\"",
         "db:generate": "pnpm --filter @onestarry/db db:generate",
         "db:migrate": "pnpm --filter @onestarry/db db:migrate",

@@ -114,11 +114,15 @@ pnpm --filter @onestarry/web cf:build   # OpenNext 构建（CI 用的就是它�
 pnpm --filter @onestarry/db db:studio    # Drizzle Studio 看库
 pnpm --filter @onestarry/db smoke        # 冒烟（连真库写数据，**手动跑**、不进 CI）
 pnpm --filter @onestarry/web cf-typegen  # 重生 Workers env 类型
+pnpm deps:window          # 依赖支持窗口自检（Next 到期日 / wrangler 要求 / compat_date）
+pnpm deps:window --strict # 同上，但超窗/未登记 → 退出 1（发布前硬把关）
 ```
 
 > ⚠️ `pnpm lint` 暂不可用（各包缺 `eslint.config.mjs` 与 eslint 依赖，详实现地图 §12.2 T22）。
 
 ## 版本与冻结
 
+- **授权**：见 [`LICENSE.md`](./LICENSE.md) —— 保留所有权利，**仅供内部项目复用**，不得对外分发。
+- **实现现状**：代码做到哪一步、哪里还是占位，一律看 [`docs/IMPLEMENTATION.md`](./docs/IMPLEMENTATION.md)（含 §12 模板完备性体检 T1–T22）。
 - **架构方案**：v13 冻结（2026-Q3），改动需在 §15.1 记施工尾巴。
 - **表占位策略**：MVP 建设期（步骤 3–14）一次建全，Phase B/C 通过 expand 迁移加表属正常演进。
