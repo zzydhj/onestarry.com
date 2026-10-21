@@ -4,9 +4,11 @@ import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { getCloudflareContext } from "@opennextjs/cloudflare";
 import { createAdminAuth } from "@onestarry/auth";
-import { csvToObjects } from "@onestarry/core";
+import { csvToObjects, PERMISSIONS } from "@onestarry/core";
 import { createDb, attachProductImage, upsertProductFromRow, type ImportRowInput } from "@onestarry/db";
 import { runRelayBatch, relayHandlers } from "@onestarry/jobs";
+import { requirePermission } from "@/lib/auth";
+import { fetchProductFromUrl } from "@/lib/importProviders";
 
 export interface ImportSummary {
     total: number;
@@ -114,4 +116,34 @@ export async function importProductsAction(formData: FormData): Promise<ImportSu
     await runRelayBatch(db, relayHandlers, { limit: MAX_ROWS * 4 });
 
     return summary;
+}
+
+/**
+ * 按产品链接抓取导入：provider 解析 → 建 draft 草稿 → 抓图转存 R2 → 返回商品 id（前端跳编辑页审核）。
+ * 需 product:write。淘宝/1688 返回需专用 API 的提示（needsProvider）。
+ */
+export async function importFromUrlAction(url: string): Promise<{ ok: boolean; productId?: string; error?: string }> {
+    const { env, userId } = await requirePermission(PERMISSIONS.productWrite);
+    const clean = url.trim();
+    if (!/^https?:\/\//i.test(clean)) return { ok: false, error: "请输入 http(s):// 开头的链接" };
+    const r = await fetchProductFromUrl(clean);
+    if (!r.draft) return { ok: false, error: r.error ?? "抓取失败" };
+    const d = r.draft;
+    const db = createDb(env.HYPERDRIVE.connectionString);
+    const sku = d.sku?.trim() || `IMP-${Date.now().toString(36).toUpperCase()}`;
+    const res = await db.transaction(async (tx) =>
+        upsertProductFromRow(tx, {
+            sku,
+            title: d.title,
+            description: d.description,
+            basePriceCents: d.basePriceCents,
+            status: "draft",
+            changedBy: userId,
+        }),
+    );
+    for (const img of d.images.slice(0, 8)) {
+        await importImage(env, res.productId, img);
+    }
+    await runRelayBatch(db, relayHandlers, { limit: 8 });
+    return { ok: true, productId: res.productId };
 }
