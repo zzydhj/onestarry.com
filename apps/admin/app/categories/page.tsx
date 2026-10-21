@@ -1,4 +1,4 @@
-import { createDb, getEntitySlug, listAllCategories } from "@onestarry/db";
+import { createDb, listAllCategories, mapCurrentSlugsByEntity } from "@onestarry/db";
 import Link from "next/link";
 import { PERMISSIONS } from "@onestarry/core";
 import { requirePermission } from "@/lib/auth";
@@ -12,8 +12,8 @@ export default async function CategoriesPage() {
     const { env } = await requirePermission(PERMISSIONS.categoryWrite);
     const db = createDb(env.HYPERDRIVE.connectionString);
     const cats = await listAllCategories(db);
-    const slugs = await Promise.all(cats.map((c) => getEntitySlug(db, { entityType: "category", entityId: c.id })));
-    const slugById = new Map(cats.map((c, i) => [c.id, slugs[i] ?? ""]));
+    // 一次查回全部当前 slug（旧写法是逐条 getEntitySlug，N 个类目 = N 次跨洋往返）
+    const slugById = await mapCurrentSlugsByEntity(db, "category");
     const parentOptions = [{ id: "", name: "（顶层）" }, ...cats.map((c) => ({ id: c.id, name: "　".repeat(c.level - 1) + c.name }))];
 
     return (
@@ -44,7 +44,7 @@ export default async function CategoriesPage() {
                             <Input name="slug" defaultValue={slugById.get(c.id) ?? ""} placeholder="slug" className="px-2 py-1 text-sm w-40 font-mono" />
                             <Button type="submit" variant="secondary" size="sm">保存</Button>
                         </form>
-                        <Link href={`/categories/${c.id}/attributes`} className="text-xs text-muted transition hover:text-accent">属性</Link>
+                        <Link href={`/categories/${c.id}/attributes`} prefetch={false} className="text-xs text-muted transition hover:text-accent">属性</Link>
                         <span className="text-xs text-muted">L{c.level}</span>
                     </li>
                 ))}

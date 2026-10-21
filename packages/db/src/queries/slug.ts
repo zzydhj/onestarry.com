@@ -135,3 +135,19 @@ export async function listCurrentSlugs(db: Db | Tx, entityType: string): Promise
         .where(and(eq(slugs.entityType, entityType), eq(slugs.locale, "en"), eq(slugs.isCurrent, true)));
     return rows.map((r) => r.slug);
 }
+
+/**
+ * 一次取回某类型**全部**当前 slug，并按 entityId 建表。
+ * 用于列表页代替逐条 `getEntitySlug`（N 个实体 = N 次跨洋往返 → 压成 1 次）。
+ */
+export async function mapCurrentSlugsByEntity(
+    db: Db | Tx,
+    entityType: string,
+    locale = "en",
+): Promise<Map<string, string>> {
+    const rows = await db
+        .select({ entityId: slugs.entityId, slug: slugs.slug })
+        .from(slugs)
+        .where(and(eq(slugs.entityType, entityType), eq(slugs.locale, locale), eq(slugs.isCurrent, true)));
+    return new Map(rows.map((r) => [r.entityId, r.slug]));
+}

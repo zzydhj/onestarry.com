@@ -27,6 +27,11 @@ const LINKS: { href: string; label: string; perm?: PermissionKey }[] = [
  * 注意：隐藏入口只是体验优化，服务端仍有 requirePermission 硬强制。
  * alert：维护窗口提醒（由服务端按权限算好传入）——不只在概览页显示，
  * 因为维护者可能从任何页面进来，导航条才是真正能看见的触发器。
+ *
+ * ⏱ 全站导航链接一律 `prefetch={false}`：后台整棵路由树是 force-dynamic，
+ * 所以 Next 的“进视口就预取”会**把 11 个入口全部真渲染一遍**（每个 = 查会话+查权限+查数据），
+ * 实测一次页面加载因此打出 36–45 个请求，把 Worker 与数据库连接池挤干，
+ * 主文档 TTFB 被拖到 2.8–4.9s。关掉后仅“鼠标悬停时”预取（有真实意图），体感不变差。
  */
 export function AdminNav({ permissions = [], alert = null }: { permissions?: PermissionKey[]; alert?: MaintenanceAlert | null }) {
     const pathname = usePathname();
@@ -54,6 +59,7 @@ export function AdminNav({ permissions = [], alert = null }: { permissions?: Per
                                 <Link
                                     key={l.href}
                                     href={l.href}
+                                    prefetch={false}
                                     className={active ? "font-medium text-accent" : "text-muted transition hover:text-brand"}
                                 >
                                     {l.label}

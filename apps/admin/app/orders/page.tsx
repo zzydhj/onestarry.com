@@ -37,7 +37,7 @@ export default async function AdminOrders() {
                         {rows.map((o) => (
                             <Tr key={o.id} className="hover:bg-surface">
                                 <Td className="font-mono text-xs">
-                                    <Link href={`/orders/${o.id}`} className="text-accent hover:underline">
+                                    <Link href={`/orders/${o.id}`} prefetch={false} className="text-accent hover:underline">
                                         {o.orderNumber}
                                     </Link>
                                 </Td>

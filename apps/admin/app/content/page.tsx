@@ -53,7 +53,7 @@ export default async function ContentListPage() {
                             {items.map((it) => (
                                 <Tr key={it.id}>
                                     <Td>
-                                        <Link href={`/content/${it.id}`} className="text-brand transition hover:text-accent">
+                                        <Link href={`/content/${it.id}`} prefetch={false} className="text-brand transition hover:text-accent">
                                             {it.title ?? "（无标题）"}
                                         </Link>
                                     </Td>

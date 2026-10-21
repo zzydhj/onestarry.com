@@ -30,8 +30,8 @@ export default async function AdminProducts() {
             <div className="flex items-center justify-between">
                 <h1 className="text-2xl font-semibold tracking-tight">商品 <span className="text-sm font-normal text-muted">（{rows.length}）</span></h1>
                 <div className="flex gap-2">
-                    <Link href="/products/new" className={buttonVariants()}>＋ 新建商品</Link>
-                    <Link href="/products/import" className={buttonVariants({ variant: "secondary" })}>⇪ 批量导入</Link>
+                    <Link href="/products/new" prefetch={false} className={buttonVariants()}>＋ 新建商品</Link>
+                    <Link href="/products/import" prefetch={false} className={buttonVariants({ variant: "secondary" })}>⇪ 批量导入</Link>
                 </div>
             </div>
             <TableFrame className="mt-6">
@@ -47,7 +47,7 @@ export default async function AdminProducts() {
                         {rows.map((r) => (
                             <Tr key={r.id}>
                                 <Td>
-                                    <Link href={`/products/${r.id}`} className="text-accent hover:underline">
+                                    <Link href={`/products/${r.id}`} prefetch={false} className="text-accent hover:underline">
                                         {r.title ?? <em className="text-red-600">（缺英文文案）</em>}
                                     </Link>
                                 </Td>
