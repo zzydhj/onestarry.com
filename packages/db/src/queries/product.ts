@@ -1,5 +1,5 @@
-import { and, asc, count, eq, inArray, sql } from "drizzle-orm";
-import { brands, categories, inventory, markets, mediaAssets, productImages, productTranslations, productVariants, products, slugs, variantMarketPrices } from "../schema";
+import { and, asc, eq, inArray, sql } from "drizzle-orm";
+import { brands, categories, inventory, markets, productTranslations, productVariants, products, slugs, variantMarketPrices } from "../schema";
 import type { Db, Tx } from "../client";
 
 /** 活跃商品的当前 en slug + 更新时间（sitemap 用）。 */
@@ -43,30 +43,32 @@ export interface BrowseResult {
     total: number;
 }
 
-type RowNoImg = Omit<CatalogListItem, "imageUrl">;
-
-/** 为一页商品行批量附首图（position 最小、同位按创建时间最早）。空行短路。 */
-async function attachFirstImages(db: Db | Tx, rows: RowNoImg[]): Promise<CatalogListItem[]> {
-    if (rows.length === 0) return [];
-    const imgRows = await db
-        .select({ productId: productImages.productId, r2Key: mediaAssets.r2Key })
-        .from(productImages)
-        .innerJoin(mediaAssets, eq(productImages.mediaId, mediaAssets.id))
-        .where(inArray(productImages.productId, rows.map((r) => r.productId)))
-        .orderBy(asc(productImages.position), asc(mediaAssets.createdAt));
-    const firstImg = new Map<string, string>();
-    for (const r of imgRows) if (!firstImg.has(r.productId)) firstImg.set(r.productId, r.r2Key);
-    return rows.map((r) => ({ ...r, imageUrl: firstImg.get(r.productId) ?? null }));
+/**
+ * 市场 id 内联子查询：旧写法先单独 `SELECT markets` 再查主行 = 多一次跨区往返。
+ * 线上实测每多一条串行查询约 +0.4–0.9 秒（见 docs/PERF.md），所以列表/详情一律合成一条。
+ */
+function marketIdOf(db: Db | Tx, marketCode: string) {
+    return db.select({ id: markets.id }).from(markets).where(eq(markets.code, marketCode)).limit(1);
 }
+
+/** 首图相关子查询（position 最小、同位按创建时间最早）：把原先独立一条的批量取图压进主查询。 */
+const firstImageSql = sql<string | null>`(
+    select ma.r2_key
+    from product_images pi
+    join media_assets ma on ma.id = pi.media_id
+    where pi.product_id = ${products.id}
+    order by pi.position asc, ma.created_at asc
+    limit 1
+)`;
 
 /**
  * 可售商品浏览查询（列表单一真源）：active 商品 ⨝ 主变体 ⨝ 该市场全包价 ⨝ 文案 ⨝ 当前 slug，附首图。
- * 支持按类目子树 / 品牌过滤 + 分页；返回本页 items 与匹配总数 total。按标题升序稳定排序。
+ * 支持按类目子树 / 品牌过滤；**一条 SQL 同时拿到本页 items、匹配总数 total（窗口函数）与首图（相关子查询）**，
+ * 旧写法是 market/行/计数/附图 4 次串行往返。按标题升序稳定排序。
  */
 export async function browseProducts(db: Db | Tx, f: BrowseFilters): Promise<BrowseResult> {
     const locale = f.locale ?? "en";
-    const market = (await db.select({ id: markets.id }).from(markets).where(eq(markets.code, f.marketCode)).limit(1))[0];
-    if (!market) return { items: [], total: 0 };
+    const marketId = marketIdOf(db, f.marketCode);
 
     const conds = [eq(products.status, "active")];
     if (f.categoryIds?.length) conds.push(inArray(products.primaryCategoryId, f.categoryIds));
@@ -81,10 +83,12 @@ export async function browseProducts(db: Db | Tx, f: BrowseFilters): Promise<Bro
             description: productTranslations.description,
             priceCents: variantMarketPrices.listPriceCents,
             currency: variantMarketPrices.currency,
+            imageUrl: firstImageSql,
+            total: sql<number>`count(*) over ()::int`,
         })
         .from(products)
         .innerJoin(productVariants, and(eq(productVariants.productId, products.id), eq(productVariants.isPrimary, true)))
-        .innerJoin(variantMarketPrices, and(eq(variantMarketPrices.variantId, productVariants.id), eq(variantMarketPrices.marketId, market.id)))
+        .innerJoin(variantMarketPrices, and(eq(variantMarketPrices.variantId, productVariants.id), eq(variantMarketPrices.marketId, sql`(${marketId})`)))
         .innerJoin(productTranslations, and(eq(productTranslations.productId, products.id), eq(productTranslations.locale, locale)))
         .innerJoin(slugs, and(eq(slugs.entityId, products.id), eq(slugs.entityType, "product"), eq(slugs.locale, locale), eq(slugs.isCurrent, true)))
         .where(where)
@@ -92,17 +96,8 @@ export async function browseProducts(db: Db | Tx, f: BrowseFilters): Promise<Bro
         .limit(f.limit ?? 100)
         .offset(f.offset ?? 0);
 
-    const totalRow = await db
-        .select({ c: count() })
-        .from(products)
-        .innerJoin(productVariants, and(eq(productVariants.productId, products.id), eq(productVariants.isPrimary, true)))
-        .innerJoin(variantMarketPrices, and(eq(variantMarketPrices.variantId, productVariants.id), eq(variantMarketPrices.marketId, market.id)))
-        .where(where);
-    const total = totalRow[0]?.c ?? 0;
-
-    if (rows.length === 0) return { items: [], total };
-
-    return { items: await attachFirstImages(db, rows), total };
+    // 窗口总数只在有行时可得；offset 越界时返回 0（当前调用方不分页，不会踩到）。
+    return { items: rows.map(({ total, ...r }) => r), total: rows[0]?.total ?? 0 };
 }
 
 export interface SearchFilters {
@@ -116,14 +111,14 @@ export interface SearchFilters {
 /**
  * 站内搜索：对当前语言文案 title+description 做英文 FTS（websearch_to_tsquery，参数绑定、免注入），
  * 按 ts_rank 相关度降序。空查询短路返回空。
+ * **market / 命中行 / 总数 / 首图 合成一条 SQL**（旧写法 4 次串行往返，线上该页实测 2.6–5.3 秒）。
  * 无 GIN 表达式索引（小规模目录够用）；量大时在迁移 SQL 里补 generated tsvector 列 + GIN。
  */
 export async function searchProducts(db: Db | Tx, f: SearchFilters): Promise<BrowseResult> {
     const locale = f.locale ?? "en";
     const q = f.q.trim();
     if (!q) return { items: [], total: 0 };
-    const market = (await db.select({ id: markets.id }).from(markets).where(eq(markets.code, f.marketCode)).limit(1))[0];
-    if (!market) return { items: [], total: 0 };
+    const marketId = marketIdOf(db, f.marketCode);
 
     const tsq = sql`websearch_to_tsquery('english', ${q})`;
     const match = sql`${productTranslations.searchVector} @@ ${tsq}`;
@@ -136,10 +131,12 @@ export async function searchProducts(db: Db | Tx, f: SearchFilters): Promise<Bro
             description: productTranslations.description,
             priceCents: variantMarketPrices.listPriceCents,
             currency: variantMarketPrices.currency,
+            imageUrl: firstImageSql,
+            total: sql<number>`count(*) over ()::int`,
         })
         .from(products)
         .innerJoin(productVariants, and(eq(productVariants.productId, products.id), eq(productVariants.isPrimary, true)))
-        .innerJoin(variantMarketPrices, and(eq(variantMarketPrices.variantId, productVariants.id), eq(variantMarketPrices.marketId, market.id)))
+        .innerJoin(variantMarketPrices, and(eq(variantMarketPrices.variantId, productVariants.id), eq(variantMarketPrices.marketId, sql`(${marketId})`)))
         .innerJoin(productTranslations, and(eq(productTranslations.productId, products.id), eq(productTranslations.locale, locale)))
         .innerJoin(slugs, and(eq(slugs.entityId, products.id), eq(slugs.entityType, "product"), eq(slugs.locale, locale), eq(slugs.isCurrent, true)))
         .where(and(eq(products.status, "active"), match))
@@ -147,16 +144,7 @@ export async function searchProducts(db: Db | Tx, f: SearchFilters): Promise<Bro
         .limit(f.limit ?? 60)
         .offset(f.offset ?? 0);
 
-    const totalRow = await db
-        .select({ c: count() })
-        .from(products)
-        .innerJoin(productVariants, and(eq(productVariants.productId, products.id), eq(productVariants.isPrimary, true)))
-        .innerJoin(variantMarketPrices, and(eq(variantMarketPrices.variantId, productVariants.id), eq(variantMarketPrices.marketId, market.id)))
-        .innerJoin(productTranslations, and(eq(productTranslations.productId, products.id), eq(productTranslations.locale, locale)))
-        .where(and(eq(products.status, "active"), match));
-    const total = totalRow[0]?.c ?? 0;
-
-    return { items: await attachFirstImages(db, rows), total };
+    return { items: rows.map(({ total, ...r }) => r), total: rows[0]?.total ?? 0 };
 }
 
 /** 某市场全部可售商品（首页用；保持原签名，内部走 browseProducts）。 */
@@ -207,10 +195,9 @@ export interface ProductDetail {
     available: number;
 }
 
-/** 取某商品在指定市场的详情（含可售库存）。找不到返回 null。 */
+/** 取某商品在指定市场的详情（含可售库存）。找不到返回 null。market 内联→只一次往返。 */
 export async function getProductById(db: Db | Tx, productId: string, marketCode: string, locale = "en"): Promise<ProductDetail | null> {
-    const market = (await db.select({ id: markets.id }).from(markets).where(eq(markets.code, marketCode)).limit(1))[0];
-    if (!market) return null;
+    const marketId = marketIdOf(db, marketCode);
 
     const row = (
         await db
@@ -228,7 +215,7 @@ export async function getProductById(db: Db | Tx, productId: string, marketCode:
             })
             .from(products)
             .innerJoin(productVariants, and(eq(productVariants.productId, products.id), eq(productVariants.isPrimary, true)))
-            .innerJoin(variantMarketPrices, and(eq(variantMarketPrices.variantId, productVariants.id), eq(variantMarketPrices.marketId, market.id)))
+            .innerJoin(variantMarketPrices, and(eq(variantMarketPrices.variantId, productVariants.id), eq(variantMarketPrices.marketId, sql`(${marketId})`)))
             .innerJoin(productTranslations, and(eq(productTranslations.productId, products.id), eq(productTranslations.locale, locale)))
             .leftJoin(inventory, eq(inventory.variantId, productVariants.id))
             .where(eq(products.id, productId))
