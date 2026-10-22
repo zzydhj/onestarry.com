@@ -278,6 +278,16 @@ Workers Cache **没有 UA 豁免**，只认「响应头 + 缓存键」。所以 
   验收口径（实测形状，2026-10-22，**不是** `MISS`）：带密钥 POST 之后第一发（要带唯一 `?probe=` 绕边缘）
   应该是 `STALE + s-maxage=2` —— `revalidatePath` 是把条目标为过期，旧体照给、同时触发后台重渲染；
   4~5 秒后再打一发必须是 `HIT + s-maxage` 回到接近满值（实测 59）。一直停在 `HIT + 小 s-maxage` 才说明没落地。
+- **只有构建期预渲染的路由才真在吃 ISR：已修（2026-10-22）**。上面那条失效通道验通的同一秒，
+  暴露出 `/legal/privacy` 失效后连打 6 发全 `STALE` 且**不带 `Cache-Control`**、再也没回过 HIT。
+  根因就是 §3 那句“只有 CI 构建期上传的条目健康”，但当时**只给 PDP 修了**：
+  `legal/[type]` 的 `generateStaticParams` 直接 `return []`，`blog/[slug]` 与根级 `[slug]` 根本没这个函数
+  → 它们始终走“按需 ISR”，运行时 `set()` 写回的条目被判即时过期 → 每次访客都跨洋全额渲染，
+  §6 的边缘缓存对它们也天然无效（无头可尊）。
+  修法与验收：三者都补 `generateStaticParams`（legal 枚举 `LEGAL_DOC_TYPES` **全集**，不管文档当时是否存在，
+  空文档预渲染成占位页、等后台填正文时由失效通道打掉）；构建路由表里必须出现 `Revalidate/Expire` 两列
+  （`1h 1y`）而不是 `ƒ (Dynamic)`，线上连打必须看到 `HIT + s-maxage 倒计时`。
+  ⚠ 以后**新增公开读页就要同时加 `generateStaticParams`**，否则它会静默地回到恒 STALE（不报错、内容也对）。
 - **公共读页的 `revalidate = 60` 保持不动（用户拍板：当兜底）**。理论上拉长到 300s 能让边缘真吸住流量
   （§6），但边缘那一份不受 `revalidatePath` 管辖，拉长后“改完可见”最多要等一个边缘 TTL，除非再加
   `cache.purge()`（`cloudflare:workers`）。既然按需失效已经接好，60 秒就是干净的兜底，不必拿它换边缘命中率。
