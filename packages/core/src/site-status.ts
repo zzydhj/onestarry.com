@@ -217,7 +217,7 @@ export const SITE_ROUTES: SiteRoute[] = [
         revalidateSec: null,
         edgeCacheable: true,
         invalidation: "none",
-        note: "⚠ 全静态页发 s-maxage=31536000（一年）：开了 Workers Cache 后，若部署不清边缘，旧 HTML 可能被长期端出 —— 该前提正在实测（架构方案 §22.6 风险②）",
+        note: "全静态页 Next 默认发 s-maxage=31536000（一年）：已在 apps/web/next.config.ts 压到 300 秒，否则边缘会长期端出引用旧 buildId chunk 的 HTML（部署不会自动清边缘，无文档保证）",
     },
     {
         path: "/api/health",

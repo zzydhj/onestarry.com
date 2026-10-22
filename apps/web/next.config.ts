@@ -30,6 +30,12 @@ const nextConfig: NextConfig = {
             // private,no-cache,no-store，不需要在这里叠。
             { source: "/api/:path*", headers: [{ key: "Cache-Control", value: "no-store" }] },
             { source: "/integration/:path*", headers: [{ key: "Cache-Control", value: "no-store" }] },
+            // ⚠ 全静态 HTML 页的边缘 TTL 必须压住。Next 对“无任何动态 API”的页发
+            // `s-maxage=31536000`（**一年**），而 HTML 里引用的 chunk 路径带 buildId —— 下次部署旧 chunk 就没了。
+            // 边缘会不会在部署时自动清掉，官方文档未写、实测也不够决定（anycast 会换 PoP），
+            // 所以**不依赖那个未知行为**：把这类页的边缘窗口压到 5 分钟，代价可忽略（登录页本来就没流量）。
+            // 新增全静态页时要同步加一条 —— `packages/core/src/site-status.test.ts` 会拦住漏加的。
+            { source: "/signin", headers: [{ key: "Cache-Control", value: "public, max-age=0, s-maxage=300, must-revalidate" }] },
         ];
     },
 };
