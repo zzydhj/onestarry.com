@@ -18,8 +18,11 @@ $HDRS = @{ Authorization = "Bearer $Token"; "Content-Type" = "application/json" 
 # ── 要建的规则 ──────────────────────────────────────────────────────────────────
 # 表达式三道收严，都是有实测依据的：
 #  1) 只 GET/HEAD：purge/其它方法不进来。
-#  2) PDP 用正则 "^/products/[^/]+$" 而不是 startswith "/products/"：
+#  2) PDP 用「匹配 /products/* 但不匹配 /products/*/*」来表达"恰好一段 slug"：
 #     /products/<slug>/review 是登录页（307），/products/ 带尾斜杠是 308 —— 都不该进边缘缓存。
+#     ⚠ 这里用 wildcard 而不是正则 matches：matches 在 Free 计划不开放（实测报错
+#     "not entitled: the use of operator Matches is not allowed, a Business plan or a WAF Advanced plan is required"）。
+#     wildcard 的 * 会跨着匹配 /，所以两条叠加就是“恰好一段”。
 #  3) 排除探针 UA：jobs 的 ISR 探针（UA=onestarry-isr-probe）每 5 分钟打这三条路由来触发源站刷新
 #     并读 origin 的 x-nextjs-cache。被 CDN 接住的话 R2 条目会变冷、探针 verdict 会失真。
 # edge_ttl 用 bypass_by_default（不是 respect_origin）：
@@ -34,7 +37,7 @@ $HDRS = @{ Authorization = "Bearer $Token"; "Content-Type" = "application/json" 
 $RULE = [ordered]@{
     expression        = '(http.request.method eq "GET" or http.request.method eq "HEAD") ' +
         'and (http.request.uri.path eq "/" or http.request.uri.path eq "/products" ' +
-        'or http.request.uri.path matches "^/products/[^/]+$") ' +
+        'or (http.request.uri.path wildcard "/products/*" and not http.request.uri.path wildcard "/products/*/*")) ' +
         'and not http.user_agent eq "onestarry-isr-probe"'
     description       = $DESC
     action            = "set_cache_settings"
@@ -65,12 +68,14 @@ function Invoke-Cf([string]$Method, [string]$Uri, $Body) {
 }
 
 function Show-DashboardHint {
-    Write-Host "`ndashboard 手建对应项：Rules → Cache Rules → Create rule；" -ForegroundColor Cyan
-    Write-Host "  Rule name 填 $DESC（脚本靠这个名字认出并只动这一条）；" -ForegroundColor Cyan
-    Write-Host "  If traffic matches = 上面那段 expression（手工粘贴时注意引号转义）；" -ForegroundColor Cyan
-    Write-Host "  Eligibility = Eligible for cache（这才是「让 HTML 有资格进 CDN」的开关）；" -ForegroundColor Cyan
-    Write-Host "  Edge TTL = 有 cache-control 就按它、没有就绕过缓存（API 里的 bypass_by_default）；" -ForegroundColor Cyan
-    Write-Host "  Browser TTL = Respect origin；其余全部保持默认（缓存键别勾 Ignore query string）。" -ForegroundColor Cyan
+    # 先给一行可直接粘的原始表达式（上面那份 JSON 里的带 \" 转义，手抄容易出错）
+    Write-Host "`n表达式（直接粘进「编辑表达式」）：" -ForegroundColor White
+    Write-Host $RULE.expression -ForegroundColor White
+    Write-Host "`ndashboard 手建对应项：缓存 → Cache Rules → 创建规则；" -ForegroundColor Cyan
+    Write-Host "  规则名称填 $DESC（脚本靠这个名字认出并只动这一条）；" -ForegroundColor Cyan
+    Write-Host "  缓存资格 = 符合缓存条件；" -ForegroundColor Cyan
+    Write-Host "  边缘 TTL = 「使用缓存控制标头（如果存在），否则绕过缓存」；" -ForegroundColor Cyan
+    Write-Host "  浏览器 TTL = 「接受源服务器 TTL」；其余全默认（缓存密钥/Vary 都不要添加设置）。" -ForegroundColor Cyan
 }
 
 if ($Verify) {

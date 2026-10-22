@@ -189,7 +189,7 @@ R2 键形如 `incremental-cache/<buildId>/<sha256>.cache`，**每次部署换新
 
 ```jsonc
 {
-  "expression": "(http.request.method eq \"GET\" or http.request.method eq \"HEAD\") and (http.request.uri.path eq \"/\" or http.request.uri.path eq \"/products\" or http.request.uri.path matches \"^/products/[^/]+$\") and not http.user_agent eq \"onestarry-isr-probe\"",
+  "expression": "(http.request.method eq \"GET\" or http.request.method eq \"HEAD\") and (http.request.uri.path eq \"/\" or http.request.uri.path eq \"/products\" or (http.request.uri.path wildcard \"/products/*\" and not http.request.uri.path wildcard \"/products/*/*\")) and not http.user_agent eq \"onestarry-isr-probe\"",
   "action_parameters": {
     "cache": true,
     "edge_ttl":    { "mode": "bypass_by_default" },
@@ -207,8 +207,11 @@ R2 键形如 `incremental-cache/<buildId>/<sha256>.cache`，**每次部署换新
   `bypass_by_default` = **只有源站显式写了 TTL 的响应才进 CDN**，把这个未来漏洞从根上堵掉。
 - **`browser_ttl = respect_origin`**（不设这一条会落回规则自己的 Browser TTL，默认数小时）：源站只写 `s-maxage` 不写 `max-age`，
   浏览器本来就不该缓存；否则回访用户长期看旧页，而且请求根本不到我们这里。
-- **表达式用 `matches "^/products/[^/]+$"` 而不是 `starts_with "/products/"`**：后者会把 `/products/<slug>/review`（登录页）和
-  `/products/`、`/api/...` 之类一并裹进来。只给无个性化的读页开 —— **红线：`/cart`、`/checkout`、`/order/*`、`/account/*`、`/signin`、`/search`、`/api/*` 永远不能加**。
+- **PDP 匹配要收严到「恰好一段 slug」**：不能写 `starts_with "/products/"`，否则会把 `/products/<slug>/review`（登录页）一并裹进来。
+  写法上用 `wildcard "/products/*" and not wildcard "/products/*/*"`（`*` 会跨 `/` 匹配，两条叠加就是只含一段）。
+  ⚠ **别用正则 `matches "^/products/[^/]+$"`**：实测 Free 计划直接拒绝 —— `not entitled: the use of operator Matches is not allowed,
+  a Business plan or a WAF Advanced plan is required`，而且是在 dashboard 保存时才报，本地看没有任何问题。
+  只给无个性化的读页开 —— **红线：`/cart`、`/checkout`、`/order/*`、`/account/*`、`/signin`、`/search`、`/api/*` 永远不能加**。
 - **排除探针 UA**：`packages/jobs/src/isrProbe.ts` 每 5 分钟以 `UA=onestarry-isr-probe` 打这三条路由，作用是**触发源站刷新 + 读源站的 `x-nextjs-cache`**。
   不排除的话规则一上，探针会被 CDN 直接接住：R2 条目变冷，而且它读到的是缓存里的旧头 → §4 的 verdict 自此失真（又是一个会静默坏掉的东西）。
 - **缓存键一个字段都不动**（默认包含全部 query string）：Next 的软导航/预取走 `?_rsc=<hash>`，与 HTML 同路径不同 URL，因此天然不同键。
