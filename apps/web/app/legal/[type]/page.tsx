@@ -3,11 +3,18 @@ import { notFound } from "next/navigation";
 import { getLegalDoc, LEGAL_DOC_TYPES } from "@onestarry/db";
 import { getDb } from "@/lib/db";
 
-export const revalidate = 3600; // 法律文档极少变
+/**
+ * 60 秒，不是 3600：法律文档“极少变”只对**读**成立，写的传播上界必须看缓存形状。
+ * 2026-10-22 线上实测：构建期预渲染上传的 ISR 条目**对 revalidatePath 免疫**
+ * （POST 返回 ok，但紧接 10 发穿透边缘的探测全部单调倒计时、一次 STALE 都没出现）。
+ * 所以“改完可见”唯一可靠的上界就是这个窗口：留 3600 就等于“运营填完隐私政策最多要等一小时”。
+ * 完整证据链与两种条目命运的对比见 docs/PERF.md §7。
+ */
+export const revalidate = 60;
 
 /**
  * 构建期枚举**全部四类**法律文档，不管文档当时存不存在（不存在的就预渲染成“还没写”占位页，
- * 运营填完正文保存时由跨 Worker 失效通道打掉这一份）。
+ * 运营填完正文后最多等一个 `revalidate` 窗口就可见 —— 预渲染条目叫不动 revalidatePath，见上方注释）。
  *
  * 为什么非要构建期：只有 CI 构建上传的条目是健康的；`generateStaticParams` 返回 `[]` 时走“按需 ISR”，
  * 而运行时 `set()` 写回来的条目会被判即时过期 → 恒 `STALE` 且**不带 Cache-Control**

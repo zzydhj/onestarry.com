@@ -16,7 +16,16 @@ export const dynamic = "force-dynamic";
  *   完整取证见 docs/PERF.md §7。
  *
  * 兜底关系：这端点挂了 / 密钥没配 / 路径被白名单拒掉，都不影响正确性 ——
- * 前台每个公共读页 `revalidate = 60` 会自己追平。这里只把"改完可见"的典型耗时从 ≤60s 压到 1~2s。
+ * 前台每个公共读页都有 `revalidate` 定时器会自己追平。
+ *
+ * ⚠ 能力边界（2026-10-22 实测，别再把它说大）：**构建期预渲染上传的条目对 revalidatePath 免疫**。
+ *   对这类路由（首页/列表/PDP/类目/品牌/法律/CMS 正文）本端点只会返回 ok，倒计时不会被打断；
+ *   它们真正可靠的“改完可见”上界是页自己的 `revalidate`（已全部统一为 60s）。
+ *   实测形状：POST 返回 {"ok":true,"revalidated":["/legal/privacy"]} 后连打 10 发穿透边缘的探测，
+ *   s-maxage 从 3213 单调降到 3191，一次 STALE 都没出现。
+ *   反之，只运行时写过条目的路由（无预渲染、首请求自己渲染的）确实会被当场打断 —— 那部分是真效果。
+ *   要连预渲染条目也立刻清掉，得往下走真删除（NEXT_INC_CACHE_R2_BUCKET 已绑在本 Worker）或边缘 cache.purge()，
+ *   两者都还没做，证据与权衡见 docs/PERF.md §7。
  *
  * 已知边界（有意不做，别当成漏修）：边缘那层 Workers Cache 的副本不受 revalidatePath 管辖，
  * 它只会把自己存到的 s-maxage 走完（ISR 的 STALE 那一发只给 2 秒，所以通常也就 2 秒内追平）。
