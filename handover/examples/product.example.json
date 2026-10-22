@@ -1,0 +1,53 @@
+{
+    "_comment": "Product 实体示例。字段与 types/frontend-contract.ts 的 Product 一致。",
+    "simple": {
+        "id": "e1",
+        "name": "Wireless Noise-Cancelling Headphones",
+        "brand": "",
+        "category": "electronics",
+        "sub": "Audio",
+        "price": 59.9,
+        "compareAt": 89.9,
+        "rating": 4.6,
+        "reviews": 1284,
+        "glyph": "🎧",
+        "badge": "best",
+        "stock": 320,
+        "blurb": "Over-ear Bluetooth headphones with 40h battery and ANC."
+    },
+    "withPriceRange": {
+        "_note": "f2：各 SKU 单价不同（$3–$121）。有 priceRange 时卡片显示区间价，前端会抑制折扣角标与划线原价。price 作为起售价兜底。",
+        "id": "f2",
+        "name": "Mixed Gemstone Beads (Assorted Sizes)",
+        "brand": "",
+        "category": "jewelry",
+        "sub": "Beads",
+        "price": 3,
+        "priceRange": [
+            3,
+            121
+        ],
+        "rating": 4.8,
+        "reviews": 512,
+        "glyph": "💎",
+        "badge": "new",
+        "stock": 9999,
+        "blurb": "Natural stone beads in many colour/size combos, priced per combination."
+    },
+    "autoExample": {
+        "_note": "汽配商品（有 Detail.auto），示例保留 brand 字段但 UI 不展示品牌墙。",
+        "id": "tb1",
+        "name": "Cover Button Snap Fasteners (23 Colours × 6 Sizes)",
+        "brand": "",
+        "category": "crafts",
+        "sub": "Fasteners",
+        "price": 2.4,
+        "compareAt": 3.9,
+        "rating": 4.7,
+        "reviews": 3310,
+        "glyph": "🔘",
+        "badge": "sale",
+        "stock": 5000,
+        "blurb": "Sew-on metal snap buttons, sold by colour & size combination."
+    }
+}

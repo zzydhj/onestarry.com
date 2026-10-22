@@ -1,0 +1,83 @@
+{
+    "_comment": "SkuModel 示例（详情页选款矩阵）。正交轴 × 笛卡尔积：每个组合 = 一个独立 SKU，各自带 image / code / price / stock。字段与 types/frontend-contract.ts 的 SkuModel / Sku / SkuAxis 一致。",
+    "productId": "tb1",
+    "axes": [
+        {
+            "name": "Colour",
+            "type": "color",
+            "options": [
+                {
+                    "value": "粉色 Pink",
+                    "image": "https://cdn.example.com/sku/tb1-pink.jpg"
+                },
+                {
+                    "value": "草绿 Green",
+                    "image": "https://cdn.example.com/sku/tb1-green.jpg"
+                },
+                {
+                    "value": "红色 Red",
+                    "image": "https://cdn.example.com/sku/tb1-red.jpg"
+                }
+            ]
+        },
+        {
+            "name": "Size",
+            "type": "size",
+            "options": [
+                {
+                    "value": "10 mm · 10 pcs"
+                },
+                {
+                    "value": "10 mm · 20 pcs"
+                },
+                {
+                    "value": "13 mm · 20 pcs"
+                }
+            ]
+        }
+    ],
+    "skus": [
+        {
+            "key": "粉色 Pink|10 mm · 10 pcs",
+            "combo": {
+                "Colour": "粉色 Pink",
+                "Size": "10 mm · 10 pcs"
+            },
+            "code": "TB1-011",
+            "image": "https://cdn.example.com/sku/tb1-pink-10-10.jpg",
+            "price": 2.4,
+            "stock": 120
+        },
+        {
+            "key": "粉色 Pink|13 mm · 20 pcs",
+            "combo": {
+                "Colour": "粉色 Pink",
+                "Size": "13 mm · 20 pcs"
+            },
+            "code": "TB1-013",
+            "image": "https://cdn.example.com/sku/tb1-pink-13-20.jpg",
+            "price": 3.1,
+            "stock": 0
+        },
+        {
+            "key": "红色 Red|10 mm · 10 pcs",
+            "combo": {
+                "Colour": "红色 Red",
+                "Size": "10 mm · 10 pcs"
+            },
+            "code": "TB1-031",
+            "image": "https://cdn.example.com/sku/tb1-red-10-10.jpg",
+            "price": 2.4,
+            "stock": 88
+        }
+    ],
+    "groupAxis": "Colour",
+    "_notes": [
+        "key：组合唯一键，前端购物车/暂存都靠它。建议后端用自己稳定的 SKU id 映射，保证同一组合的 key 恒定。",
+        "combo：轴名 → 选项值，用于展示变体标签（如 '粉色 Pink · 10 mm · 10 pcs'）。",
+        "price：可选。缺省时前端回退到 Product.price；每变体不同价时必须提供（f2 的 $3–$121 区间就来自各 SKU 的 price）。",
+        "stock：0 表示该组合售罄，前端会置灰且禁止加购。",
+        "笛卡尔积规模：tb1 为 23×6=138，f2 极端示例达 1000+。若单商品 SKU 很多，后端应支持按商品一次性返回完整矩阵（或分页），前端渲染已支持滚动/分组。",
+        "groupAxis：缩略图分组轴（一般是颜色），这里用轴名字符串表示，实际类型是 SkuAxis 对象。"
+    ]
+}

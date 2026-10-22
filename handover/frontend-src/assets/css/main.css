@@ -1,0 +1,120 @@
+/* ==========================================================================
+   Onestarry — global styles
+   Tailwind base + a thin component layer for the recurring branded UI
+   (buttons, cards, chips, form fields). Layout-specific styling lives in the
+   components themselves via Tailwind utilities; this file only holds things
+   shared across many components so we never re-inline CSS per page.
+   ========================================================================== */
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+    html {
+        scroll-behavior: smooth;
+    }
+
+    body {
+        @apply bg-canvas font-sans text-ink text-[14px] leading-relaxed;
+    }
+
+    h1,
+    h2,
+    h3,
+    h4 {
+        @apply font-display font-extrabold uppercase tracking-wide;
+    }
+
+    a {
+        @apply no-underline;
+    }
+}
+
+@layer components {
+
+    /* Layout container */
+    .shell {
+        @apply mx-auto w-full max-w-shell px-5;
+    }
+
+    /* Buttons */
+    .btn {
+        @apply inline-flex items-center justify-center gap-2 rounded-md px-5 py-3 text-[13.5px] font-extrabold uppercase tracking-wide transition select-none;
+    }
+
+    .btn-primary {
+        @apply btn bg-brand text-ink hover:brightness-95;
+    }
+
+    .btn-dark {
+        @apply btn bg-ink text-brand hover:brightness-110;
+    }
+
+    .btn-outline {
+        @apply btn bg-white text-ink border-[1.5px] border-ink hover:bg-canvas;
+    }
+
+    .btn-ghost {
+        @apply btn bg-transparent text-ink hover:bg-canvas;
+    }
+
+    .btn-sm {
+        @apply px-3 py-2 text-xs;
+    }
+
+    .btn-block {
+        @apply w-full;
+    }
+
+    .btn:disabled,
+    .btn[disabled] {
+        @apply opacity-50 cursor-not-allowed;
+    }
+
+    /* Cards & boxes */
+    .card {
+        @apply bg-white border border-line rounded-lg;
+    }
+
+    .card-head {
+        @apply flex items-center justify-between gap-2 text-[13px] font-bold px-4 py-3 bg-[#FAFAFB] border-b border-line rounded-t-lg;
+    }
+
+    .card-body {
+        @apply p-4;
+    }
+
+    /* Section heading */
+    .sec-title {
+        @apply font-display font-extrabold uppercase text-[32px] leading-tight;
+    }
+
+    /* Chips / pills */
+    .chip {
+        @apply inline-flex items-center gap-1 rounded-full border-[1.5px] border-[#c9ced6] bg-white px-3.5 py-1.5 text-xs font-bold cursor-pointer transition;
+    }
+
+    .chip.on {
+        @apply bg-ink text-brand border-ink;
+    }
+
+    /* Badges */
+    .badge {
+        @apply inline-block text-[11px] font-extrabold px-2 py-0.5 rounded;
+    }
+
+    /* Form fields */
+    .field {
+        @apply w-full rounded-md border border-[#c9ced6] bg-white px-3 py-2.5 text-sm text-ink outline-none focus:ring-2 focus:ring-brand focus:border-ink;
+    }
+
+    .field-label {
+        @apply block text-xs font-semibold text-muted mb-1;
+    }
+
+    /* Stars */
+    .stars {
+        @apply text-brand tracking-tight;
+    }
+}

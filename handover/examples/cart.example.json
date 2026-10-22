@@ -1,0 +1,44 @@
+{
+    "_comment": "购物车示例。前端当前结构 = CartItem[]（localStorage），按 SKU 分行。后端购物车接口需能提供等价信息：每行定位到具体 SKU 组合 + 该组合单价 + 数量。字段与 types/frontend-contract.ts 的 CartItem 一致。",
+    "items": [
+        {
+            "_note": "多 SKU 商品的一个组合行（key = productId::skuKey）",
+            "key": "tb1::粉色 Pink|10 mm · 10 pcs",
+            "id": "tb1",
+            "name": "Cover Button Snap Fasteners",
+            "variant": "粉色 Pink · 10 mm · 10 pcs",
+            "skuCode": "TB1-011",
+            "image": "https://cdn.example.com/sku/tb1-pink-10-10.jpg",
+            "price": 2.4,
+            "glyph": "🔘",
+            "qty": 3
+        },
+        {
+            "_note": "同商品的另一个组合，独立成行、各自单价",
+            "key": "tb1::红色 Red|10 mm · 10 pcs",
+            "id": "tb1",
+            "name": "Cover Button Snap Fasteners",
+            "variant": "红色 Red · 10 mm · 10 pcs",
+            "skuCode": "TB1-031",
+            "image": "https://cdn.example.com/sku/tb1-red-10-10.jpg",
+            "price": 2.4,
+            "glyph": "🔘",
+            "qty": 2
+        },
+        {
+            "_note": "无变体商品：key = id，无 variant/skuCode/image",
+            "key": "e1",
+            "id": "e1",
+            "name": "Wireless Noise-Cancelling Headphones",
+            "price": 59.9,
+            "glyph": "🎧",
+            "qty": 1
+        }
+    ],
+    "totalsExample": {
+        "_note": "前端实时按 items 计算：Σ(price × qty)。后端如提供服务端购物车，建议返回等价 totals。",
+        "count": 6,
+        "subtotal": 74.5,
+        "currency": "USD"
+    }
+}
