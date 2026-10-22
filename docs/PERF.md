@@ -209,6 +209,15 @@ R2 键形如 `incremental-cache/<buildId>/<sha256>.cache`，**每次部署换新
 渲染、根本不回源，所以那里没东西可存 —— `cache: true` 也救不了。Cloudflare 为此专门给了
 **Workers Cache**（2026-08 起）：一层放在 **Worker 入口前端**的缓存，命中时 Worker 不运行。
 
+> ⚠ **判读更新（2026-10-22 晚，开了 Workers Cache 之后）**：上表那句「HTML 始终没有 `cf-cache-status`」
+> **已经不再成立** —— 现在 HTML 一直带这个头（`MISS` / `REVALIDATED` / `HIT`），因为 Workers Cache 自己会发。
+> 所以 **`cf-cache-status` 不再是区分「区域层 vs Workers 层」的依据**，拿它判区域规则有没有生效会读错。
+>
+> 要区分只用这个办法：**拿规则自己的豁免当开关**。我们的 `onestarry-ISR-html` 里写了
+> `and not http.user_agent eq "onestarry-isr-probe"`，于是同一 URL 分别用普通 UA 和探针 UA 各打一发：
+> 两者都是 `REVALIDATED` → 头来自 Workers Cache，与区域规则无关 → 规则真的什么都不做（实测于 23:1x）。
+> 当天那条区域 Cache Rule 已确认无效，建议在 dashboard 里直接删掉（留着只会让人以为改它能调前台缓存）。
+>
 > 建 Cache Rule 过程中实测到两条与计划有关的事实，别再踩：正则运算符 `matches` 在 Free 计划不开放
 > （`not entitled: the use of operator Matches is not allowed, a Business plan or a WAF Advanced plan is required`，
 > 而且**只在点保存/部署时才报**）；要“恰好一段”就用 `wildcard "X/*" and not wildcard "X/*/*"`。
