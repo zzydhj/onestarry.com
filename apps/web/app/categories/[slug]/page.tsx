@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { cache } from "react";
 import { notFound, redirect } from "next/navigation";
 import { SITE_ORIGIN } from "@onestarry/core";
-import { browseProducts, getCategoryById, getCategorySubtreeIds, getSeoMeta, listCurrentSlugs, resolveSlug } from "@onestarry/db";
+import { browseProducts, loadCategoryPageMeta, listCurrentSlugs } from "@onestarry/db";
 import { getDb } from "@/lib/db";
 import { applySeoMeta } from "@/lib/seo";
 import { ProductGrid } from "@/components/ProductGrid";
@@ -28,17 +28,21 @@ export async function generateStaticParams(): Promise<Array<{ slug: string }>> {
 
 const SITE = SITE_ORIGIN;
 
+/**
+ * 两次跨洋往返到底：一条 SQL 拿齐 slug 解析 + 类目 + 子树 + SEO（loadCategoryPageMeta），
+ * 再一条拿商品列表（browseProducts，列表唯一真源，不在这里复制一份价格 join）。
+ * 旧写法是 5 次串行（命中历史 slug 时 6 次）→ 线上冷渲染实测 2.3–4.3 秒。docs/PERF.md §3。
+ * React cache 负责同请求去重：generateMetadata 与页面只跑一次。
+ */
 const loadCategory = cache(async (slug: string) => {
     const db = getDb();
-    const res = await resolveSlug(db, { entityType: "category", locale: "en", slug });
-    if (!res) return { status: "notfound" } as const;
-    if (res.status === "redirect") return { status: "redirect", toSlug: res.toSlug } as const;
-    const cat = await getCategoryById(db, res.entityId);
-    if (!cat) return { status: "notfound" } as const;
-    const ids = await getCategorySubtreeIds(db, res.entityId);
-    const { items } = await browseProducts(db, { marketCode: "us", locale: "en", categoryIds: ids, limit: 100 });
-    const seo = await getSeoMeta(db, { entityType: "category", entityId: res.entityId, locale: "en" });
-    return { status: "ok", name: cat.name, items, seo } as const;
+    const meta = await loadCategoryPageMeta(db, { slug, locale: "en" });
+    // 两个早退分支各自返回字面量判别式：写成 { status: meta.status } 会让 TS 无法收窄后面 d.items 的类型。
+    // 无 toSlug 的 redirect 当成 notfound：宁返 404，也不 redirect 到 /categories/undefined。
+    if (meta.status === "redirect" && meta.toSlug) return { status: "redirect", toSlug: meta.toSlug } as const;
+    if (meta.status !== "ok") return { status: "notfound" } as const;
+    const { items } = await browseProducts(db, { marketCode: "us", locale: "en", categoryIds: meta.categoryIds, limit: 100 });
+    return { status: "ok", name: meta.name ?? slug, items, seo: meta.seo } as const;
 });
 
 export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }): Promise<Metadata> {

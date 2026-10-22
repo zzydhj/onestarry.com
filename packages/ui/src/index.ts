@@ -9,4 +9,4 @@ export {
 export { Input, Textarea, Select, Label } from "./form";
 export { Card } from "./card";
 export { TableFrame, THead, Th, Tr, Td } from "./table";
-export { PageSkeleton } from "./skeleton";
+export { PageSkeleton, GridSkeleton } from "./skeleton";

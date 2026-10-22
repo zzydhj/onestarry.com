@@ -34,6 +34,7 @@
 | ⑥ | 真实三表读（**同一 `max:1` 连接**）：串行 / 并行 / 合并 | 1511 / 1531 / **502**ms | **同一连接内并行零收益**（差 -20ms，噪声内）；只有合并有效 |
 | ⑧ | 两条查询在**两个独立 client**（各 `max:1`）：串行 / 并行 | 975 → **510**ms/轮 | **跨连接并行有收益**（省一个 RTT ≈ 465ms） |
 | ⑦ | 下单写路径 `createOrder`（事务内跑完 ROLLBACK） | **874ms**（旧 7 条串行 = 4386ms） | 合成单条 data-modifying CTE + 摘掉外层事务 |
+| ⑨ | 类目页取数：5 次串行 vs 1 条聚合 + 1 条列表（本地直连 Neon，`smoke:catalog-page` 逐字段对照） | **2256–4640ms → 999–1280ms**（聚合那一条单独 ~500ms） | 同上——只有合并有效；见 `queries/catalogPage.ts` |
 
 ### 由此得出的三条硬规矩
 
@@ -47,6 +48,7 @@
 - 列别名默认走 `casing: "snake_case"`；**驼峰别名会原样保留**（`itemsJson` 存在、`itemsjson` 不存在）。混用会让前端拿到意外的小写键。
 - `Date` 对象不能直接进裸 `sql` 模板（`ERR_INVALID_ARG_TYPE`）→ 传 `sql\`${v.toISOString()}::timestamptz\``。
 - 枚举列不吃 `::text` 参数，必须写 `'shipping'::address_type` 这样的字面量；同名字段在多表 join 的 `select` 里要写全限定名 `"orders"."id"`，否则 `42702 column "id" is ambiguous`。
+- **`to_jsonb(整行)` 返回的是真实列名（`seo_title`），drizzle 的行映射不会替我们做**。把它直接交给读 camelCase 的代码（`applySeoMeta`）= SEO 覆盖静默失效：typecheck 过、页面不报错、看不出来。要 camelCase 就逐字段 `json_build_object('seoTitle', m.seo_title, ...)` 写出来，并在冒烟里事务造一行断言（`smoke:catalog-page`）。
 
 ---
 
@@ -160,6 +162,16 @@ R2 键形如 `incremental-cache/<buildId>/<sha256>.cache`，**每次部署换新
 
 已落这规矩的四处：购物车数量/删除、评论审核、类目新增/改名、市场新增。搜索框是另一类
 （防抖 + 软导航保留旧结果），不用 `useOptimistic`。
+
+### 读路径的对应物：路由级 `loading.tsx`
+
+同样的体感问题在读页上叫「点了没反应」：Next 在没有 Suspense 边界时，软导航期间**继续显示旧页**，
+不给任何提示。2026-10-22 用户报「从品牌/分类列表页跳到具体页很卡」，其中一半就是这个（另一半是下面两件事：
+预渲染缺失 + 串行取数，已各自修掉）。
+
+- 已挂：`/products`（+ PDP 单独一层）、`/categories`、`/brands`、`/blog`，加上原有的购物车/结账/订单四处。
+- 骨架形状必须与真内容同构（`GridSkeleton` 对 `ProductGrid`），否则骨架消失时整页跳一下，比多等半秒更难看。
+- 新增公开读页时顺手补一个 `loading.tsx`，成本三行；不要依赖 `prefetch` 来消除这段等待 —— 预取同样可能落在已过期的条目上。
 
 ---
 

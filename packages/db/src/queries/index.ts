@@ -7,6 +7,7 @@ export * from "./integration";
 export * from "./category";
 export * from "./brand";
 export * from "./product";
+export * from "./catalogPage";
 export * from "./seo";
 export * from "./legal";
 export * from "./catalogAdmin";
