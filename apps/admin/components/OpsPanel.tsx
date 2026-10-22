@@ -153,9 +153,11 @@ export function OpsPanel({ window: win, outbox, isr }: { window: MaintenanceWind
                     </p>
                 )}
                 <p className="mt-3 text-xs text-muted">
-                    探针打法：先打一发作「触发刷新」（那一发不参与判定），等 12s 再复查两发。健康时复查应全为 HIT；
-                    <strong>oscillating</strong>（HIT/STALE 交替）= 条目年龄有两套真值在互相打脸；
-                    <strong>never_hits</strong> = 写回断了。两者都意味着读页每个访客全部回源全额渲染（要付数据库税）。
+                    探针打法：先打一发作「触发刷新」（那一发不参与判定），等 30s 再复查两发（间隔 8s）。
+                    判定以<strong>第一次 HIT 为界</strong>：HIT 之前出现 STALE 是正常等待（一轮并发暖 5 条，
+                    刷新要排队，实测能到 26 秒以上）；
+                    <strong>oscillating</strong>（HIT 之后又退回非 HIT）= 刚写回的副本保不住；
+                    <strong>never_hits</strong>（到点仍从不 HIT）= 写回断了。两者都意味着读页每个访客全部回源全额渲染（要付数据库税）。
                     {isr
                         ? ` · 最近采样 ${isrAge === null ? "—" : isrAge < 120 ? `${isrAge} 分钟前` : `${Math.round(isrAge / 60)} 小时前`} · revalidate ${isr.revalidateSec}s`
                         : ""}
