@@ -205,6 +205,13 @@ R2 键形如 `incremental-cache/<buildId>/<sha256>.cache`，**每次部署换新
 三条让它比“区域规则”更难出事的性质：
 - 带 `Set-Cookie` 的响应、带 `Authorization` 的请求都**自动 BYPASS**（加购那一发不会污染别人）。
 - **缓存键默认含 Worker 版本** → 每次部署换新命名空间；`/signin` 那种 `s-maxage=31536000` 的全静态页不会“旧页发一年”。
+  旁证（17:27 → 17:33，中间跨一次部署）：部署前边缘与源站的 `/signin` 字节一致（len=14491），
+  部署后两边同时变成新的那一份（len=14124）且边缘 `MISS` —— 与“版本进键”一致。（当初拿它当“待验风险”又去修了一轮，见下条。）
+- ⚠ **别用 `next.config` 的 `headers()` 去改已有缓存语义的页**（实测，17:44–17:50）。给 `/signin` 叠
+  `public, max-age=0, s-maxage=300, must-revalidate` 后，线上不是 300 也不是原来的 31536000，而是
+  `x-nextjs-cache: HIT` + **恒定 `s-maxage=1`**（连打 5 发不倒数）—— 即该页被推进了 OpenNext 的 ISR 头重写路径，
+  而我无法从文档推出它为何取 1。后果比原状差（边缘几乎不存、每个访客都跑 Worker），已回退。
+  规矩：`headers()` 只用来给**本来不带头**的端点（`/api/*`、`/integration/*`）补 `no-store`。
 - `Vary` 按 RFC **真分段**：HTML 请求不带 `RSC`/`Next-Router-State-Tree` 头、flight 请求带 → 两种表现形各存各的，
   不会互相发错（区域缓存对 `Vary` 的处理没这么细，这也是当年为什么必须靠 `?_rsc=` 在 URL 里区分）。
 

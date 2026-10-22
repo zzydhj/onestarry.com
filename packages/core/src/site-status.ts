@@ -217,7 +217,7 @@ export const SITE_ROUTES: SiteRoute[] = [
         revalidateSec: null,
         edgeCacheable: true,
         invalidation: "none",
-        note: "全静态页 Next 默认发 s-maxage=31536000（一年）：已在 apps/web/next.config.ts 压到 300 秒，否则边缘会长期端出引用旧 buildId chunk 的 HTML（部署不会自动清边缘，无文档保证）",
+        note: "全静态页：Next 发 s-maxage=31536000（一年）。看着危，实则被“Workers Cache 缓存键含 Worker 版本”关掉（部署即换命名空间）。⚠ 别去叠 headers() 压它：2026-10-22 实测会把页推进 ISR 重写路径、变成恒定 s-maxage=1（已回退）",
     },
     {
         path: "/api/health",
@@ -285,7 +285,7 @@ export const CACHE_LAYERS: CacheLayer[] = [
         where: "Cloudflare 离访客最近的 PoP，在 Worker 之前",
         ttlSource: "响应里的 s-maxage（= ISR 条目的**剩余**新鲜度）",
         brokenBy: "等 TTL / 手动 purge（本站未接）",
-        note: "命中时 Worker 不运行。⚠ 部署是否自动清它仍在实测；不受 revalidatePath 管辖",
+        note: "命中时 Worker 不运行。⚠ 不受 revalidatePath 管辖。缓存键含 Worker 版本 → 部署自动换命名空间（旧 HTML 不会被端下去）",
     },
     {
         name: "R2 整页 ISR",
@@ -359,10 +359,10 @@ export function routesRequiringStaticParams(): SiteRoute[] {
     return SITE_ROUTES.filter((r) => r.dynamicSegment && r.kind === "prerender-isr");
 }
 
-/** 秒 → 人话（60→"60 秒"，3600→"1 小时"）。null 念"不参与"。 */
+/** 秒 → 人话（60→"60 秒"而不是"1 分钟"：全站窗口就是 60 秒，写成分钟会让人误以为改了）。 */
 export function formatRevalidate(sec: number | null): string {
     if (sec === null) return "—";
-    if (sec < 60) return `${sec} 秒`;
+    if (sec <= 120) return `${sec} 秒`;
     if (sec < 3600) return `${Math.round(sec / 60)} 分钟`;
     if (sec < 86400) return `${Math.round(sec / 3600)} 小时`;
     return `${Math.round(sec / 86400)} 天`;

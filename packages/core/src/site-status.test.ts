@@ -21,7 +21,6 @@ import {
 const REPO_ROOT = fileURLToPath(new URL("../../..", import.meta.url));
 const WEB_APP = `${REPO_ROOT}apps/web/app`;
 const JOBS_WRANGLER = `${REPO_ROOT}apps/jobs/wrangler.jsonc`;
-const WEB_NEXT_CONFIG = `${REPO_ROOT}apps/web/next.config.ts`;
 
 /** 递归找所有 page.tsx（App Router 的路由文件），返回 Next 路径（根页为 "/"）。 */
 function findPageRoutes(dir: string, prefix = ""): string[] {
@@ -95,25 +94,6 @@ test("全站「改完可见」最坏上界仍是 60 秒（拉长要有意识地�
         60,
         "公开读页的最大 revalidate 窗口变了。预渲染条目对 revalidatePath 免疫，" +
         "所以这个窗口就是运营改完到前台可见的真实上界 —— 要改请先读 docs/PERF.md §7",
-    );
-});
-
-test("全静态 HTML 页必须在 next.config 里压住边缘 TTL（Next 默认给一年）", { skip: !existsSync(WEB_NEXT_CONFIG) }, () => {
-    const src = readRepo("apps/web/next.config.ts");
-    const offenders = SITE_ROUTES.filter((r) => r.kind === "static")
-        .map((r) => {
-            // 这类头必须写在同一行（headers() 返回的是单行对象），按行找比跨行正则好读。
-            const line = src.split("\n").find((l) => l.includes(`source: "${r.path}"`));
-            const cap = line?.match(/s-maxage=(\d+)/);
-            return { path: r.path, cap: cap ? Number(cap[1]) : null };
-        })
-        .filter((x) => x.cap === null || x.cap > 3600);
-    assert.deepEqual(
-        offenders,
-        [],
-        `这些全静态页没压住边缘 TTL：${offenders.map((o) => `${o.path}(s-maxage=${o.cap ?? "缺失"})`).join(", ")}。` +
-            `Next 对它们发 s-maxage=31536000（一年），而 HTML 里的 chunk 路径带 buildId —— 部署后旧 chunk 就没了，` +
-            `而边缘会不会自动清没有任何文档保证（实测也不够决定）。在 apps/web/next.config.ts 里给它加一条头。`,
     );
 });
 
