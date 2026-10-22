@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import type { ReactNode } from "react";
 import "./globals.css";
-import { AdminNav } from "@/components/AdminNav";
+import { AdminSideNav } from "@/components/AdminSideNav";
 import { readAdminSession } from "@/lib/auth";
 import { maintenanceAlert, PERMISSIONS, SITE_NAME } from "@onestarry/core";
 
@@ -16,7 +16,8 @@ export const metadata: Metadata = {
 export const dynamic = "force-dynamic";
 
 /**
- * 后台根布局。软取会话（不跳转）把权限集交给导航，实现「按权限显示入口」——
+ * 后台根布局。左侧固定导航（ERP 式分组，移动端自动退成顶栏 + 抽屉），内容区给导航让出 15rem。
+ * 软取会话（不跳转）把权限集交给导航，实现「按权限显示入口」——
  * 导航隐藏只是体验，真正的强制仍在各页 requirePermission 与 Server Action 里。
  * 未登录（/signin）时 permissions 为空，导航只剩「概览」，且 /signin 路由本身会隐藏整条导航。
  */
@@ -29,8 +30,9 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
     return (
         <html lang="zh">
             <body className="min-h-screen bg-white text-fg antialiased">
-                <AdminNav permissions={session ? [...session.permissions] : []} alert={alert} />
-                {children}
+                <AdminSideNav permissions={session ? [...session.permissions] : []} alert={alert} />
+                {/* md:pl-60 与侧栏的 w-60 对齐；改宽度两处一起改 */}
+                <div className="md:pl-60">{children}</div>
             </body>
         </html>
     );

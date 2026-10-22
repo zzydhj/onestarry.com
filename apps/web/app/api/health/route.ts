@@ -9,9 +9,12 @@ export async function GET() {
     // ISR 探针结论由 jobs 每 5 分钟写进 R2；读失败一律退化为 null，
     // 不能让本端点丢掉「必答」的性质（readIsrHealthReport 内部已吞异常，这里只兜无 Workers 上下文）。
     let isr: Awaited<ReturnType<typeof readIsrHealthReport>> = null;
+    let invalidateConfigured = false;
     try {
         const { env } = getCloudflareContext();
         isr = await readIsrHealthReport((key) => env.NEXT_INC_CACHE_R2_BUCKET.get(key));
+        // 只报布尔、绝不报值：后台站点状态页要回答“那条失效通道到底配了没”，但不能把密钥泄到接口里。
+        invalidateConfigured = Boolean(env.INVALIDATE_SECRET);
     } catch {
         isr = null;
     }
@@ -20,5 +23,6 @@ export async function GET() {
         ...healthPayload("onestarry-web", { gitSha: process.env.APP_GIT_SHA, buildTime: process.env.APP_BUILD_TIME }),
         // null = 探针还没跑过（与 "ok" 必须区分，否则监控会把没数据当成健康）
         isr: isr ? { verdict: isr.verdict, badStreak: isr.badStreak, checkedAt: isr.checkedAt } : null,
+        invalidateConfigured,
     });
 }

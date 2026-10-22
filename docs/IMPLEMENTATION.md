@@ -118,7 +118,7 @@ onestarry.com/
 | 权限点/角色单一真源 | `packages/core/src/rbac.ts`：`PERMISSIONS`(8 点) / `ROLES`(3) / `ROLE_PERMISSIONS`（staff = productWrite, orderWrite, categoryWrite, seoWrite）/ `roleHasPermission` | ✅ |
 | seed 与查询 | `packages/db/src/queries/authz.ts`：`seedRbac` `getPrincipalPermissions` `getPrincipalRoles` `assignRole` `revokeRole` `listAdminMembers` | ✅ 连库验证过 |
 | 守卫工具 | `apps/admin/lib/auth.ts`：`readAdminSession()`（**会话+权限集单一读取点**，未登录返回 null 不跳转）/ `requireAdmin()`（= 前者 + 未登录跳 /signin）/ `requirePermission(perm)`（不足抛 `FORBIDDEN:<perm>`） | ✅ |
-| 导航按权限过滤 | `apps/admin/app/layout.tsx`（异步软取会话 + `export const dynamic="force-dynamic"`）→ `<AdminNav permissions={[...]} />`；`components/AdminNav.tsx` 每个入口标 `perm` 并过滤（已补「法律」入口） | ✅ |
+| 导航按权限过滤 | `apps/admin/app/layout.tsx`（异步软取会话 + `export const dynamic="force-dynamic"`）→ `<AdminSideNav permissions={[...]} />`；`components/AdminSideNav.tsx` 每个入口标 `perm` 并按分组过滤（ERP 式左侧分栏，2026-10-22 重做） | ✅ |
 | **覆盖矩阵** | 见 §4 | ✅ **已收口**（34/34 动作 + 13/13 页面） |
 
 ### 3.4 目录（商品/类目/品牌/属性/媒体/slug/译文）
@@ -232,7 +232,7 @@ onestarry.com/
 | OpenAPI + zod 契约进 `packages/shared` | — | ❌ |
 | "销售速度"派生指标（`daily_sales_stats` rollup） | — | ❌ 表都没建 |
 
-### 3.16 后台页面清单（18 页 · 守卫已全部收口）
+### 3.16 后台页面清单（19 页 · 守卫已全部收口）
 | 路由 | 页面守卫 | 动作守卫 |
 |---|---|---|
 | `/`（概览） | `requireAdmin`（任意已登录后台账号，有意保留） | — |
@@ -240,15 +240,18 @@ onestarry.com/
 | `/orders` `/orders/[id]` | `requirePermission(orderWrite)` | `markShippedAction` = `orderWrite` |
 | `/categories` `/categories/[id]/attributes` `/brands` | `requirePermission(categoryWrite)` | 6 动作 = `categoryWrite` |
 | `/attributes` | `requirePermission(configWrite)`（**staff 连页面都进不去**） | 3 动作 = `configWrite` |
-| `/legal` | `requirePermission(seoWrite)`；**已加进 AdminNav** | `saveLegalDocAction` = `seoWrite` |
+| `/legal` | `requirePermission(seoWrite)`；**已加进左侧导航「内容与合规」组** | `saveLegalDocAction` = `seoWrite` |
 | `/content` `/content/[id]` | `requirePermission(seoWrite)` | 5 动作 = `seoWrite` |
 | `/reviews` | `requirePermission(productWrite)` | 1 动作 = `productWrite` |
 | `/markets` | `requirePermission(marketWrite)`（staff 进不去，修正以前"能看不能提交"的不一致） | `createMarketAction` = `marketWrite` |
 | `/team` | `requirePermission(roleManage)` | 3 动作 = `roleManage` |
-> AdminNav 已按传入权限集过滤入口；**隐藏只是体验，硬强制在页面/动作的 `requirePermission`**（两者已逐项对应）。
+| `/status`（站点状态，2026-10-22 新增） | `requirePermission(configWrite)`（只读页，无动作） | — |
+> 导航已换成 ERP 式左侧分栏 `components/AdminSideNav.tsx`（分组 + 可折叠存 localStorage + 移动端抽屉），**一律 `prefetch={false}`**（后台是 force-dynamic，预取会把 11 个入口全真渲染一遍，实测一次加载打出 36–45 个请求）。它按传入权限集过滤入口；**隐藏只是体验，硬强制在页面/动作的 `requirePermission`**（两者已逐项对应）。
 
 ### 3.17 前台页面清单
-`/`（首页 Hero/分类入口/精选/信任条）· `/products` `/products/[slug]` · `/search` · `/categories` `/categories/[slug]` · `/brands` `/brands/[slug]` · `/blog` `/blog/[slug]` · `/[slug]`（page/landing）· `/cart` · `/checkout` · `/order/[orderNumber]` · `/account/orders` · `/signin` · `/legal/[type]`（terms/privacy/returns/withdrawal）· `/api/{health,db-check,auth/[...all],webhooks/[provider]}` · `/integration/*`
+`/`（首页 Hero/分类入口/精选/信任条）· `/products` `/products/[slug]` · `/products/[slug]/review`（发表评价，force-dynamic）· `/search` · `/categories` `/categories/[slug]` · `/brands` `/brands/[slug]` · `/blog` `/blog/[slug]` · `/[slug]`（page/landing）· `/cart` · `/checkout` · `/order/[orderNumber]` · `/account/orders` · `/signin` · `/legal/[type]`（terms/privacy/returns/withdrawal）· `/api/{health,db-check,auth/[...all],webhooks/[provider],internal/invalidate}` · `/integration/*`
+
+> 逐路由的**缓存窗口/渲染策略/失效方式**不再写在这里 —— 单一真源是 `packages/core/src/site-status.ts`，后台 `/status` 页与漂移守卫单测共用它。
 缺：收藏/心愿单、退货 RMA、订单取消、地址簿、多语言路径。
 
 ---
@@ -316,7 +319,7 @@ onestarry.com/
 
 | 层 | 真相 |
 |---|---|
-| 单测 | `packages/core/src/*.test.ts` **7 个**（pricing/sellability/shipping/shippingProvider/payments/csv/**maintenance**），跑法 `tsx --test`（**node:test，不是 Vitest**）；✅ 现已接进流水线：根 `pnpm test` → turbo `test` task → **37 个全过**。`maintenance.test.ts` 内含「漂移护栏」：读 `apps/web/package.json` 断言核心常量与实际 Next 主版本一致 |
+| 单测 | `packages/core/src/*.test.ts` **11 个**（pricing/sellability/shipping/shippingProvider/payments/csv/maintenance/health/isr/invalidate/**site-status**），跑法 `tsx --test`（**node:test，不是 Vitest**）；根 `pnpm test` → turbo `test` task → **现 67/67 全过**。内置**两道漂移护栏**：① `maintenance.test.ts` 读 `apps/web/package.json` 断言 Next 主版本与核心常量一致；② `site-status.test.ts` 扫 `apps/web/app` 源码，断言每个 `page.tsx` 都已登记、声明为整页 ISR 的动态段路由**必须有 `generateStaticParams`**、登记的 `revalidate` 与源码一致、cron 表与 `apps/jobs/wrangler.jsonc` 一致 —— 把「缓存坏法无声」变成就近失败（背书见架构方案 §22） |
 | turbo | ✅ 已加 `test` task 与根 `pnpm test`（实测 **28/28 EXIT 0**）；`pnpm typecheck` 现 **8/8 全绿**（shared 空壳已删，D14/N17 结案）。⚠️ `pnpm lint` 仍会红 —— 见 §12.2 T22 |
 | 集成 | 靠 11 个 smoke 脚本连真实 Neon（人工触发） |
 | e2e / 压测 / a11y | Playwright ❌ k6 ❌ axe ❌（架构文档 §12 要求，未开工）；历史上用浏览器子代理手工点过结账（截图已 gitignore） |

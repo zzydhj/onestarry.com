@@ -22,7 +22,7 @@ rg -n "(?<!@)onestarry[\w.-]*" apps packages --glob '!cloudflare-env.d.ts'
 | 文件 | 现值 | 处置 |
 |---|---|---|
 | `apps/admin/app/layout.tsx` | `title` / `description` | ✅ 已改为 `${SITE_NAME} · Admin` / `${SITE_NAME} 管理后台`，不用手改 |
-| `apps/admin/components/AdminNav.tsx` | 顶栏品牌字 | ✅ 已用 `{SITE_NAME}` |
+| `apps/admin/components/AdminSideNav.tsx` | 侧栏品牌字 | ✅ 已用 `{SITE_NAME}` |
 | `apps/web/app/search/page.tsx` | 描述文案 | ✅ 已用 `${SITE_NAME}` |
 | `apps/web/components/SiteFooter.tsx` / `SiteHeader.tsx` | 页脚 © 与顶栏品牌字 | ✅ 已用 `{SITE_NAME}` |
 | `packages/auth/src/index.ts` | `appName`×2（**auth 发出的邮件里会用**） | ✅ 已用 `SITE_NAME` / `` `${SITE_NAME}-admin` `` |
@@ -76,7 +76,7 @@ rg -n "(?<!@)onestarry[\w.-]*" apps packages --glob '!cloudflare-env.d.ts'
 
 - **主色**：`packages/ui/src/styles.css` 里 `--color-brand: #111827` / `--color-accent: #2563eb`（当前是深灰 + 蓝）。所有 `<Button>`、`text-brand`、`bg-brand`、`focus:border-accent` 都从这里派生。**改这两个变量即全站换肤**，无需动组件。
 - **字体**：`apps/web/app/layout.tsx` 里 Next 内置 `Inter`（如你看到的是）。换成别的 Google Font / 系统栈在 layout 的 font loader 那一行。
-- **Logo**：目前顶栏是纯文字（`SiteHeader` / `AdminNav` 里的字符串）。要图 → 放 `apps/web/public/logo.svg` 并改 `SiteHeader.tsx`。
+- **Logo**：目前导航是纯文字（前台 `SiteHeader` / 后台 `AdminSideNav` 里的字符串）。要图 → 放 `apps/web/public/logo.svg` 并改 `SiteHeader.tsx`。
 
 ### 8. Seed 数据
 
