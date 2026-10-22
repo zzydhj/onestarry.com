@@ -24,6 +24,10 @@ out/
 # misc
 .DS_Store
 *.log
+# 抓包/探针的临时落盘（HTTP 头 dump 等）：以前误提交过 h.tmp 这类文件
+*.tmp
+*-verify.txt
+*-watch.txt
 coverage/
 .vercel/
 .wrangler/
