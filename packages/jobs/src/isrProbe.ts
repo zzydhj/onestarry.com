@@ -52,19 +52,26 @@ export interface IsrProbeOptions {
     now?: () => number;
 }
 
-/**
- * ⚠️ 这个字符串是**承重的**，改名前先读 docs/PERF.md §6：
- * Cloudflare 边缘缓存规则（Cache Rule `onestarry-ISR-html`，见 scripts/cf-edge-cache.ps1）用
- * `not http.user_agent eq "onestarry-isr-probe"` 把探针**排除在 CDN 之外**。
- * 这不是为了省 CDN，而是因为探针的职责就是「触发源站刷新 + 读源站的 x-nextjs-cache」：
- * 一旦请求被 CDN 接住，R2 条目会变冷，而探针读到的是缓存体里的旧头 → verdict 自此失真。
- * 所以：UA 一改，穿透就静默失效（还是个看不出来的坏法）。
- */
-const UA = "onestarry-isr-probe"; // 同时在 wrangler tail / 访问日志里一眼认出探针流量
+/** 只为在 wrangler tail / 访问日志里一眼认出探针流量。⚠ 它**不是**缓存豁免手段，见下面 probeUrl。 */
+const UA = "onestarry-isr-probe";
 
-async function sampleOnce(origin: string, path: string, offsetMs: number): Promise<IsrSample> {
+/**
+ * 每一发都挂一个一次性 query 参数，用来 bust 掉 Workers Cache（apps/web/wrangler.jsonc 的 cache.enabled）。
+ * 这层缓存没有 UA 豁免，只认「响应头 + 缓存键」；而探针的职责就是「触发源站刷新 + 读源站的
+ * x-nextjs-cache」—— 一旦被边缘接住，R2 条目会变冷，而且它读到的是缓存体里的旧头 → verdict 自此失真。
+ *
+ * 两边键的口径刚好不同，所以这一招只 bust 边缘、不 bust 源站：
+ * 边缘缓存键含完整 query string → 每发唯一 → 必然 MISS；而 Next 的 ISR 键只看页面**实际读取**的
+ * searchParams（实测 /products?market=us&page=2 直接复用 /products 那份条目）→ 仍打在同一个源站条目上。
+ */
+function probeUrl(origin: string, path: string, nonce: number, offsetMs: number): string {
+    const sep = path.includes("?") ? "&" : "?";
+    return `${origin}${path}${sep}probe=${nonce}-${offsetMs}`;
+}
+
+async function sampleOnce(url: string, offsetMs: number): Promise<IsrSample> {
     try {
-        const res = await fetch(`${origin}${path}`, {
+        const res = await fetch(url, {
             headers: { "user-agent": UA },
             // 探针要测的是边缘真实链路，不能被本地缓存短路
             cache: "no-store",
@@ -98,13 +105,14 @@ export async function runIsrProbe(store: IsrCacheStore, opts: IsrProbeOptions): 
     for (const p of opts.paths) perPath.set(p, []);
 
     // 第 0 发是「触发刷新」；后续每发之前都要等，等待只在轮次之间发生一次。
+    const nonce = started; // 每轮探针一个，保证边缘缓存键不跟上一轮/别的部署碰撞
     for (let round = 0; round <= followUps; round++) {
         if (round === 1) await wait(settleMs);
         if (round > 1) await wait(5_000);
         const offsetMs = now() - started;
         await Promise.all(
             [...perPath.keys()].map(async (path) => {
-                perPath.get(path)!.push(await sampleOnce(opts.origin, path, offsetMs));
+                perPath.get(path)!.push(await sampleOnce(probeUrl(opts.origin, path, nonce, offsetMs), offsetMs));
             }),
         );
     }

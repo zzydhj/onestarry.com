@@ -7,6 +7,32 @@
         "nodejs_compat",
         "global_fetch_strictly_public"
     ],
+    /*
+     * Workers Cache —— 真正能挡住跨洋读 R2 的那一层边缘缓存。
+     *
+     * 为什么不是 zone 的 Cache Rules（实测 2026-10-22）：给本站建了 Cache Rule 后，
+     * HTML 仍然**完全没有 cf-cache-status**、TTFB 不变；而同一路由页里引用的
+     * /_next/static/*.css（走 Workers Assets，不经 Worker 代码）能正常 MISS→HIT。
+     * 原因在模型：Worker 跑在区域缓存**前面**，区域缓存只能存「Worker 回源拿到的响应」，
+     * 而本站 Worker 自己渲染、根本不回源，所以那里没东西可存。
+     * Workers Cache 才是放在 Worker 入口前端的那一层（命中时 Worker 不运行）。
+     *
+     * 谁决定存不存：只看响应头（RFC 9111）。实测本站已经天然安全：
+     *   ISR 读页 → s-maxage=剩余新鲜度（≤60s）→ 存；
+     *   /cart /checkout /order/* /account/* /search / 未登录 redirect → private,no-cache,no-store → BYPASS；
+     *   /api/* 与 /integration/* 原本不带任何头 → 已在 next.config.ts 显式补 no-store。
+     * 另：带 Set-Cookie 的响应、带 Authorization 的请求都自动 BYPASS（加购那发不会污染别人）。
+     *
+     * 为什么不会“旧页发一年”：缓存键默认含 **Worker 版本**，每次部署换新命名空间；
+     * /signin 那种 s-maxage=31536000 的全静态页也就跟着新版本走了。
+     *
+     * 代价（得知情愿）：开启后连本来免费的静态资源请求也按标准请求计费；
+     * 以及探针必须绕开它 —— Workers Cache 没有 UA 豁免，见 packages/jobs/src/isrProbe.ts 的 probe= 参数。
+     * 回滚：删掉下面三行重新部署即可。
+     */
+    "cache": {
+        "enabled": true
+    },
     "assets": {
         "directory": ".open-next/assets",
         "binding": "ASSETS"
