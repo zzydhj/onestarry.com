@@ -14,9 +14,11 @@ interface CloudflareEnv {
     HYPERDRIVE: Hyperdrive;
     BETTER_AUTH_SECRET: string;
     MEDIA: R2Bucket;
+    /** 前台 ISR 缓存桶（只读）：取 jobs 写在 _ops/ 的 ISR 健康报告。 */
+    ISR_CACHE: R2Bucket;
 }
 
-// 最小 R2 接口（仅用到 put），免引入 @cloudflare/workers-types。
+// 最小 R2 接口（仅用到 put/delete/get），免引入 @cloudflare/workers-types。
 interface R2Bucket {
     put(
         key: string,
@@ -24,4 +26,5 @@ interface R2Bucket {
         options?: { httpMetadata?: { contentType?: string; cacheControl?: string } },
     ): Promise<unknown>;
     delete(key: string): Promise<unknown>;
+    get(key: string): Promise<{ json<T = unknown>(): Promise<T> } | null>;
 }

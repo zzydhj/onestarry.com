@@ -22,6 +22,11 @@
         {
             "binding": "MEDIA",
             "bucket_name": "onestarry-media"
+        },
+        {
+            // 只读：取 jobs 写进 _ops/ 的 ISR 健康报告，在运维面板亮条
+            "binding": "ISR_CACHE",
+            "bucket_name": "onestarry-isr-cache"
         }
     ]
 }

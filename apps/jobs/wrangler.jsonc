@@ -7,7 +7,8 @@
         "nodejs_compat"
     ],
     "vars": {
-        "RELAY_BATCH_LIMIT": "500"
+        "RELAY_BATCH_LIMIT": "500",
+        "ISR_PROBE_SLUGS": "3"
     },
     "hyperdrive": [
         {
@@ -16,9 +17,17 @@
             "localConnectionString": "postgresql://postgres:postgres@127.0.0.1:5432/postgres"
         }
     ],
+    "r2_buckets": [
+        {
+            // 前台 ISR 成品页桶：探针结论写 _ops/，并清理历史 buildId 遗留条目
+            "binding": "ISR_CACHE",
+            "bucket_name": "onestarry-isr-cache"
+        }
+    ],
     "triggers": {
         "crons": [
             "* * * * *",
+            "*/5 * * * *",
             "20 4 * * *"
         ]
     }

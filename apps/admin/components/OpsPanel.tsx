@@ -1,5 +1,5 @@
-import type { MaintenanceWindow } from "@onestarry/core";
-import { WINDOW_STATUS_LABELS } from "@onestarry/core";
+import type { IsrHealthReport, IsrVerdict, MaintenanceWindow } from "@onestarry/core";
+import { ISR_VERDICT_LABELS, WINDOW_STATUS_LABELS, isrReportAgeMinutes, isrVerdictNeedsAction } from "@onestarry/core";
 import type { OutboxHealth } from "@onestarry/db";
 
 /** 状态 → 颜色（复用 ui 包的语义色，不写死十六进制）。 */
@@ -20,13 +20,38 @@ function formatAge(from: Date | null, now: Date): string {
 }
 
 /**
- * 运维面板（只读）：依赖支持窗口 + outbox 流水线健康。
- * 数据由页面取好传进来（本组件不碰 env/DB），便于单独审阅与复用。
+ * ISR 结论 → 颜色。连续两轮非 ok 才升红：探针本身会被部署完成瞬间的旧条目干扰而抖一次，
+ * 单次异常不值得打扰人（streak 已在 jobs 那边累加进报告）。
+ */
+function isrTone(verdict: IsrVerdict | "missing", badStreak: number): string {
+    if (verdict === "ok") return STATUS_STYLE.ok;
+    if (verdict === "missing" || verdict === "unknown") return STATUS_STYLE.unknown;
+    if (verdict === "never_hits" || verdict === "not_isr" || verdict === "error") return STATUS_STYLE.expired;
+    return badStreak >= 2 ? STATUS_STYLE.expired : STATUS_STYLE.warn;
+}
+
+/** 把一路的采样念成人能看的一串：STALE→HIT(47)→HIT(35)。 */
+function isrTrail(caches: Array<string | null>, sMaxAges: Array<number | null>): string {
+    return caches
+        .map((c, i) => {
+            if (!c) return "—";
+            const ttl = sMaxAges[i];
+            return ttl === null || ttl === undefined ? c : `${c}(${ttl})`;
+        })
+        .join("→");
+}
+
+/**
+ * 运维面板（只读）：依赖支持窗口 + outbox 流水线健康 + ISR 缓存健康。
+ * 数据由页面取好传进来（本组件不碰 env/DB/桶），便于单独审阅与复用。
  * 调用方负责权限判断 —— 这里只负责渲染。
  */
-export function OpsPanel({ window: win, outbox }: { window: MaintenanceWindow; outbox: OutboxHealth }) {
+export function OpsPanel({ window: win, outbox, isr }: { window: MaintenanceWindow; outbox: OutboxHealth; isr: IsrHealthReport | null }) {
     const now = new Date();
     const backlogBad = outbox.dead > 0 || outbox.failed > 0 || outbox.pending > 0;
+    const isrVerdict: IsrVerdict | "missing" = isr?.verdict ?? "missing";
+    const isrLabel = isr ? ISR_VERDICT_LABELS[isr.verdict] : "未采集";
+    const isrAge = isrReportAgeMinutes(isr?.checkedAt, now.getTime());
 
     // 进入排期区间但颜色仍绿（>60 天）时，提为黄色“该排期了”——因为维护者只看后台。
     const pill =
@@ -97,6 +122,43 @@ export function OpsPanel({ window: win, outbox }: { window: MaintenanceWindow; o
                 </dl>
                 <p className="mt-3 text-xs text-muted">
                     relay 由 <code>onestarry-jobs</code> 每分钟消费；「最老待办」持续增长即说明流水线卡住（改价不会生效到前台）。
+                </p>
+            </div>
+
+            <div className="rounded-xl border border-line bg-white p-4 lg:col-span-2">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                    <h2 className="text-sm font-semibold text-muted">边缘缓存（ISR）</h2>
+                    <div className={`inline-flex items-center gap-2 rounded-lg border px-2 py-1 text-xs font-medium ${isrTone(isrVerdict, isr?.badStreak ?? 0)}`}>
+                        {isrLabel}
+                        {isr && isr.badStreak > 0 && isrVerdictNeedsAction(isr.verdict) ? ` · 连续 ${isr.badStreak} 轮` : ""}
+                    </div>
+                </div>
+                {isr ? (
+                    <ul className="mt-3 space-y-1 text-sm">
+                        {isr.findings.map((f) => (
+                            <li key={f.path} className="flex flex-wrap items-baseline justify-between gap-3">
+                                <code className="font-mono text-xs">{f.path}</code>
+                                <span className="tabular-nums text-xs text-muted">
+                                    {isrTrail(f.samples.map((s) => s.cache), f.samples.map((s) => s.sMaxAge))}
+                                </span>
+                                <span className={`text-xs font-medium ${isrTone(f.verdict, isr.badStreak)}`}>
+                                    {ISR_VERDICT_LABELS[f.verdict]}
+                                </span>
+                            </li>
+                        ))}
+                    </ul>
+                ) : (
+                    <p className="mt-3 text-sm text-muted">
+                        还没有报告：<code>onestarry-jobs</code> 的 <code>*/5 * * * *</code> 探针每 5 分钟写一次，刚部署完等一轮。
+                    </p>
+                )}
+                <p className="mt-3 text-xs text-muted">
+                    探针打法：先打一发作「触发刷新」（那一发不参与判定），等 12s 再复查两发。健康时复查应全为 HIT；
+                    <strong>oscillating</strong>（HIT/STALE 交替）= 条目年龄有两套真值在互相打脸；
+                    <strong>never_hits</strong> = 写回断了。两者都意味着读页每个访客全部回源全额渲染（要付数据库税）。
+                    {isr
+                        ? ` · 最近采样 ${isrAge === null ? "—" : isrAge < 120 ? `${isrAge} 分钟前` : `${Math.round(isrAge / 60)} 小时前`} · revalidate ${isr.revalidateSec}s`
+                        : ""}
                 </p>
             </div>
         </section>

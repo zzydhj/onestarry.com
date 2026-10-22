@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { PERMISSIONS, computeMaintenanceWindow } from "@onestarry/core";
+import { PERMISSIONS, computeMaintenanceWindow, readIsrHealthReport } from "@onestarry/core";
 import { createDb, getOutboxHealth } from "@onestarry/db";
 import { requireAdmin } from "@/lib/auth";
 import { OpsPanel } from "@/components/OpsPanel";
@@ -10,13 +10,15 @@ export const dynamic = "force-dynamic";
 export default async function AdminHome() {
     const { env, permissions } = await requireAdmin();
 
-    // 运维面板（依赖支持窗口 + outbox 流水线健康）只对 config:write 渲染：它暴露版本与内部状态。
-    const ops = permissions.has(PERMISSIONS.configWrite)
-        ? {
-            window: computeMaintenanceWindow(),
-            outbox: await getOutboxHealth(createDb(env.HYPERDRIVE.connectionString)),
-        }
+    // 运维面板（依赖支持窗口 + outbox 流水线 + ISR 缓存健康）只对 config:write 渲染：它暴露版本与内部状态。
+    // outbox 走 Neon、isr 走 R2：两个不同后端，并行拿掉一段串行等待（同一后端并行无收益，见 docs/PERF.md）。
+    const opsData = permissions.has(PERMISSIONS.configWrite)
+        ? await Promise.all([
+            getOutboxHealth(createDb(env.HYPERDRIVE.connectionString)),
+            readIsrHealthReport((key) => env.ISR_CACHE.get(key)),
+        ])
         : null;
+    const ops = opsData ? { window: computeMaintenanceWindow(), outbox: opsData[0], isr: opsData[1] } : null;
 
     return (
         <div className="mx-auto max-w-5xl px-4 py-8">
@@ -42,7 +44,7 @@ export default async function AdminHome() {
                 ))}
             </div>
             <p className="mt-6 text-sm text-muted">改价 / 上下架 / 库存 / 新建 / 图片 / 图文详情 / 批量导入 均在「商品管理」内。</p>
-            {ops && <OpsPanel window={ops.window} outbox={ops.outbox} />}
+            {ops && <OpsPanel window={ops.window} outbox={ops.outbox} isr={ops.isr} />}
         </div>
     );
 }

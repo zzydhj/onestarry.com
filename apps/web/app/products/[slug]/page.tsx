@@ -2,25 +2,39 @@ import type { Metadata } from "next";
 import { cache } from "react";
 import Link from "next/link";
 import { notFound, permanentRedirect } from "next/navigation";
-import { getCloudflareContext } from "@opennextjs/cloudflare";
+import { getDb } from "@/lib/db";
 import { mediaUrl, SITE_ORIGIN } from "@onestarry/core";
-import { createDb, getProductById, getSeoMeta, listApprovedReviews, listProductImages, resolveSlug } from "@onestarry/db";
+import { getProductById, getSeoMeta, listActiveProductSlugs, listApprovedReviews, listProductImages, resolveSlug } from "@onestarry/db";
 import { Button, Input } from "@onestarry/ui";
 import { addToCartAction } from "../../cart/actions";
 import { applySeoMeta } from "@/lib/seo";
 import { RichBody } from "@/components/RichBody";
 
-// ISR（方案 B）：动态路由无 generateStaticParams → 构建期不预渲染，首请求才渲染并存入 R2，每 60s 后台刷新。
-// 商品页对所有人一致、慢变、无写副作用 → 符合可缓存判据。价格/库存最多陈旧 60s（电商可接受）。
+/**
+ * ISR：构建期枚举在售商品预渲染 + 每 60s 后台刷新。
+ *
+ * 原先 `generateStaticParams` 返回 `[]` 走「按需 ISR」（首请求渲染后存 R2）。2026-10-22 线上取证否掉了这条路：
+ * **只有运行时 `set()` 写出来的条目会被判即时过期**——同一个 colo 内逐请求 HIT/STALE 交替，60s 窗口塌成 ~10s；
+ * 而由 CI 构建期上传、从不经手 `set()` 的 `/`、`/products` 全程健康（完整证据链见 docs/PERF.md）。
+ * 所以这里改成构建期枚举真实 slug，让商品页和首页走同一条已被证明稳定的写入路径。
+ */
 export const revalidate = 60;
 
+/** 构建期预渲染数量上限：商品数增长后构建时长会线性上升，超出部分退回按需首渲染，不让构建被拖死。 */
+const MAX_PRERENDER_SLUGS = 200;
+
 /**
- * 返回空列表 → 所有 slug 走「按需 ISR」：首个请求渲染并缓存到 R2，之后命中缓存；
- * 构建期无参数需预渲染 → 不会触发 getCloudflareContext 在 build 期报错。百万商品无需枚举。
- * （关键：Next 15 里光有 revalidate 不足以让 [slug] 路由进入 ISR，必须配 generateStaticParams 才是静态/ISR 路由。）
+ * 连库取在售商品 slug 预渲染。失败退化为空列表（= 回到按需 ISR）而不是抛错：
+ * 少预渲染只是慢一点，构建变红会让所有代码上不了线。
  */
-export async function generateStaticParams() {
-    return [];
+export async function generateStaticParams(): Promise<Array<{ slug: string }>> {
+    try {
+        const rows = await listActiveProductSlugs(getDb());
+        return rows.slice(0, MAX_PRERENDER_SLUGS).map((r) => ({ slug: r.slug }));
+    } catch (e) {
+        console.error("[PDP] 构建期枚举 slug 失败，退化为按需 ISR：", e);
+        return [];
+    }
 }
 
 const SITE = SITE_ORIGIN;
@@ -31,8 +45,7 @@ function money(cents: number, currency: string): string {
 
 /** 按 slug 解析商品（含 redirect/notfound 三态）。用 React cache 去重：generateMetadata 与页面同请求只查一次。 */
 const resolveProduct = cache(async (slug: string) => {
-    const { env } = getCloudflareContext();
-    const db = createDb(env.HYPERDRIVE.connectionString);
+    const db = getDb();
     const res = await resolveSlug(db, { entityType: "product", locale: "en", slug });
     if (!res) return { status: "notfound" } as const;
     if (res.status === "redirect") return { status: "redirect", toSlug: res.toSlug } as const;
