@@ -163,13 +163,96 @@ R2 键形如 `incremental-cache/<buildId>/<sha256>.cache`，**每次部署换新
 
 ---
 
-## 6. 已知但尚未处置
+## 6. CDN 边缘缓存（Cache Rule）—— 目标形状、配置与红线
 
-- **Hyperdrive 查询缓存是关的**：`caching.disabled = true`（`npx wrangler hyperdrive get <id>` 可复核）。
-  文档/历史结论里曾按「已开启」写过，实际未开启。开启属于生产配置变更，需要显式批准（TTL ≤ 60s、region `AWS_US_EAST_2`）。
+### 现在只有 R2 一层（实测，2026-10-22）
+
+访客请求的完整链路是：**Cloudflare CDN → Worker（Next）→ R2**。后两层都在，第一层今天不存在：
+
+| 测什么 | 结果 | 含义 |
+| --- | --- | --- |
+| `/`、`/products`、PDP 的响应头 | **无 `cf-cache-status`、无 `Age`** | CDN 一份 HTML 都没存 |
+| `x-nextjs-cache: HIT` 时的 TTFB | **0.9–2.3s** | 每次都真的进 Worker 跨洋读一次 R2（真边缘命中是几十毫秒量级） |
+| 三条路由是否发 `Set-Cookie` | **全部不发**（GDPR 同意 cookie 是 `document.cookie` 写的） | 边缘缓存不会把 A 的 cookie 回给 B |
+| 按国家/IP 分流 | `CF-IPCountry` / `request.geo` / `middleware` **全仓 0 处**；`/products?market=us&page=2` 直接复用 `/products` 那份条目 | 内容人人同一份，可以全局缓存 |
+| 不存在的 slug | `404` + `private, no-cache, no-store` | 错误页不会被缓存 |
+| `/products/<slug>/review` | `307` + `private, no-cache, no-store` | 登录页；但不能依赖这个兜底，表达式要自己收严 |
+
+> 历史上那层 `withRegionalCache` **不是** CDN 缓存 HTML：它是 Worker 用 Cloudflare Cache API
+> （`caches.default()`）在**本 colo** 给 **R2 里的 ISR 条目**做副本，缓存对象是渲染产物而不是响应。
+> 它确实让 HIT 变成 0.11s，代价就是 §3 那套「两套年龄真值」。拆对了，但也顺带把唯一能藏住
+> 跨洋延迟的东西拆掉了 —— 所以这一节要补的是**真正那一层**，不是把它装回去。
+
+### 要建的规则（脚本：`scripts/cf-edge-cache.ps1`）
+
+`Rules → Cache Rules`，action `set_cache_settings`，description **`onestarry-ISR-html`**（脚本靠这个名字认出并只动这一条）：
+
+```jsonc
+{
+  "expression": "(http.request.method eq \"GET\" or http.request.method eq \"HEAD\") and (http.request.uri.path eq \"/\" or http.request.uri.path eq \"/products\" or http.request.uri.path matches \"^/products/[^/]+$\") and not http.user_agent eq \"onestarry-isr-probe\"",
+  "action_parameters": {
+    "cache": true,
+    "edge_ttl":    { "mode": "bypass_by_default" },
+    "browser_ttl": { "mode": "respect_origin" }
+  }
+}
+```
+
+每个决定都有实测或文档依据，改之前请先看完：
+
+- **`cache: true`** —— Cloudflare 默认不把 HTML 当可缓存类型；没有这个开关，`fixISRHeaders` 写的 `s-maxage` 就是「有牌没打」。
+- **`edge_ttl.mode = bypass_by_default`，不是 `respect_origin`**：两者对「有 cache-control」的响应行为相同，差别在**没头时**：
+  `respect_origin` 退回 Cloudflare 默认 TTL（小时级），而**动态页恰好就是没头的**（§3 里 PDP 无 Cache-Control 同一现象）。
+  今天这三条路由都有头，看不出差别；将来谁在页里加了 `cookies()` 、页面变动态，`respect_origin` 就会把某个人的页面缓存几小时发给所有人。
+  `bypass_by_default` = **只有源站显式写了 TTL 的响应才进 CDN**，把这个未来漏洞从根上堵掉。
+- **`browser_ttl = respect_origin`**（不设这一条会落回规则自己的 Browser TTL，默认数小时）：源站只写 `s-maxage` 不写 `max-age`，
+  浏览器本来就不该缓存；否则回访用户长期看旧页，而且请求根本不到我们这里。
+- **表达式用 `matches "^/products/[^/]+$"` 而不是 `starts_with "/products/"`**：后者会把 `/products/<slug>/review`（登录页）和
+  `/products/`、`/api/...` 之类一并裹进来。只给无个性化的读页开 —— **红线：`/cart`、`/checkout`、`/order/*`、`/account/*`、`/signin`、`/search`、`/api/*` 永远不能加**。
+- **排除探针 UA**：`packages/jobs/src/isrProbe.ts` 每 5 分钟以 `UA=onestarry-isr-probe` 打这三条路由，作用是**触发源站刷新 + 读源站的 `x-nextjs-cache`**。
+  不排除的话规则一上，探针会被 CDN 直接接住：R2 条目变冷，而且它读到的是缓存里的旧头 → §4 的 verdict 自此失真（又是一个会静默坏掉的东西）。
+- **缓存键一个字段都不动**（默认包含全部 query string）：Next 的软导航/预取走 `?_rsc=<hash>`，与 HTML 同路径不同 URL，因此天然不同键。
+  如果勾了 “Ignore query string”，HTML 与 RSC flight 载荷会共享一个键 → 先到的那个会反过来发给另一种请求（导航直接坏）。
+  代价是带垃圾参数的 URL 会各自存一份，但 TTL 只有 ≤60s，Cloudflare 也只存真被请求过的，不致于被打穿。
+- **未改动的已知代价**：源站 STALE 响应带 `stale-while-revalidate=2592000`（OpenNext 写死的 30 天容灾值），
+  尊重源站头就意味着「源站出错时 CDN 可以发最多 30 天前的旧页」。只有 Worker 挂掉时才生效；想收就改
+  `"serve_stale": { "disable_stale_while_updating": true }`，代价是边界那一发要等回源。
+
+### 落地方式与权限
+
+```powershell
+powershell -NoProfile -File scripts/cf-edge-cache.ps1              # 只打印计划 + dashboard 逐项对应，不写
+powershell -NoProfile -File scripts/cf-edge-cache.ps1 -Apply       # 写入（幂等：同 description 原地改，不产生重复规则）
+powershell -NoProfile -File scripts/cf-edge-cache.ps1 -Verify      # 只读自检，不需要任何 API 权限
+powershell -NoProfile -File scripts/cf-edge-cache.ps1 -Rollback    # 只删自己那一条，别人的规则原样带回
+```
+
+写操作需要 token 带：**Zone > Cache Rules > Edit**、**Account Rulesets > Edit**、**Account Filter Lists > Edit**。
+实测：`wrangler login` 的 OAuth token 只有 `zone:read`，`GET /zones/{id}/rulesets` 与 phase 入口都是 **403**（已在 scopes 原文里核对），
+所以这条规则**必须由人在 dashboard 建，或给一个有上述权限的 API token** —— 代码层面无权替代。
+
+### 建完后的判读变化（先记住，否则会把好事当坏事）
+
+- 真浏览器路径：`cf-cache-status: MISS → HIT`，HIT 时 TTFB 从秒级掉到几十毫秒；`s-maxage` 仍是剩余新鲜度倒计时。
+  此时**看不到 `x-nextjs-cache` 不是故障**，那份头在缓存体里，代表上一次源站的结论。
+- 源站健康度继续走探针那条路径（UA 已排除，永远穿透）：看 `/api/health` 的 `isr`，或 `-Verify` 最后那行 probe。
+- 验收的断言对：`-Verify` 里第二发应出 `cf-cache-status: HIT`，而 `[probe]` 行应仍有 `x-nextjs-cache` 且无 `cf-cache-status: HIT`。
+
+---
+
+## 7. 已知但尚未处置
+
+- **Hyperdrive 查询缓存：结论是不开**（`caching.disabled = true`，`npx wrangler hyperdrive get <id>` 可复核）。
+  官方文档写“默认开启”，所以“应该开着”很容易误推到本站 —— 但这个站是显式关掉的，而且应该继续关：
+  ① 写操作不会使缓存失效，匹配上的 SELECT 最多拿到 `max_age`（默认 60s）+ SWR 15s 前的结果；
+  ② 我核过 `packages/db/src/queries/*.ts`，没有 `now()`/`CURRENT_TIMESTAMP` 这类会被排除的写法（时间全在 JS 侧算好当参数传），
+  所以我们的查询**真的会被缓存** —— 正好命中最危险的三类读：加购后立即读车、结账查可售库存与价格、后台写完立即要看；
+  ③ 它能省的时间又正好落在**没人在等**的路径上（前台热读已由 ISR 兜住，HIT 根本不打库，STALE 是后台重渲染）。
+  真要吃这点收益，文档给的正确形状是再加一个 caching **enabled** 的 Hyperdrive 配置、只给公共目录读用，
+  `cart/checkout/admin/auth` 继续走现在这个没缓存的 —— 那是可选项，不是修复项。
 - 探针流量本身会让被采样的页面保持「热」状态（每 5 分钟触发一次刷新）。这是副作用，也是最小成本的预热。
 
-## 7. 复现清单
+## 8. 复现清单
 
 ```bash
 # 手法有效性（串行/并行/合并、冷连接、下单写路径）
@@ -181,6 +264,10 @@ pnpm --filter @onestarry/db smoke:create-order
 
 # ISR 健康形状（连打看翻转，别只看单次值）
 powershell -NoProfile -File scripts/isr-watch.ps1 -Rounds 5 -GapSeconds 15
+
+# CDN 边缘缓存：看计划 / 看生效没（-Verify 不需权限）
+powershell -NoProfile -File scripts/cf-edge-cache.ps1
+powershell -NoProfile -File scripts/cf-edge-cache.ps1 -Verify
 
 # 线上版本确认（含 ISR 探针结论）
 curl -s https://onestarry.com/api/health

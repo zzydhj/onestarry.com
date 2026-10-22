@@ -1,4 +1,4 @@
-param(
+﻿param(
     # 用 -File 调用时数组参数无法用逗号传入，故收单个逗号分隔串再拆
     [string]$Urls = "https://onestarry.com,https://onestarry.com/products,https://onestarry.com/products/ceramic-mug",
     [int]$Rounds = 10,

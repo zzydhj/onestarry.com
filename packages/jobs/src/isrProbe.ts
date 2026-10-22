@@ -52,7 +52,15 @@ export interface IsrProbeOptions {
     now?: () => number;
 }
 
-const UA = "onestarry-isr-probe"; // 在 wrangler tail / 访问日志里一眼认出探针流量
+/**
+ * ⚠️ 这个字符串是**承重的**，改名前先读 docs/PERF.md §6：
+ * Cloudflare 边缘缓存规则（Cache Rule `onestarry-ISR-html`，见 scripts/cf-edge-cache.ps1）用
+ * `not http.user_agent eq "onestarry-isr-probe"` 把探针**排除在 CDN 之外**。
+ * 这不是为了省 CDN，而是因为探针的职责就是「触发源站刷新 + 读源站的 x-nextjs-cache」：
+ * 一旦请求被 CDN 接住，R2 条目会变冷，而探针读到的是缓存体里的旧头 → verdict 自此失真。
+ * 所以：UA 一改，穿透就静默失效（还是个看不出来的坏法）。
+ */
+const UA = "onestarry-isr-probe"; // 同时在 wrangler tail / 访问日志里一眼认出探针流量
 
 async function sampleOnce(origin: string, path: string, offsetMs: number): Promise<IsrSample> {
     try {
