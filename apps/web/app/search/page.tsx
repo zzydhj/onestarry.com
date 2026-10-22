@@ -1,8 +1,11 @@
 import type { Metadata } from "next";
+import { Suspense } from "react";
 import { searchProducts } from "@onestarry/db";
 import { SITE_NAME } from "@onestarry/core";
+import { PageSkeleton } from "@onestarry/ui";
 import { getDb } from "@/lib/db";
 import { ProductGrid } from "@/components/ProductGrid";
+import { SearchBox } from "./SearchBox";
 
 export const dynamic = "force-dynamic"; // 搜索词多变、按需查库（Hyperdrive 短缓存兜底），不做边缘缓存
 
@@ -14,42 +17,36 @@ export const metadata: Metadata = {
 
 export default async function SearchPage({ searchParams }: { searchParams: Promise<{ q?: string }> }) {
     const { q = "" } = await searchParams;
+    return (
+        <div className="mx-auto max-w-5xl px-4 py-8">
+            <h1 className="text-2xl font-semibold tracking-tight text-brand">Search</h1>
+            <SearchBox initial={q} />
+            {/* 结果单独一个 Suspense 边界：软导航时只换这一块，输入框不重挂（焦点不丢）。 */}
+            <Suspense fallback={<PageSkeleton rows={4} />}>
+                <Results q={q} />
+            </Suspense>
+        </div>
+    );
+}
+
+/** 结果区（一次 SQL 拿行 + 总数）。 */
+async function Results({ q }: { q: string }) {
     const query = q.trim();
     const { items, total } = query
         ? await searchProducts(getDb(), { marketCode: "us", locale: "en", q: query, limit: 60 })
         : { items: [], total: 0 };
 
+    if (!query) return <p className="mt-6 text-sm text-muted">Type a keyword to search.</p>;
+    if (total === 0) return <p className="mt-6 text-sm text-muted">No results for “{query}”.</p>;
+
     return (
-        <div className="mx-auto max-w-5xl px-4 py-8">
-            <h1 className="text-2xl font-semibold tracking-tight text-brand">Search</h1>
-
-            <form action="/search" method="get" className="mt-4 flex max-w-md gap-2">
-                <input
-                    type="search"
-                    name="q"
-                    defaultValue={q}
-                    placeholder="Search products…"
-                    className="flex-1 rounded-lg border border-line px-3 py-2 text-sm outline-none focus:border-accent"
-                />
-                <button type="submit" className="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white transition hover:opacity-90">
-                    Search
-                </button>
-            </form>
-
-            {!query ? (
-                <p className="mt-6 text-sm text-muted">Type a keyword to search.</p>
-            ) : total === 0 ? (
-                <p className="mt-6 text-sm text-muted">No results for “{query}”.</p>
-            ) : (
-                <>
-                    <p className="mt-6 text-sm text-muted">
-                        {total} result{total === 1 ? "" : "s"} for “{query}”
-                    </p>
-                    <div className="mt-4">
-                        <ProductGrid items={items} />
-                    </div>
-                </>
-            )}
-        </div>
+        <>
+            <p className="mt-6 text-sm text-muted">
+                {total} result{total === 1 ? "" : "s"} for “{query}”
+            </p>
+            <div className="mt-4">
+                <ProductGrid items={items} />
+            </div>
+        </>
     );
 }

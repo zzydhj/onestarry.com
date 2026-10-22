@@ -3,8 +3,8 @@ import { notFound } from "next/navigation";
 import { createDb, getOrderDetail } from "@onestarry/db";
 import { PERMISSIONS } from "@onestarry/core";
 import { requirePermission } from "@/lib/auth";
-import { Button, Input, TableFrame, THead, Th, Tr, Td } from "@onestarry/ui";
-import { markShippedAction } from "./actions";
+import { TableFrame, THead, Th, Tr, Td } from "@onestarry/ui";
+import { ShipForm } from "./ShipForm";
 
 export const dynamic = "force-dynamic";
 
@@ -86,12 +86,7 @@ export default async function AdminOrderDetail({ params }: { params: Promise<{ i
                     {shipment.shippedAt ? ` · ${new Date(shipment.shippedAt).toISOString().slice(0, 16).replace("T", " ")}` : ""}
                 </p>
             ) : canShip ? (
-                <form action={markShippedAction} className="mt-2 flex flex-wrap items-center gap-2">
-                    <input type="hidden" name="orderId" value={order.id} />
-                    <Input name="carrier" placeholder="承运商（如 顺丰/4PX）" className="py-1.5 text-sm" />
-                    <Input name="trackingNumber" placeholder="运单号" className="py-1.5 text-sm" />
-                    <Button type="submit">标记发货</Button>
-                </form>
+                <ShipForm orderId={order.id} />
             ) : (
                 <p className="mt-2 text-sm text-muted">{order.paymentStatus !== "paid" ? "未支付，暂不可发货。" : "已发货。"}</p>
             )}
