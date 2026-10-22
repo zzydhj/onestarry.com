@@ -275,7 +275,9 @@ Workers Cache **没有 UA 豁免**，只认「响应头 + 缓存键」。所以 
   在里面同时 `revalidatePath` 清 R2 条目）；后台加 `apps/admin/lib/invalidate.ts`，把“查真 slug + 发通知”
   整条挂到 `ctx.waitUntil`（不占保存那一下的等待）。接上的动作：商品价/库/状态/图文/图片/SEO/目录归属、
   类目、品牌、法律文档、CMS 内容（含发布/撤回/删除）、评论审核。
-  验收只有一条口径：带密钥 POST 之后，那一发 `GET` 必须是 `x-nextjs-cache: MISS`（条目真掉了），而不是 HIT 重放。
+  验收口径（实测形状，2026-10-22，**不是** `MISS`）：带密钥 POST 之后第一发（要带唯一 `?probe=` 绕边缘）
+  应该是 `STALE + s-maxage=2` —— `revalidatePath` 是把条目标为过期，旧体照给、同时触发后台重渲染；
+  4~5 秒后再打一发必须是 `HIT + s-maxage` 回到接近满值（实测 59）。一直停在 `HIT + 小 s-maxage` 才说明没落地。
 - **公共读页的 `revalidate = 60` 保持不动（用户拍板：当兜底）**。理论上拉长到 300s 能让边缘真吸住流量
   （§6），但边缘那一份不受 `revalidatePath` 管辖，拉长后“改完可见”最多要等一个边缘 TTL，除非再加
   `cache.purge()`（`cloudflare:workers`）。既然按需失效已经接好，60 秒就是干净的兜底，不必拿它换边缘命中率。
@@ -314,9 +316,12 @@ curl -sI https://onestarry.com/_next/static/chunks/44f_n5nrx9el0.css | grep -iE 
 curl -s -o /dev/null -D - -w 'tls=%{time_appconnect} ttfb=%{time_starttransfer}\n' https://onestarry.com/products
 grep -iE '^(cf-cache-status|server-timing)'   # server = ttfb − tls；没有 server-timing = 没进 Worker
 
-# 按需失效通道（带密钥那一发才通；验收看 revalidate 后那一发 GET 是不是 MISS）
-curl -s -X POST https://onestarry.com/api/internal/invalidate -H 'authorization: Bearer $INVALIDATE_SECRET' -H 'content-type: application/json' -d '{"paths":["/products/ceramic-mug"]}'
-curl -sI https://onestarry.com/products/ceramic-mug | grep -iE '^(cf-cache-status|x-nextjs-cache)'   # 应为 MISS（条目真掉了），不是 HIT 重放
+# 按需失效通道（带密钥那一发才通；没配 secret / 错密钥一律 401，白名单外路径进 rejected）
+curl -s -X POST https://onestarry.com/api/internal/invalidate -H 'authorization: Bearer $INVALIDATE_SECRET' -H 'content-type: application/json' -d '{"paths":["/products/ceramic-mug","/admin/x"]}'
+# 验它真生效：连打两发穿透边缘的（带唯一 probe 参数），必须是 STALE(s-maxage=2) → 几秒后 HIT(s-maxage≈59)
+# 不是 MISS —— revalidatePath 是“标为过期 + 后台重渲染”，旧体还会发一次
+curl -sI "https://onestarry.com/products/ceramic-mug?probe=$RANDOM" | grep -iE '^(x-nextjs-cache|cache-control)'
+sleep 5; curl -sI "https://onestarry.com/products/ceramic-mug?probe=$RANDOM" | grep -iE '^(x-nextjs-cache|cache-control)'
 
 # 线上版本确认（含 ISR 探针结论）
 curl -s https://onestarry.com/api/health
