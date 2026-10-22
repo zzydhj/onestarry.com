@@ -2,14 +2,28 @@ import type { Metadata } from "next";
 import { cache } from "react";
 import { notFound, redirect } from "next/navigation";
 import { SITE_ORIGIN } from "@onestarry/core";
-import { browseProducts, getCategoryById, getCategorySubtreeIds, getSeoMeta, resolveSlug } from "@onestarry/db";
+import { browseProducts, getCategoryById, getCategorySubtreeIds, getSeoMeta, listCurrentSlugs, resolveSlug } from "@onestarry/db";
 import { getDb } from "@/lib/db";
 import { applySeoMeta } from "@/lib/seo";
 import { ProductGrid } from "@/components/ProductGrid";
 
 export const revalidate = 60;
-export async function generateStaticParams() {
-    return [];
+
+/**
+ * 构建期枚举已发布类目预渲染。
+ *
+ * 原先这里写的是 `return []` —— 那是“有函数但等于没修”：走按需 ISR 时，运行时 `set()`
+ * 写回的条目会被判即时过期 → 恒 `STALE`、边缘存不住，**每个访客都付一次全额渲染**。
+ * 2026-10-22 实测本路径冷进 2.3–4.3 秒（同站预渲染的 PDP 只要 1.2 秒、边缘命中 0.11 秒）。
+ * 失败退化成空列表而不是抛错：少预渲染只是慢，构建变红会让所有代码上不了线。docs/PERF.md §3/§7。
+ */
+export async function generateStaticParams(): Promise<Array<{ slug: string }>> {
+    try {
+        return (await listCurrentSlugs(getDb(), "category")).map((slug) => ({ slug }));
+    } catch (e) {
+        console.error("[类目页] 构建期枚举 slug 失败，退化为按需 ISR：", e);
+        return [];
+    }
 }
 
 const SITE = SITE_ORIGIN;

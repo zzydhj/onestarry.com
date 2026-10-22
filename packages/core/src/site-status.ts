@@ -99,6 +99,7 @@ export const SITE_ROUTES: SiteRoute[] = [
         edgeCacheable: true,
         invalidation: "timer+channel",
         dynamicSegment: true,
+        note: "2026-10-22 补真预渲染（原先 return [] → 冷进实测 4.3 秒）；渲染仍串 5 次跨洋查库，预渲染后每分钟只一人付",
     },
     {
         path: "/brands",
@@ -118,6 +119,7 @@ export const SITE_ROUTES: SiteRoute[] = [
         edgeCacheable: true,
         invalidation: "timer+channel",
         dynamicSegment: true,
+        note: "2026-10-22 补真预渲染（原先 return [] → 冷进实测 2.3 秒）",
     },
     {
         path: "/blog",

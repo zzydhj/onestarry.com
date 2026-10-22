@@ -2,14 +2,25 @@ import type { Metadata } from "next";
 import { cache } from "react";
 import { notFound, redirect } from "next/navigation";
 import { SITE_ORIGIN } from "@onestarry/core";
-import { browseProducts, getBrandById, getSeoMeta, resolveSlug } from "@onestarry/db";
+import { browseProducts, getBrandById, getSeoMeta, listCurrentSlugs, resolveSlug } from "@onestarry/db";
 import { getDb } from "@/lib/db";
 import { applySeoMeta } from "@/lib/seo";
 import { ProductGrid } from "@/components/ProductGrid";
 
 export const revalidate = 60;
-export async function generateStaticParams() {
-    return [];
+
+/**
+ * 构建期枚举已注册品牌预渲染（与类目页同一形状、同一个理由）：
+ * `return []` 等于没修 —— 按需 ISR 的条目被判即时过期，恒 STALE、边缘存不住，每个访客都全额渲染。
+ * 2026-10-22 实测本路径冷进 2.3 秒。失败退化成空列表，不把构建变红。docs/PERF.md §3/§7。
+ */
+export async function generateStaticParams(): Promise<Array<{ slug: string }>> {
+    try {
+        return (await listCurrentSlugs(getDb(), "brand")).map((slug) => ({ slug }));
+    } catch (e) {
+        console.error("[品牌页] 构建期枚举 slug 失败，退化为按需 ISR：", e);
+        return [];
+    }
 }
 
 const SITE = SITE_ORIGIN;

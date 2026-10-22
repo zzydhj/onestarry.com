@@ -57,15 +57,36 @@ test("apps/web/app 下每个 page.tsx 都必须在 SITE_ROUTES 登记", { skip: 
     );
 });
 
-test("声明为预渲染 ISR 的动态段路由，源码里必须有 generateStaticParams", { skip: !existsSync(WEB_APP) }, () => {
-    const offenders = routesRequiringStaticParams()
-        .filter((r) => !readRepo(r.file).includes("generateStaticParams"))
-        .map((r) => r.path);
+/** 取顶层函数体（本项目约定：顶层函数以列 0 的 `\n}` 结束）。找不到返回 null。 */
+function fnBody(src: string, fnName: string): string | null {
+    const at = src.indexOf(`function ${fnName}`);
+    if (at < 0) return null;
+    const open = src.indexOf("{", at);
+    const close = src.indexOf("\n}", open);
+    return open >= 0 && close > open ? src.slice(open + 1, close) : null;
+}
+
+test("声明为预渲染 ISR 的动态段路由，generateStaticParams 必须真去取数据（return [] = 没修）", { skip: !existsSync(WEB_APP) }, () => {
+    const offenders: string[] = [];
+    for (const r of routesRequiringStaticParams()) {
+        const src = readRepo(r.file);
+        if (!src.includes("generateStaticParams")) {
+            offenders.push(`${r.path}（没有这个函数）`);
+            continue;
+        }
+        // 真枚举一定 await 了查询，或至少 .map 了一个真列表。`return [];` 两者都没：
+        // 它编译得过、不报错，但页会退回按需 ISR（恒 STALE、零缓存收益）——
+        // 2026-10-22 类目页与品牌页就卡在这个形状上，冷进 2.3–4.3 秒。
+        const body = fnBody(src, "generateStaticParams") ?? "";
+        if (!/await|\.map\(/.test(body)) {
+            offenders.push(`${r.path}（函数体是退化的 return []，等于没预渲染）`);
+        }
+    }
     assert.deepEqual(
         offenders,
         [],
-        `这些路由登记为整页 ISR 且含动态段，但源码没有 generateStaticParams：${offenders.join(", ")} ` +
-        `→ 运行时会走按需 ISR，条目被判即时过期（恒 STALE、零缓存收益）`,
+        `这些路由登记为整页 ISR 但没有真枚举 slug：${offenders.join(", ")}。` +
+        `照 apps/web/app/brands/[slug]/page.tsx 用 listCurrentSlugs 补上。`,
     );
 });
 
