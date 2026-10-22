@@ -127,6 +127,12 @@ export async function listReviewsForModeration(db: Db | Tx, status: ReviewStatus
 }
 
 /** 审核：改状态（approve/reject/flag）。 */
-export async function setReviewStatus(db: Db | Tx, reviewId: string, status: ReviewStatus): Promise<void> {
-    await db.update(reviews).set({ status, updatedAt: new Date() }).where(eq(reviews.id, reviewId));
+export async function setReviewStatus(db: Db | Tx, reviewId: string, status: ReviewStatus): Promise<string | null> {
+    // 把 productId 带回去：审核完评论要失效那件商品的详情页（评论列表是 PDP 的一部分）。
+    const [row] = await db
+        .update(reviews)
+        .set({ status, updatedAt: new Date() })
+        .where(eq(reviews.id, reviewId))
+        .returning({ productId: reviews.productId });
+    return row?.productId ?? null;
 }

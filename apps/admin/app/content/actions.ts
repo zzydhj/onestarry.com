@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import { PERMISSIONS } from "@onestarry/core";
 import {
     createDb,
+    getContentForEdit,
     upsertContent,
     updateContentBody,
     setContentStatus,
@@ -13,6 +14,7 @@ import {
     type ContentStatus,
 } from "@onestarry/db";
 import { requirePermission } from "@/lib/auth";
+import { contentStorefrontPaths, queueContentInvalidation, queuePathsInvalidation } from "@/lib/invalidate";
 
 const TYPES: readonly string[] = ["blog", "page", "landing"];
 const STATUSES: readonly ContentStatus[] = ["draft", "published", "archived"];
@@ -34,7 +36,7 @@ export async function createContentAction(formData: FormData): Promise<void> {
 
 /** 保存元数据（标题/摘要/slug/类型），不碰正文（body 由编辑器单独存）。 */
 export async function saveContentMetaAction(formData: FormData): Promise<void> {
-    const { env } = await requirePermission(PERMISSIONS.seoWrite);
+    const { env, ctx } = await requirePermission(PERMISSIONS.seoWrite);
     const id = String(formData.get("id") ?? "");
     const type = asType(String(formData.get("type") ?? "page"));
     const title = String(formData.get("title") ?? "").trim();
@@ -45,11 +47,13 @@ export async function saveContentMetaAction(formData: FormData): Promise<void> {
     await upsertContent(db, { id, type, title, excerpt, slug });
     revalidatePath("/content");
     revalidatePath(`/content/${id}`);
+    // 上面两条只管后台自己；前台那一篇（/blog/<slug> 或 /<slug>）要靠跨 Worker 通知。
+    queueContentInvalidation({ ctx, db, contentId: id });
 }
 
 /** 保存正文（编辑器传 ProseMirror JSON 字符串）→ 只更新 body。 */
 export async function saveContentBodyAction(formData: FormData): Promise<void> {
-    const { env } = await requirePermission(PERMISSIONS.seoWrite);
+    const { env, ctx } = await requirePermission(PERMISSIONS.seoWrite);
     const id = String(formData.get("id") ?? "");
     const raw = String(formData.get("body") ?? "");
     if (!id) return;
@@ -62,11 +66,12 @@ export async function saveContentBodyAction(formData: FormData): Promise<void> {
     const db = createDb(env.HYPERDRIVE.connectionString);
     await updateContentBody(db, { id, body: parsed });
     revalidatePath(`/content/${id}`);
+    queueContentInvalidation({ ctx, db, contentId: id });
 }
 
 /** 改发布状态（草稿/发布/归档）。 */
 export async function publishContentAction(formData: FormData): Promise<void> {
-    const { env } = await requirePermission(PERMISSIONS.seoWrite);
+    const { env, ctx } = await requirePermission(PERMISSIONS.seoWrite);
     const id = String(formData.get("id") ?? "");
     const rawStatus = String(formData.get("status") ?? "");
     const status = STATUSES.find((s) => s === rawStatus);
@@ -75,15 +80,20 @@ export async function publishContentAction(formData: FormData): Promise<void> {
     await setContentStatus(db, id, status);
     revalidatePath("/content");
     revalidatePath(`/content/${id}`);
+    // 发布/撤回都改了前台那一篇的存亡，不失效就要等整点（这些页 revalidate 比商品长得多）
+    queueContentInvalidation({ ctx, db, contentId: id });
 }
 
 /** 删除内容 → 返回列表。 */
 export async function deleteContentAction(formData: FormData): Promise<void> {
-    const { env } = await requirePermission(PERMISSIONS.seoWrite);
+    const { env, ctx } = await requirePermission(PERMISSIONS.seoWrite);
     const id = String(formData.get("id") ?? "");
     if (!id) return;
     const db = createDb(env.HYPERDRIVE.connectionString);
+    // 先读再删：删完就不知道它原本挂在哪个 URL 上（前台那一页得按原地址失效）
+    const row = await getContentForEdit(db, id);
     await deleteContent(db, id);
     revalidatePath("/content");
+    queuePathsInvalidation({ ctx, paths: contentStorefrontPaths(row) });
     redirect("/content");
 }

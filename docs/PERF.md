@@ -239,7 +239,9 @@ Workers Cache **没有 UA 豁免**，只认「响应头 + 缓存键」。所以 
 
 `revalidate = 60` + 请求稀疏 ⇒ 打过去时 R2 条目常常已经贴着过期，源站就发 `s-maxage=2`，边缘照着只存 2 秒。
 密集抽样时看到的就是 `MISS → HIT(Age 1) → REVALIDATED → HIT(Age 1)` 这个循环（6 发里 4 发回到源站）。
-想让这层真吃到流量，得动源站那 60 秒（§7 第一条），不是动边缘配置。
+**这不是要修的坑，是低流量下的正常形状**：源站每刷一次，边缘就能吃到接下来那一段；而按需失效已经接好
+（§7 第一条），“改完可见”不再依赖这个窗口。把 `revalidate` 拉长能让边缘好看很多，
+但本站已经拿定主意**保持 60 秒当兜底**（见 §7 第二条），所以这点吸收率就是当前设计下的预期值。
 
 ⚠ 还有一条**压测自己会造坏形状**：我 1 秒一发连打 8 次，把探针打成 `verdict:"oscillating", badStreak:1`
 （持续把条目踩进 STALE 轮换），停手 30 秒后自己回 `ok / 0`。看到 oscillating 先确认是不是有人在扫，再怀疑 ISR。
@@ -260,16 +262,23 @@ Workers Cache **没有 UA 豁免**，只认「响应头 + 缓存键」。所以 
 
 ---
 
-## 7. 已知但尚未处置
+## 7. 缓存失效与新鲜度：定论与本轮修复记录
 
-- **后台改完、前台不会立即失效**（本轮发现的真 bug，待拍板）：`apps/admin/app/products/[id]/actions.ts` 里 10 处
-  `revalidatePath(`/products/${productId}`)` 传的是 **实体 id**，而前台路由是 `/products/[slug]`、
-  `resolveSlug` 只按 `slugs.slug` exact 匹配 → 那个路径本来就 404（实测 `/products/01jabcdefghijk0000000000` → `404 + no-store`），
-  **整个按需失效是个空动作**，用户看到新内容全靠那 60 秒定时器。另外改商品也没动过 `/products`、`/`、`/categories/<slug>`、`/brands/<slug>`。
-  修形：写完用 `getEntitySlug` 拿真 slug 再 `revalidatePath`，同时补下列表页。（`/products/<slug>/review` 那个 action 已经是对的，它用的真是 slug。）
-- **读页 `revalidate = 60` 是边缘缓存吸不住的直接原因**（§6）。因为按需失效本来就是空的，现在把这 60 秒当**唯一**的发布机制，
-  所以不能单纯拉长；上面那条修完，才能谈把公共读页提到 300s（或给边缘单独一个 `CDN-Cache-Control`）。
-  代价要讲清楚：边缘那份不受 `revalidatePath` 管辖，拉长后“改完可见”最多等一个边缘 TTL，除非在 web Worker 里调 `cache.purge()`。
+- **后台改完、前台不会立即失效：已修（2026-10-22）**。当时查出来的是**双重空转**：
+  ① `apps/admin/app/products/[id]/actions.ts` 里 10 处 `revalidatePath(`/products/${productId}`)` 传的是**实体 id**，
+     而前台路由是 `/products/[slug]`、`resolveSlug` 只按 `slugs.slug` 精确匹配 → 那个路径本身 404
+     （实测 `/products/01jabcdefghijk0000000000` → `404 + no-store`），Next 对不存在的路径既不报错也不告警；
+  ② 更要命的是 `next/cache` 只作用于**当前应用**的缓存 —— admin 与 web 是两个独立 Worker，
+     在 admin 里调 `revalidatePath` 根本碰不到 web 的 R2 ISR 条目。所以 `/brands`、`/categories`、`/legal`、
+     `/content` 那些调用对前台同样是空动作（评论审核只刷了后台自己的列表）。
+  **修形**：前台加 `POST /api/internal/invalidate`（带共享密钥、白名单只收真实前台路由、单次 ≤20 条，
+  在里面同时 `revalidatePath` 清 R2 条目）；后台加 `apps/admin/lib/invalidate.ts`，把“查真 slug + 发通知”
+  整条挂到 `ctx.waitUntil`（不占保存那一下的等待）。接上的动作：商品价/库/状态/图文/图片/SEO/目录归属、
+  类目、品牌、法律文档、CMS 内容（含发布/撤回/删除）、评论审核。
+  验收只有一条口径：带密钥 POST 之后，那一发 `GET` 必须是 `x-nextjs-cache: MISS`（条目真掉了），而不是 HIT 重放。
+- **公共读页的 `revalidate = 60` 保持不动（用户拍板：当兜底）**。理论上拉长到 300s 能让边缘真吸住流量
+  （§6），但边缘那一份不受 `revalidatePath` 管辖，拉长后“改完可见”最多要等一个边缘 TTL，除非再加
+  `cache.purge()`（`cloudflare:workers`）。既然按需失效已经接好，60 秒就是干净的兜底，不必拿它换边缘命中率。
 - **Hyperdrive 查询缓存：结论是不开**（`caching.disabled = true`，`npx wrangler hyperdrive get <id>` 可复核）。
   官方文档写“默认开启”，所以“应该开着”很容易误推到本站 —— 但这个站是显式关掉的，而且应该继续关：
   ① 写操作不会使缓存失效，匹配上的 SELECT 最多拿到 `max_age`（默认 60s）+ SWR 15s 前的结果；
@@ -304,6 +313,10 @@ curl -sI https://onestarry.com/_next/static/chunks/44f_n5nrx9el0.css | grep -iE 
 # 算“到底省了多少”：必须剥掉 TLS/网络段，否则你量到的是自己那条链路
 curl -s -o /dev/null -D - -w 'tls=%{time_appconnect} ttfb=%{time_starttransfer}\n' https://onestarry.com/products
 grep -iE '^(cf-cache-status|server-timing)'   # server = ttfb − tls；没有 server-timing = 没进 Worker
+
+# 按需失效通道（带密钥那一发才通；验收看 revalidate 后那一发 GET 是不是 MISS）
+curl -s -X POST https://onestarry.com/api/internal/invalidate -H 'authorization: Bearer $INVALIDATE_SECRET' -H 'content-type: application/json' -d '{"paths":["/products/ceramic-mug"]}'
+curl -sI https://onestarry.com/products/ceramic-mug | grep -iE '^(cf-cache-status|x-nextjs-cache)'   # 应为 MISS（条目真掉了），不是 HIT 重放
 
 # 线上版本确认（含 ISR 探针结论）
 curl -s https://onestarry.com/api/health

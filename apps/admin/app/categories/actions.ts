@@ -1,9 +1,9 @@
 "use server";
 
-import { revalidatePath } from "next/cache";
 import { createDb, createCategory, updateCategory } from "@onestarry/db";
 import { PERMISSIONS } from "@onestarry/core";
 import { requirePermission } from "@/lib/auth";
+import { queueEntityPageInvalidation } from "@/lib/invalidate";
 
 /**
  * 动作返回值：类目页现在是乐观 UI（点下就先变），所以**必须**把成败告诉调用方。
@@ -19,26 +19,27 @@ function fail(e: unknown): { ok: false; error: string } {
 
 /** 新增类目（可选父级；slug 缺省由名称派生，写入 slugs 表使前台可达）。 */
 export async function createCategoryAction(formData: FormData): Promise<CategoryCreateResult> {
-    const { env } = await requirePermission(PERMISSIONS.categoryWrite);
+    const { env, ctx } = await requirePermission(PERMISSIONS.categoryWrite);
     const name = String(formData.get("name") ?? "").trim();
     const slug = String(formData.get("slug") ?? "").trim() || undefined;
     const parentId = String(formData.get("parentId") ?? "").trim() || null;
     if (!name) return { ok: false, error: "名称不能为空" };
     const db = createDb(env.HYPERDRIVE.connectionString);
     let finalSlug: string;
+    let createdId: string;
     try {
         // setEntitySlug 会自动避让重名（my-mug → my-mug-2），所以最终 slug 可能不等于输入的那一个
-        ({ slug: finalSlug } = await createCategory(db, { name, parentId, slug }));
+        ({ id: createdId, slug: finalSlug } = await createCategory(db, { name, parentId, slug }));
     } catch (e) {
         return fail(e);
     }
-    revalidatePath("/categories");
+    queueEntityPageInvalidation({ ctx, db, kind: "category", entityId: createdId, slug: finalSlug });
     return { ok: true, slug: finalSlug };
 }
 
 /** 更新类目名 + slug（slug 留空则不改，避免破坏已索引 URL）。 */
 export async function updateCategoryAction(formData: FormData): Promise<CategoryUpdateResult> {
-    const { env } = await requirePermission(PERMISSIONS.categoryWrite);
+    const { env, ctx } = await requirePermission(PERMISSIONS.categoryWrite);
     const id = String(formData.get("id") ?? "");
     const name = String(formData.get("name") ?? "").trim();
     const slug = String(formData.get("slug") ?? "").trim() || undefined;
@@ -51,6 +52,7 @@ export async function updateCategoryAction(formData: FormData): Promise<Category
     } catch (e) {
         return fail(e);
     }
-    revalidatePath("/categories");
+    // slug 未改时 updateCategory 返回 null，helper 会自己现查当前 slug 去失效那一页
+    queueEntityPageInvalidation({ ctx, db, kind: "category", entityId: id, slug: finalSlug });
     return { ok: true, slug: finalSlug };
 }

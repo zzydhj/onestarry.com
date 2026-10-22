@@ -11,3 +11,4 @@ export * from "./csv";
 export * from "./maintenance";
 export * from "./health";
 export * from "./isr";
+export * from "./invalidate";

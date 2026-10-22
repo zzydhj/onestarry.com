@@ -85,6 +85,7 @@ Workers Builds 环境变量（**Variables and Secrets → Secrets**）：
 
 - `DATABASE_URL`：**Neon 池化端点**（host 含 `-pooler`），构建期用于 ISR 预渲染。**值不要带引号**（血泪：带引号 → 28P01 认证失败）。
 - `BETTER_AUTH_SECRET`：admin 与 web 各一个（32 字节 base64）。
+- `INVALIDATE_SECRET`：**两边同值**（admin 要能把失效通知发进 web 的 `/api/internal/invalidate`）。缺了不报错、不影响后台保存，只是“改完立刻可见”退回各页 `revalidate` 定时器（商品页 60s、法律页 3600s）—— 取证与权衡见 `docs/PERF.md` §7。
 
 > ⚠️ **构建期会连真库**：OpenNext 在构建期预渲染 ISR 页时会用 `DATABASE_URL` 连生产 Neon；secret 值损坏不是降级而是直接构建失败（历史血泪：28P01，见 §12.4 与记忆《Cloudflare Build Secret 中 DATABASE_URL 的值格式规范》）。
 
