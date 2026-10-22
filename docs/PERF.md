@@ -173,7 +173,7 @@ R2 键形如 `incremental-cache/<buildId>/<sha256>.cache`，**每次部署换新
 | --- | --- | --- |
 | 同一条 `/products`：HTML vs 它引用的 `/_next/static/chunks/*.css` | HTML **始终没有 `cf-cache-status`**；CSS **`MISS → HIT`** | 差别只在**谁产生那个响应** |
 | 建了 Cache Rule（`cache: true` + 路径表达式）后的 HTML | 仍然没有 `cf-cache-status`，TTFB 0.7–2.8s 不变 | 区域缓存对 Worker 自渲染的响应无从存起 |
-| `x-nextjs-cache: HIT` 时的 TTFB | **0.9–2.3s** | 每次都真的进 Worker 跨洋读一次 R2（真边缘命中是几十毫秒量级） |
+| `x-nextjs-cache: HIT` 时的 TTFB | 0.9–2.3s（**这个数字已作废**，见下面「净收益实测」：剥掉 TLS 后源站侧只有 0.15–0.3s） | 当时误把跨国链路的 TLS 抖当成跨洋读 R2 |
 | 三条读页是否发 `Set-Cookie` | **全部不发**（GDPR 同意 cookie 是 `document.cookie` 写的） | 边缘缓存不会把 A 的 cookie 回给 B |
 | 按国家/IP 分流 | `CF-IPCountry` / `request.geo` / `middleware` **全仓 0 处** | 内容人人同一份，可以全局缓存 |
 
@@ -216,19 +216,60 @@ Workers Cache **没有 UA 豁免**，只认「响应头 + 缓存键」。所以 
 → 仍打在同一个源站条目上。**bust 边缘、不 bust 源站**，正好是探针要的。把它改回“裸路径”的那一刻，
 §4 的 verdict 就开始失真（又一个看不出来的坏法）。
 
+### 净收益实测（2026-10-22，作废我上一轮那句「省 1–2 秒」）
+
+用 `server = time_starttransfer − time_appconnect` 把 TLS/网络段剥掉，同一条 `/products` 各 8 发：
+
+| 走哪条路 | 服务端耗时（中位） | 说明 |
+| --- | --- | --- |
+| 边缘 HIT | **0.04–0.13s** | Worker 不运行，`Server-Timing: cfWorker` 整条消失 |
+| 必进 Worker（唯一 `?probe=`） | **0.15–0.30s** | 读 R2 命中 + 出响应，本来就不贵 |
+
+**所以这层省下的是 ~0.1–0.2s 的源站功，不是 1–2s。** 上一轮我拿 0.9–2.3s 的 TTFB 当「跨洋读 R2 的代价」，
+那是我自己 CN→HK 的 TLS 握手与链路抖动 —— 边缘缓存对那段**一点作用都没有**（用户照样要跑到最近的 colo）。
+
+更要紧的一条：**本站流量下边缘基本吸不住**，因为存的时长是源站赏的：
+
+```
+14:28:09  MISS         s-maxage=22    ← 存 22 秒
+14:28:40  REVALIDATED  s-maxage=2     ← 30 秒后早过了，回源
+14:29:11  REVALIDATED  s-maxage=2
+14:30:46  MISS         s-maxage=36
+```
+
+`revalidate = 60` + 请求稀疏 ⇒ 打过去时 R2 条目常常已经贴着过期，源站就发 `s-maxage=2`，边缘照着只存 2 秒。
+密集抽样时看到的就是 `MISS → HIT(Age 1) → REVALIDATED → HIT(Age 1)` 这个循环（6 发里 4 发回到源站）。
+想让这层真吃到流量，得动源站那 60 秒（§7 第一条），不是动边缘配置。
+
+⚠ 还有一条**压测自己会造坏形状**：我 1 秒一发连打 8 次，把探针打成 `verdict:"oscillating", badStreak:1`
+（持续把条目踩进 STALE 轮换），停手 30 秒后自己回 `ok / 0`。看到 oscillating 先确认是不是有人在扫，再怀疑 ISR。
+
 ### 代价与判读变化
 
 - **代价**：开启后连本来免费的静态资源请求与 Worker 间调用也按标准请求计费（Free 计划 10 万请求/天，本站远不到）。
 - 命中时 Worker 不运行 → `Server-Timing: cfWorker;dur=…` 会消失/归零。这是“真的没进 Worker”最硬的证据，
   比总耗时可靠（跨国链路 RTT 会把 dur 那几百毫秒盖住）。
-- 边缘 HIT 里带的 `x-nextjs-cache` 是**上一次源站那一发**的结论，不是这一发的；要看源站真值就走探针那条
-  穿透路径（`/api/health` 的 `isr`）。
+- 边缘 HIT 里带的 `x-nextjs-cache` 与 `cache-control` 都是**存进去那一份**在重放，不是这一发源站的结论 ——
+  `HIT` 配 `s-maxage=2` 就是这么来的，`cf-cache-status: REVALIDATED` 才是真回源。要看源站真值走探针那条
+  穿透路径（`/api/health` 的 `isr`），或自己带唯一 `?probe=` 参数。`scripts/isr-watch.ps1` 已把
+  `cf-cache-status` / `age` 打进每行，缺这两列就会读错。
+- `stale-while-revalidate=2592000`（30 天）**现在会被边缘当真**：源站持续重渲染失败时，边缘能照着发旧页。
+  探针读的是穿透后的源站，所以这个坏法 `verdict` 抓得到；但**边缘那一份不会被 `revalidatePath` 清掉**，
+  要立刻见效得在 web Worker 里调 `cache.purge()`（`cloudflare:workers`）。这是可选件，不是修复件。
 - 部署即换缓存命名空间 → 每次上线有一次冷启动，5 分钟那发探针顺带预热回来（§4）。
 
 ---
 
 ## 7. 已知但尚未处置
 
+- **后台改完、前台不会立即失效**（本轮发现的真 bug，待拍板）：`apps/admin/app/products/[id]/actions.ts` 里 10 处
+  `revalidatePath(`/products/${productId}`)` 传的是 **实体 id**，而前台路由是 `/products/[slug]`、
+  `resolveSlug` 只按 `slugs.slug` exact 匹配 → 那个路径本来就 404（实测 `/products/01jabcdefghijk0000000000` → `404 + no-store`），
+  **整个按需失效是个空动作**，用户看到新内容全靠那 60 秒定时器。另外改商品也没动过 `/products`、`/`、`/categories/<slug>`、`/brands/<slug>`。
+  修形：写完用 `getEntitySlug` 拿真 slug 再 `revalidatePath`，同时补下列表页。（`/products/<slug>/review` 那个 action 已经是对的，它用的真是 slug。）
+- **读页 `revalidate = 60` 是边缘缓存吸不住的直接原因**（§6）。因为按需失效本来就是空的，现在把这 60 秒当**唯一**的发布机制，
+  所以不能单纯拉长；上面那条修完，才能谈把公共读页提到 300s（或给边缘单独一个 `CDN-Cache-Control`）。
+  代价要讲清楚：边缘那份不受 `revalidatePath` 管辖，拉长后“改完可见”最多等一个边缘 TTL，除非在 web Worker 里调 `cache.purge()`。
 - **Hyperdrive 查询缓存：结论是不开**（`caching.disabled = true`，`npx wrangler hyperdrive get <id>` 可复核）。
   官方文档写“默认开启”，所以“应该开着”很容易误推到本站 —— 但这个站是显式关掉的，而且应该继续关：
   ① 写操作不会使缓存失效，匹配上的 SELECT 最多拿到 `max_age`（默认 60s）+ SWR 15s 前的结果；
@@ -259,6 +300,10 @@ curl -sI https://onestarry.com/products | grep -iE '^(HTTP|cf-cache-status|cache
 curl -sI "https://onestarry.com/products?probe=$(date +%s)" | grep -iE '^(cf-cache-status|x-nextjs-cache)'
 # 静态资源对照（走 Workers Assets、不经 Worker 代码，应该一直能 MISS→HIT）
 curl -sI https://onestarry.com/_next/static/chunks/44f_n5nrx9el0.css | grep -iE '^(cf-cache-status|cache-control)'
+
+# 算“到底省了多少”：必须剥掉 TLS/网络段，否则你量到的是自己那条链路
+curl -s -o /dev/null -D - -w 'tls=%{time_appconnect} ttfb=%{time_starttransfer}\n' https://onestarry.com/products
+grep -iE '^(cf-cache-status|server-timing)'   # server = ttfb − tls；没有 server-timing = 没进 Worker
 
 # 线上版本确认（含 ISR 探针结论）
 curl -s https://onestarry.com/api/health
