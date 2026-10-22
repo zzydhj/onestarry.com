@@ -6,13 +6,14 @@
 
 ---
 
-## 0. 先记住三条会救命的认知
+## 0. 先记住四条会救命的认知
 
 | 认知 | 为什么 |
 |---|---|
 | **部署失败 ≠ 现网挂** | Workers 保留历史版本；构建失败只是"新代码没上去"，线上继续跑上一个成功版本。**别在慌的时候改代码**，先看构建日志 |
 | **真风险是"坏版本一上线就 100% 接手"** | 默认部署是全量原子切换，不灰度 → 所以第 6 步的放量不可跳过 |
 | **回滚不需要重新构建** | 控制台 Workers → 你的 Worker → **Versions** → 把上一个版本调到 100%，秒级生效 |
+| **缓存的坏法是无声的，build 全绿不算过关** | 缓存 miss 永远合法 —— 不报错、不告警、内容也对，只是每次访问都多付一次跨洋渲染。2026-10-22 的事故就长在 Next 15→16 升级的第二天早上（`4ec2c21` → 次日 `09aa1f1`）：构建全绿、页面全对，但商品页 ISR 永不命中。所以第 4 步的路由表与第 6 步的 verdict **两项都不可跳**，判读法见 docs/PERF.md §3/§6/§7 |
 
 ---
 
@@ -65,6 +66,7 @@ cd ..\web;  $env:DATABASE_URL=(Get-Content ..\..\.env.local | Select-String '^\s
 
 - [ ] web 构建需要 `DATABASE_URL`（首页/PDP 构建期连真库预渲染，**这是设计如此**，不是 bug）
 - [ ] 两站 build 都要看**路由表**：原本 `●`（SSG/ISR）的页不能莫名变成 `ƒ`（Dynamic）—— 那意味着缓存失效，客户会变慢（判读 `s-maxage` 时注意它是**剩余新鲜度倒计时**，接近过期看到小值属正常）
+- [ ] **新增的公开读页必须同时有 `generateStaticParams`**：没有它 = 走“按需 ISR” = 运行时 `set()` 写的条目被判即时过期 → 恒 `STALE` 且不带 `Cache-Control`（零缓存收益，不报错）。升级后重看一遍路由表，确认该预渲染的页仍在列（docs/PERF.md §7）
 - [ ] 若 Next 升级带来破坏性变更，本项目历史命中面（照此复查）：`params`/`searchParams`/`cookies()`/`headers()` 是否仍 `Promise`+`await`；有无 `opengraph-image`/`icon` 文件；`sitemap` 是否用了 `id`；是否有自定义 `webpack`；是否残留 `next lint`
 
 ---
@@ -88,6 +90,13 @@ curl.exe -s https://onestarry.com/api/health
 ```
 
 - [ ] Cloudflare 控制台 → Worker → **Versions** → 新版本先给 **5%** → 观察 5–10 分钟
+- [ ] **ISR 健度确证（升级后必做，这是本次事故的直接产物）**：`/api/health` 的 `isr.verdict` 必须是 `ok`（`badStreak: 0`），再跑一轮主动测量：
+
+```powershell
+powershell -NoProfile -File scripts/isr-watch.ps1 -Rounds 3 -GapSeconds 15
+# 健度形状：HIT + s-maxage 倒计时 → 到期那一发 STALE → 下一发回到满值
+# 坏形状：同一 colo 里 HIT/STALE 振荡，或恒 STALE 且无 Cache-Control（先排探针被边缘接住）
+```
 - [ ] 观察项：`/api/health` 200；首页/PDP 正常出图与价格；后台能登录、概览/商品/订单三页能打开；Workers 日志无新增 error；outbox 待办不增长
 - [ ] 通过则 25% → 100%；**任何异常立刻把权重调回上一版本**（秒级，不用重新构建），再排查
 
