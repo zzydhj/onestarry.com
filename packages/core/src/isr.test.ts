@@ -49,6 +49,27 @@ test("复查从不 HIT = 写回断了：STALE/MISS 都算「有 ISR 头但没命
     assert.equal(f.verdict, "never_hits");
 });
 
+test("刷新落地慢不算病：HIT 之前的 STALE 是正常等待（2026-10-22 误报校准）", () => {
+    // 真实形状：探针一轮并发暖 5 条，刷新排队 + 冷 Neon 首连，30 秒那一发还没落地并没问题。
+    // 旧判据（复查必须全 HIT）把这一形判成 never_hits，连报 24 轮。
+    const f = classifyIsrSamples("/products/ceramic-mug", [
+        sample({ offsetMs: 0, cache: "STALE", sMaxAge: 2 }),
+        sample({ offsetMs: 30_000, cache: "STALE", sMaxAge: 2 }),
+        sample({ offsetMs: 38_000, cache: "HIT", sMaxAge: 52 }),
+    ]);
+    assert.equal(f.verdict, "ok");
+});
+
+test("HIT 之后退回非 HIT 才是真的坏（刚写回的副本保不住）", () => {
+    const f = classifyIsrSamples("/products/linen-tote", [
+        sample({ offsetMs: 0, cache: "STALE", sMaxAge: 2 }),
+        sample({ offsetMs: 30_000, cache: "STALE", sMaxAge: 2 }),
+        sample({ offsetMs: 38_000, cache: "HIT", sMaxAge: 44 }),
+        sample({ offsetMs: 46_000, cache: "MISS", sMaxAge: null }),
+    ]);
+    assert.equal(f.verdict, "oscillating");
+});
+
 test("复查全无 x-nextjs-cache 头 = 该路由已经不是 ISR 页（与「写回断了」必须分开报）", () => {
     const f = classifyIsrSamples("/products/steel-bottle", [
         sample({ offsetMs: 0, cache: null, sMaxAge: null }),

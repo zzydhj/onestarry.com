@@ -4,7 +4,7 @@
  * **为什么必须由我们自己写这个断言**：整条 ISR 链路（Next 渲染 → R2 写回 → DO 队列 → 后台刷新）
  * 坏掉时是不报错的——200 照给、内容照对，只是每次都回源做全额渲染。链路上任何一层都产不出
  * 「本该命中却没命中」这个信号（miss 永远是合法的，没有哪层能判定你"应该"命中），
- * 所以这个性质只能外部主动测量：触发一次刷新，隔十几秒复查，看它翻不翻成 HIT。
+ * 所以这个性质只能外部主动测量：触发一次刷新，给它足够时间落地，再复查。
  *
  * 判读基线（2026-10-22 线上取证，过程见 docs/PERF.md）：
  * - HIT 时 `Cache-Control: s-maxage=N` 里的 N 是**剩余新鲜度倒计时**，不是固定等于 revalidate；
@@ -96,8 +96,15 @@ export function parseSMaxAge(cacheControl: string | null): number | null {
 }
 
 /**
- * 判定一组样本。约定 samples[0] 是触发刷新的那次请求（它的结果本来就可能陈旧，不参与判定），
- * 其余都是复查样本：在 revalidate 窗口内、且已给后台刷新留出时间的情况下，健康链路必须能给出 HIT。
+ * 判定一组样本。约定 samples[0] 是触发刷新的那次请求（不参与判定），其余都是复查。
+ *
+ * 时间口径（2026-10-22 校准，别再改回去）：**HIT 之前**出现 STALE/MISS 是正常的 —— 我们刚踢的
+ * 后台刷新还没落地。实测单条暖路径 ~6 秒就写回；而探针一轮要并发暖 5 条（`/` + `/products` +
+ * 3 个 slug），刷新排队 + 冷 Neon 首连，实测能到 26 秒以上。旧判据要求「复查全 HIT」，
+ * 把这种慢当成坏死 → 连续 24 轮报 `never_hits`、`badStreak 24`，而链路其实好好的。
+ *
+ * 真正的坏形状只有两种：**到点还是从不 HIT**（写回断了），或者 **HIT 之后又退回非 HIT**
+ * （条目保不住：双时钟互打、被清、写回被判即时过期 —— 就是本次事故最初的信号）。
  */
 export function classifyIsrSamples(path: string, samples: readonly IsrSample[]): IsrUrlFinding {
     const failed = samples.some((s) => s.status === 0 || s.status >= 500);
@@ -106,14 +113,14 @@ export function classifyIsrSamples(path: string, samples: readonly IsrSample[]):
     const followUps = samples.slice(1);
     if (followUps.length === 0) return { path, samples, verdict: "unknown" };
 
-    const hits = followUps.filter((s) => s.cache === "HIT");
-    if (hits.length === 0) {
+    const firstHit = followUps.findIndex((s) => s.cache === "HIT");
+    if (firstHit < 0) {
         // 全都没有 ISR 头 = 这一跳根本没走增量缓存（页面被改成动态，或路由变了），和"写回断了"是两种故障。
         const noHeader = followUps.every((s) => s.cache === null);
         return { path, samples, verdict: noHeader ? "not_isr" : "never_hits" };
     }
-    if (hits.length < followUps.length) return { path, samples, verdict: "oscillating" };
-    return { path, samples, verdict: "ok" };
+    const fellBack = followUps.slice(firstHit + 1).some((s) => s.cache !== "HIT");
+    return { path, samples, verdict: fellBack ? "oscillating" : "ok" };
 }
 
 /** 取最坏的结论（无路由时返回 unknown，宁可不报也不假报正常）。 */

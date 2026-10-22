@@ -18,9 +18,11 @@ import {
  *
  * 手法（与人工取证的判据一致）：
  *   1) 先打一次，把后台刷新触发起来（这一发的结果不参与判定，它本来就可能陈旧）；
- *   2) 等足够久让 DO 刷新写回 R2；
- *   3) 再复查两发——健康链路必须给出 HIT，且窗口内不该再出现 STALE。
- *   复查全 HIT = ok；有 HIT 也有 STALE = oscillating（双时钟的特征）；从不 HIT = never_hits。
+ *   2) 等足够久让「入队 → DO 刷新 → 写回 R2」落地。默认 30 秒，**别再调回 12 秒**：
+ *      单条暖路径实测 ~6 秒，但探针一轮并发暖 5 条，刷新要排队 + 冷 Neon 首连，
+ *      实测能到 26 秒以上 —— 12 秒的旧节奏把这种慢读成了 never_hits（连续 24 轮误报）；
+ *   3) 再复查两发（间隔 8 秒）。HIT 之前的 STALE 不算病，HIT 之后退回非 HIT 才算（规则见 core/isr.ts）。
+ *   从不 HIT = never_hits；HIT 后退回 = oscillating；其余 = ok。
  */
 
 /** 探针只需要这几个桶操作，用结构类型声明，避免这个包依赖 worker 全局类型。 */
@@ -42,10 +44,12 @@ export interface IsrProbeOptions {
     paths: readonly string[];
     /** 页面配置的 revalidate 秒数，仅随报告一起存下来供人对照。默认 60。 */
     revalidateSec?: number;
-    /** 触发后等多久再复查（要覆盖「入队 → DO 刷新 → 写回 R2」）。默认 12000ms。 */
+    /** 触发后等多久再复查（要覆盖「入队 → DO 刷新 → 写回 R2」）。默认 30000ms，并被夹到新鲜度窗口内。 */
     settleMs?: number;
     /** 复查几发（两发才能识别振荡）。默认 2。 */
     followUps?: number;
+    /** 复查之间的间隔。默认 8000ms（最后一发要落在 revalidate 窗口里，见下面 maxSettleMs）。 */
+    followUpGapMs?: number;
     /** 注入等待以便测试/替换。默认 setTimeout。 */
     wait?: (ms: number) => Promise<void>;
     /** 注入时钟以便测试。默认 Date.now。 */
@@ -95,8 +99,15 @@ async function sampleOnce(url: string, offsetMs: number): Promise<IsrSample> {
  */
 export async function runIsrProbe(store: IsrCacheStore, opts: IsrProbeOptions): Promise<IsrHealthReport> {
     const revalidateSec = opts.revalidateSec ?? 60;
-    const settleMs = opts.settleMs ?? 12_000;
     const followUps = Math.max(1, opts.followUps ?? 2);
+    const gapMs = opts.followUpGapMs ?? 8_000;
+    /**
+     * 复查必须全部落在新鲜度窗口内：新副本写好后要能撑到最后一发，否则会把
+     * 「窗口正常到点」误读成退回非 HIT（本次误报的另一半成因）。留 5 秒收尾余量，
+     * 并把 settle 自动夹进窗口：将来 revalidate 调小时不需要记得改这里。
+     */
+    const maxSettleMs = Math.max(5_000, revalidateSec * 1000 - followUps * gapMs - 5_000);
+    const settleMs = Math.min(opts.settleMs ?? 30_000, maxSettleMs);
     const wait = opts.wait ?? ((ms: number) => new Promise<void>((r) => setTimeout(r, ms)));
     const now = opts.now ?? (() => Date.now());
 
@@ -108,7 +119,7 @@ export async function runIsrProbe(store: IsrCacheStore, opts: IsrProbeOptions): 
     const nonce = started; // 每轮探针一个，保证边缘缓存键不跟上一轮/别的部署碰撞
     for (let round = 0; round <= followUps; round++) {
         if (round === 1) await wait(settleMs);
-        if (round > 1) await wait(5_000);
+        if (round > 1) await wait(gapMs);
         const offsetMs = now() - started;
         await Promise.all(
             [...perPath.keys()].map(async (path) => {
