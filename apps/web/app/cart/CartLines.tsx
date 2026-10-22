@@ -39,14 +39,17 @@ export function CartLines({ lines, qty, shippingCents }: { lines: CartLineView[]
     );
 
     function commit(variantId: string, value: number) {
-        applyOptimistic({ variantId, value });
         const form = new FormData();
         form.set("variantId", variantId);
         form.set("qty", String(value));
         // ≤0 走移除分支：服务端会删掉 cookie 里的这一项，重渲染后该行自然消失
         const action = value > 0 ? setQtyAction : removeItemAction;
-        start(() => {
-            void action(form);
+        start(async () => {
+            // ⚠️ 乐观 setter 必须在 transition 内部调。写在 start 外面时 React 会报
+            // "An optimistic state update occurred outside a transition or action"，
+            // 且这笔更新不与本次 transition 纠缠 —— 服务端报错时它不一定自动回滚。
+            applyOptimistic({ variantId, value });
+            await action(form);
         });
     }
 

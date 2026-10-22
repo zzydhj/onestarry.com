@@ -142,13 +142,34 @@ R2 键形如 `incremental-cache/<buildId>/<sha256>.cache`，**每次部署换新
 
 ---
 
-## 5. 已知但尚未处置
+## 5. 乐观 UI（写路径的体感）—— 三条不能少的规矩
+
+后台的写操作都是 `force-dynamic` 页：一次写 = 会话 + 权限 + 列表几趟跨洋往返，1–2 秒起。
+这条延迟砍不掉（砍的是边缘缓存，后台不能缓存），所以用乐观 UI 把它从「等待」变成「已生效」。
+
+1. **乐观 setter 必须在 transition 内部调**。`useOptimistic` 返回的 setter 写在 `start()` 外面时，
+   React 会报 `An optimistic state update occurred outside a transition or action`，
+   更关键的是这笔更新**不与本次 transition 纠缠**：服务端报错时它不一定自动回滚，
+   于是「卡片消失了但其实没审核」会长期留在屏幕上。正确形状：
+   `start(async () => { applyOptimistic(x); await action(form); })`。
+2. **action 必须返回 `{ok}`，不能返回 void**。乐观意味着屏幕先于事实变化；
+   事实没变时必须说出来并回滚（发货/新建市场这类静默失败，比慢严重得多）。
+   守卫 `requirePermission` 留在 try 外面，别把 `redirect()`/`FORBIDDEN` 一起吞进返回值。
+3. **手动 `start()` 调 action 时 `useFormStatus` 不会置 pending**（它只跟踪表单自己的 action），
+   所以按钮的禁用/文案要由 `useTransition` 的 `pending` 显式驱动，否则人会连点两下建出两条数据。
+
+已落这规矩的四处：购物车数量/删除、评论审核、类目新增/改名、市场新增。搜索框是另一类
+（防抖 + 软导航保留旧结果），不用 `useOptimistic`。
+
+---
+
+## 6. 已知但尚未处置
 
 - **Hyperdrive 查询缓存是关的**：`caching.disabled = true`（`npx wrangler hyperdrive get <id>` 可复核）。
   文档/历史结论里曾按「已开启」写过，实际未开启。开启属于生产配置变更，需要显式批准（TTL ≤ 60s、region `AWS_US_EAST_2`）。
 - 探针流量本身会让被采样的页面保持「热」状态（每 5 分钟触发一次刷新）。这是副作用，也是最小成本的预热。
 
-## 6. 复现清单
+## 7. 复现清单
 
 ```bash
 # 手法有效性（串行/并行/合并、冷连接、下单写路径）
@@ -164,3 +185,7 @@ powershell -NoProfile -File scripts/isr-watch.ps1 -Rounds 5 -GapSeconds 15
 # 线上版本确认（含 ISR 探针结论）
 curl -s https://onestarry.com/api/health
 ```
+
+乐观 UI 的自检（只能在浏览器里看）：后台类目/市场、评论审核、购物车数量各改一次，
+DevTools Console 里**不应**出现 `An optimistic state update occurred outside a transition or action`；
+同时故意填一个重复的 `code` 新增市场，应当看到红色报错并且那条虚线假行自己消失。

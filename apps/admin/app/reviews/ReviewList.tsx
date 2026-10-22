@@ -32,12 +32,15 @@ export function ReviewList({ status, rows }: { status: ReviewStatus; rows: Revie
     const visible = rows.filter((r) => !done[r.id] || done[r.id] === status);
 
     function act(id: string, target: ReviewStatus) {
-        applyDone({ id, status: target });
         const form = new FormData();
         form.set("id", id);
         form.set("status", target);
-        start(() => {
-            void moderateReviewAction(form);
+        start(async () => {
+            // ⚠️ 乐观 setter 必须在 transition 内部调：写在 start 外面 React 会报
+            // "An optimistic state update occurred outside a transition or action"，
+            // 而且这笔更新不与本次 transition 纠缠 —— 写库失败时卡片可能永远“已审核”地消失了。
+            applyDone({ id, status: target });
+            await moderateReviewAction(form);
         });
     }
 
