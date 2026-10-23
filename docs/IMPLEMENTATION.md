@@ -154,7 +154,7 @@ onestarry.com/
 | 购物车 | `apps/web/lib/cart.ts`（httpOnly cookie `cart` = `{variantId: qty}`，7 天）+ `queries/cart.ts` `getCartLines`（按 DB 重新取价/库存） | ✅ 无 Redis、无 carts 表。读车经 `core/cartMap.sanitizeCartMap` 净化（整数 1..999、UUID key、行数上限）—— httpOnly 只挡脚本不挡用户改值 |
 | 下单 | `queries/orders.ts` → `createOrder`（幂等占位 → 地址 → 批量取 vmp → 汇总 subtotal/tax/duty/shipping/discount → orders + order_items(snapshot) + order_lines → 发 `order.created`）；单号 `SO-<base36 时间>-<8 位 CSPRNG>`（`core/orderNumber`，旧 3 位存量仍可读） | ✅ 连库冒烟 + e2e；数量/行数/总额均有硬校验，库侧另有 CHECK 约束 |
 | 结账入口 | `apps/web/app/checkout/{page,actions}.tsx`（读 cookie → 事务内 `createOrder` → 清车 → 跳 `/order/[orderNumber]`） | 🟡 硬编码 market `us` / currency USD / locale en / 运费 500；字段已封顶+邮箱/国码校形，失败原因进 `console.error`（给用户仍是笼统提示） |
-| 订单确认页 | `apps/web/app/order/[orderNumber]/page.tsx` | ✅ 登录态判归属（不同归属 notFound）+ 非归属掩码邮箱 + `robots index:false`；`robots.ts` 已屏蔽 `/order`。仍无游客 magic link（下一行） |
+| 订单确认页 | `apps/web/app/order/[orderNumber]/page.tsx` | ✅ 登录态判归属（不同归属 notFound）+ 非归属掩码邮箱 + `robots index:false`；`robots.ts` 已屏蔽 `/order`。**本路由故意不配 loading.tsx**：`force-dynamic` + loading.tsx 会先冲流式外壳把状态行定成 200，之后 `notFound()` 只能塞 404 内容进去 → 线上实测就是「404 页面 + HTTP 200」的软 404（ISR 页如 PDP 不受影响，实测给的是真 404）。仍无游客 magic link（下一行） |
 | 订单查询 | `queries/orders.ts` `getOrderByNumber`；`adminOrders.ts` `listRecentOrders`/`listOrdersByCustomer`/`getOrderDetail` | ✅ |
 | 游客查单 magic link / 购物车合并认领 | — | ❌ 未实现 |
 

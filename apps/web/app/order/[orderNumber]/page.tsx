@@ -15,6 +15,11 @@ export const dynamic = "force-dynamic";
  *   ② 单号不能当密码用 —— 随机段已从 3 位（36³=46,656，且用 Math.random）换成 CSPRNG 8 位。
  * 归属可判时（登录客户）严格判归属；游客单只能靠"知道单号"这个能力凭证访问，
  * 因此对非归属查看者**掩码邮箱**：确认页要给人看的是"我们收到你的单了"，不是把 PII 广播出去。
+ *
+ * ⚠ 本路由**故意不配 loading.tsx**（2026-10-23 线上实测）：`force-dynamic` 页面一旦有 loading.tsx，
+ *   Next 会先把**流式外壳**冲出去（状态行当场定成 200），之后 `notFound()` 只能往 Suspense 边界里
+ *   塞 404 内容 —— 结果就是「404 页面 + HTTP 200」的软 404。确认页只有一次查库，骨架省不了什么时间，
+ *   但状态码语义不能错（客服/爬虫/监控都看它）。ISR 页面（PDP/分类页）不受此影响：整页渲完才写进缓存，404 保得住。
  */
 export const metadata: Metadata = {
     title: "Order confirmation",
