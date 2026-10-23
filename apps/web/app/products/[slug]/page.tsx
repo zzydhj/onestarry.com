@@ -3,7 +3,7 @@ import { cache } from "react";
 import Link from "next/link";
 import { notFound, permanentRedirect } from "next/navigation";
 import { getDb } from "@/lib/db";
-import { mediaUrl, SITE_ORIGIN } from "@onestarry/core";
+import { jsonLdScript, mediaUrl, SITE_ORIGIN } from "@onestarry/core";
 import { getProductById, getSeoMeta, listActiveProductSlugs, listApprovedReviews, listProductImages, resolveSlug } from "@onestarry/db";
 import { Button, Input } from "@onestarry/ui";
 import { addToCartAction } from "../../cart/actions";
@@ -111,7 +111,8 @@ export default async function ProductPage({ params }: { params: Promise<{ slug: 
 
     return (
         <div className="mx-auto max-w-2xl px-4 py-8">
-            <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }} />
+            {/* 标题/描述可来自后台录入与 URL 抓品（远程页面原样入库），必须走转义后的内联 JSON。 */}
+            <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: jsonLdScript(jsonLd) }} />
             <Link href="/" className="text-sm text-muted transition hover:text-accent">← All products</Link>
             {hero && <link rel="preload" as="image" href={hero} fetchPriority="high" />}
             {images.length > 0 ? (

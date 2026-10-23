@@ -19,7 +19,9 @@ import {
     timestamp,
     index,
     uniqueIndex,
+    check,
 } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
 import { id, timestamps } from "./columns";
 import { markets } from "./foundation";
 import { productVariants } from "./catalog";
@@ -119,7 +121,15 @@ export const orders = pgTable(
         placedAt: timestamp("placed_at", { withTimezone: true, mode: "date" }),
         notes: text("notes"),
     },
-    (t) => [uniqueIndex("order_number_uq").on(t.orderNumber), index("order_customer_idx").on(t.customerId), index("order_status_placed_idx").on(t.status, t.placedAt)],
+    (t) => [
+        uniqueIndex("order_number_uq").on(t.orderNumber),
+        index("order_customer_idx").on(t.customerId),
+        index("order_status_placed_idx").on(t.status, t.placedAt),
+        // 金额底线（2026-10-23 审查 P0-3 的最后一层）：应用层已校数量与金额，但
+        // createOrder 之外还有导入/集成/脚本等写入口，负数单一入库就是账本与发票垃圾。
+        check("order_total_nonneg", sql`${t.totalCents} >= 0`),
+        check("order_discount_nonneg", sql`${t.discountCents} >= 0`),
+    ],
 );
 
 export const orderItems = pgTable(
@@ -133,7 +143,13 @@ export const orderItems = pgTable(
         unitPriceCents: bigint("unit_price_cents", { mode: "number" }).notNull(),
         snapshot: jsonb("snapshot").notNull(), // 固化标题/图/选项值/税率（改名改价不影响历史，EU 发票要求）
     },
-    (t) => [index("oi_order_idx").on(t.orderId), index("oi_variant_idx").on(t.variantId)],
+    (t) => [
+        index("oi_order_idx").on(t.orderId),
+        index("oi_variant_idx").on(t.variantId),
+        // 数量必须是正整数且不超过上限：cookie 里的购物车是用户可改的，这一层是 DB 兜底。
+        // 上限给到 10000（比应用层 999 宽）：后台补录/批发单可能需要更大数量，不至于被 DB 硬拦。
+        check("oi_quantity_range", sql`${t.quantity} > 0 AND ${t.quantity} <= 10000`),
+    ],
 );
 
 export const orderLines = pgTable(

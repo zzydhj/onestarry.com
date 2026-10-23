@@ -1,3 +1,5 @@
+import { readCappedText, safeFetch } from "./safeFetch";
+
 /**
  * URL 商品抓取 provider（「贴链接→自动导入」）。可插拔：
  * - 通用源（Shopify / JSON-LD / OpenGraph）：纯代码 fetch 解析，零外部依赖。
@@ -22,6 +24,8 @@ export interface ProviderResult {
 }
 
 const TAOBAO_RE = /(taobao\.com|tmall\.com|1688\.com|alibaba\.com)/i;
+/** 单个外部页面的读取上限（商品页不会更大；超限由 readCappedText 断流）。 */
+const MAX_PAGE_BYTES = 2 * 1024 * 1024;
 
 export function detectSource(url: string): "taobao" | "shopify" | "generic" {
     if (TAOBAO_RE.test(url)) return "taobao";
@@ -53,9 +57,10 @@ export async function fetchProductFromUrl(url: string): Promise<ProviderResult> 
 async function tryShopify(url: string): Promise<ProductImportDraft | null> {
     const jsonUrl = (url.split("?")[0] ?? url).replace(/\/+$/, "") + ".json";
     try {
-        const res = await fetch(jsonUrl, { headers: { accept: "application/json" } });
+        // safeFetch 会拒掉私网/元数据/非标准端口，且逐跳重判（旧写法直连 fetch 无上限无超时）。
+        const res = await safeFetch(jsonUrl);
         if (!res.ok) return null;
-        const j = (await res.json()) as Record<string, any>;
+        const j = JSON.parse(await readCappedText(res, MAX_PAGE_BYTES)) as Record<string, any>;
         const p = j?.product;
         if (!p?.title) return null;
         const images: string[] = Array.isArray(p.images)
@@ -80,12 +85,9 @@ async function tryShopify(url: string): Promise<ProductImportDraft | null> {
 // —— 通用：JSON-LD Product，兜底 OpenGraph ——
 async function tryJsonLdOrOg(url: string): Promise<ProductImportDraft | null> {
     try {
-        const res = await fetch(url, {
-            headers: { "user-agent": "Mozilla/5.0 (compatible; onestarry-import/1.0)", accept: "text/html" },
-            redirect: "follow",
-        });
+        const res = await safeFetch(url);
         if (!res.ok) return null;
-        const html = await res.text();
+        const html = await readCappedText(res, MAX_PAGE_BYTES);
         const ld = extractJsonLdProduct(html);
         if (ld) return ld;
         const title = metaContent(html, "og:title") || titleTag(html);

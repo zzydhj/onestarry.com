@@ -9,6 +9,14 @@ import { readCustomerSession } from "@/lib/session";
 
 const SHIPPING_CENTS = 500; // MVP 占位运费（真实 computeShipping 待接）
 
+/**
+ * 字段长度封顶 + 邮箱格式。旧实现只做了 `trim()`，而地址列都是 `text`（无长度上限），
+ * 表单字段又不受 cookie 的 4KB 天然限制 —— 等于允许往库里写任意大的文本，
+ * 并在后台订单详情页原样渲染（2026-10-23 审查 P2-14）。
+ */
+const clean = (v: FormDataEntryValue | null, max: number): string => String(v ?? "").trim().slice(0, max);
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
+
 /** 结账：读购物车 → 多商品 createOrder（真实地址）→ 清空购物车 → 跳确认页。 */
 export async function checkoutAction(formData: FormData): Promise<void> {
     const { env } = getCloudflareContext();
@@ -24,17 +32,20 @@ export async function checkoutAction(formData: FormData): Promise<void> {
     const market = marketRow[0];
     const customerId = session?.userId ?? null;
 
-    const email = String(formData.get("email") ?? "").trim() || (session?.email ?? "");
-    const recipient = String(formData.get("recipient") ?? "").trim();
-    const line1 = String(formData.get("line1") ?? "").trim();
-    const country = String(formData.get("country") ?? "").trim() || "US";
-    const city = String(formData.get("city") ?? "").trim() || undefined;
-    const region = String(formData.get("region") ?? "").trim() || undefined;
-    const postalCode = String(formData.get("postalCode") ?? "").trim() || undefined;
-    const line2 = String(formData.get("line2") ?? "").trim() || undefined;
-    const phone = String(formData.get("phone") ?? "").trim() || undefined;
+    const email = clean(formData.get("email"), 254) || (session?.email ?? "");
+    const recipient = clean(formData.get("recipient"), 120);
+    const line1 = clean(formData.get("line1"), 250);
+    const country = clean(formData.get("country"), 2).toUpperCase() || "US";
+    const city = clean(formData.get("city"), 100) || undefined;
+    const region = clean(formData.get("region"), 100) || undefined;
+    const postalCode = clean(formData.get("postalCode"), 20) || undefined;
+    const line2 = clean(formData.get("line2"), 250) || undefined;
+    const phone = clean(formData.get("phone"), 40) || undefined;
 
-    if (!email || !recipient || !line1) redirect("/checkout?error=invalid");
+    // 邮箱要能收信（发货/售后都靠它），国家要能进快照与运费判定：两者形状先校。
+    if (!EMAIL_RE.test(email) || !recipient || !line1 || !/^[A-Z]{2}$/.test(country)) {
+        redirect("/checkout?error=invalid");
+    }
 
     const cart = await readCart();
     const items = Object.entries(cart).map(([variantId, quantity]) => ({ variantId, quantity }));
@@ -57,8 +68,10 @@ export async function checkoutAction(formData: FormData): Promise<void> {
         });
         await writeCart({}); // 下单成功清空
         redirect(`/order/${result.orderNumber}`);
-    } catch {
-        // 不可售 / 库存不足 / 无价格 / 幂等重放 等 → 回结账提示
+    } catch (e) {
+        // 给用户看的仍是笼统提示（错误码里带 variantId，不该泄到前台），
+        // 但原因必须进日志：旧实现空 catch 让"为什么没下单"变成客服查不出的黑盒。
+        console.error("[checkout] 下单失败：", e instanceof Error ? e.message : e);
         redirect("/checkout?error=failed");
     }
 }

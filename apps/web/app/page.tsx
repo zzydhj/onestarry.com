@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { SITE_NAME, SITE_ORIGIN } from "@onestarry/core";
+import { jsonLdScript, SITE_NAME, SITE_ORIGIN } from "@onestarry/core";
 import { listCategoriesWithSlug, listProductsForMarket } from "@onestarry/db";
 import { getDb } from "@/lib/db";
 import { ProductGrid } from "@/components/ProductGrid";
@@ -29,7 +29,7 @@ export default async function Home() {
 
     return (
         <div>
-            <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(SITE_JSONLD) }} />
+            <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: jsonLdScript(SITE_JSONLD) }} />
 
             {/* Hero */}
             <section className="border-b border-line bg-surface">

@@ -2,6 +2,7 @@ import { and, eq, sql } from "drizzle-orm";
 import {
     invoiceSequences,
     invoices,
+    legalEntities,
     ledgerEntries,
     ledgerTransactions,
     markets,
@@ -51,14 +52,26 @@ async function nextInvoiceNumber(db: Db | Tx, legalEntityId: string, jurisdictio
 export async function recordPaymentSucceeded(db: Db | Tx, input: RecordPaymentInput): Promise<RecordPaymentResult> {
     const order = (await db.select().from(orders).where(eq(orders.id, input.orderId)).limit(1))[0];
     if (!order) throw new Error("ORDER_NOT_FOUND");
+    // 同一订单不得出现两笔“成功支付”：幂等只按 (provider, event_id) 去重，挡不住
+    // 换了 event_id 的重复回调 —— 那会多生一份 payment + 一张发票 + 一组分录，账本虚增。
+    if (order.paymentStatus === "paid") throw new Error(`PAYMENT_ALREADY_RECORDED:${order.orderNumber}`);
 
+    // 辖区从 market → legalEntity 带出来：发票号前缀是财务凭证语义，不能写死 "XX"。
     const market = (
-        await db.select({ legalEntityId: markets.legalEntityId }).from(markets).where(eq(markets.id, order.marketId)).limit(1)
+        await db
+            .select({ legalEntityId: markets.legalEntityId, jurisdiction: legalEntities.jurisdiction })
+            .from(markets)
+            .innerJoin(legalEntities, eq(legalEntities.id, markets.legalEntityId))
+            .where(eq(markets.id, order.marketId))
+            .limit(1)
     )[0];
     if (!market) throw new Error("MARKET_NOT_FOUND");
     const legalEntityId = market.legalEntityId;
 
     const amount = input.amountCents ?? order.totalCents;
+    // 金额必须与订单应付额一致：不一致时旧实现会照写不误（借贷平衡校验只能报错，不能防错）。
+    // 部分支付本身是合法业务，但本站无 partial 状态位 —— 接了真 PSP 后要拆成独立设计，不能默默记账。
+    if (amount !== order.totalCents) throw new Error(`PAYMENT_AMOUNT_MISMATCH:${amount}!=${order.totalCents}`);
     const currency = order.currency;
 
     const [accPsp, accDep, accTax, accDuty] = await Promise.all([
@@ -113,7 +126,7 @@ export async function recordPaymentSucceeded(db: Db | Tx, input: RecordPaymentIn
         })),
     );
 
-    const invoiceNumber = await nextInvoiceNumber(db, legalEntityId, input.jurisdiction ?? "XX");
+    const invoiceNumber = await nextInvoiceNumber(db, legalEntityId, input.jurisdiction ?? market.jurisdiction ?? "XX");
     await db.insert(invoices).values({
         legalEntityId,
         invoiceNumber,

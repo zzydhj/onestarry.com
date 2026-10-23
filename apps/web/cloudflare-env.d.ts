@@ -17,6 +17,11 @@ interface CloudflareEnv {
     INVALIDATE_SECRET?: string;
     /** ISR 成品页桶（wrangler.jsonc 已绑）：/api/health 只读里面的 _ops/ 健康报告。 */
     NEXT_INC_CACHE_R2_BUCKET: R2Bucket;
+    /**
+     * 显式开关：= "1" 时 /api/webhooks/[provider] 才接受 FakePaymentProvider 的假回调（本地/dev 冒烟用）。
+     * 缺省即关闭：真 PSP 未接入前，默认值必须是「不收」而不是「信假消息」（2026-10-23 审查 P1-4）。
+     */
+    FAKE_PAYMENTS_ENABLED?: string;
     // MEDIA: R2Bucket; // 需要 @cloudflare/workers-types，接图片上传时再补
 }
 

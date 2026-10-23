@@ -40,9 +40,13 @@ export async function listApprovedReviews(
     return { items, avg, count: items.length };
 }
 
+/** 评价标题与正文的长度封顶（公开渲染的东西，必须有个上限）。 */
+export const REVIEW_TITLE_MAX = 120;
+export const REVIEW_BODY_MAX = 4000;
+
 /**
  * 发表评价（status=pending，待审核）。verifiedPurchase 由"该客户是否有含此商品的已付订单"判定。
- * rating 越界（非 1–5）直接拒绝。
+ * rating 越界（非 1–5）或非整数直接拒绝。
  */
 export async function createReview(
     db: Db | Tx,
@@ -56,7 +60,12 @@ export async function createReview(
         locale?: string;
     },
 ): Promise<{ id: string } | { error: string }> {
-    if (input.rating < 1 || input.rating > 5) return { error: "INVALID_RATING" };
+    // 先判整数再判区间：旧写法 `rating < 1 || rating > 5` 对 NaN **两个都是 false**，
+    // 于是 NaN 一路走到整数列插入才报错 → 整个请求 500（2026-10-23 审查 P2-13）。
+    if (!Number.isInteger(input.rating) || input.rating < 1 || input.rating > 5) return { error: "INVALID_RATING" };
+    // 长度封顶：评价会公开渲染在商品页，不封顶就等于允许客户往库里塞几 MB 文本。
+    const title = typeof input.title === "string" && input.title ? input.title.slice(0, REVIEW_TITLE_MAX) : null;
+    const body = typeof input.body === "string" && input.body ? input.body.slice(0, REVIEW_BODY_MAX) : null;
 
     let verified = false;
     if (input.customerId) {
@@ -83,8 +92,8 @@ export async function createReview(
             variantId: input.variantId ?? null,
             customerId: input.customerId ?? null,
             rating: input.rating,
-            title: input.title ?? null,
-            body: input.body ?? null,
+            title,
+            body,
             locale: input.locale ?? "en",
             verifiedPurchase: verified,
             status: "pending",

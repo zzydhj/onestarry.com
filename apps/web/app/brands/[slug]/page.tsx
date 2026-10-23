@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { cache } from "react";
 import { notFound, redirect } from "next/navigation";
-import { SITE_ORIGIN } from "@onestarry/core";
+import { jsonLdScript, SITE_ORIGIN } from "@onestarry/core";
 import { browseProducts, loadBrandPageMeta, listCurrentSlugs } from "@onestarry/db";
 import { getDb } from "@/lib/db";
 import { applySeoMeta } from "@/lib/seo";
@@ -69,7 +69,7 @@ export default async function BrandPage({ params }: { params: Promise<{ slug: st
 
     return (
         <div className="mx-auto max-w-5xl px-4 py-8">
-            <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(breadcrumb) }} />
+            <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: jsonLdScript(breadcrumb) }} />
             <h1 className="mb-6 text-2xl font-semibold tracking-tight text-brand">{d.name}</h1>
             <ProductGrid items={d.items} emptyLabel="No products from this brand yet." />
         </div>

@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { mediaUrl } from "@onestarry/core";
+import { mediaUrl, safeHref } from "@onestarry/core";
 
 /** ProseMirror 文档节点（宽松类型，未知节点安全跳过）。 */
 interface PMNode {
@@ -78,7 +78,9 @@ function applyMarks(n: PMNode, key: string): ReactNode {
         else if (m.type === "code") el = <code key={key}>{el}</code>;
         else if (m.type === "link")
             el = (
-                <a key={key} href={String(m.attrs?.href ?? "#")} target="_blank" rel="noopener noreferrer nofollow">
+                // href 来自文档 JSON（后台编辑器可写），不过协议白名单就等于在自家域上给人递 `javascript:`。
+                // 旧实现直写 String(m.attrs?.href ?? "#")，React 不净化 href —— 2026-10-23 审查 P1-8。
+                <a key={key} href={safeHref(m.attrs?.href)} target="_blank" rel="noopener noreferrer nofollow">
                     {el}
                 </a>
             );

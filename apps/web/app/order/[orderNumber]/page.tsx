@@ -1,28 +1,68 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getCloudflareContext } from "@opennextjs/cloudflare";
+import { isOrderNumberShape } from "@onestarry/core";
 import { createDb, getOrderByNumber } from "@onestarry/db";
+import { readCustomerSession } from "@/lib/session";
 
 export const dynamic = "force-dynamic";
+
+/**
+ * 这页含**客户邮箱与购物内容**，所以两件事是硬要求（2026-10-23 审查 P0-1）：
+ *   ① 绝不能被搜索引擎收录 —— 旧版连 `metadata` 都没导出，于是继承根布局的 `index: true`，
+ *      而 robots.txt 的 disallow 列表里也没有 `/order`（同类的 account/cart/checkout 都各自设了）。
+ *   ② 单号不能当密码用 —— 随机段已从 3 位（36³=46,656，且用 Math.random）换成 CSPRNG 8 位。
+ * 归属可判时（登录客户）严格判归属；游客单只能靠"知道单号"这个能力凭证访问，
+ * 因此对非归属查看者**掩码邮箱**：确认页要给人看的是"我们收到你的单了"，不是把 PII 广播出去。
+ */
+export const metadata: Metadata = {
+    title: "Order confirmation",
+    robots: { index: false, follow: false },
+};
 
 function money(cents: number, currency: string): string {
     return new Intl.NumberFormat("en-US", { style: "currency", currency }).format(cents / 100);
 }
 
+/** j.doe@example.com → j***@example.com（够人对上自己那单，不足以转卖别人身份）。 */
+function maskEmail(email: string | null): string {
+    if (!email) return "—";
+    const at = email.indexOf("@");
+    if (at <= 0) return "***";
+    return `${email.slice(0, 1)}***${email.slice(at)}`;
+}
+
 export default async function OrderPage({ params }: { params: Promise<{ orderNumber: string }> }) {
     const { orderNumber } = await params;
+    const raw = decodeURIComponent(orderNumber);
+    // 形状不符直接 404：省一次跨洋查库，也不给枚举者"这号存在吗"的额外信号面。
+    if (!isOrderNumberShape(raw)) notFound();
+
     const { env } = getCloudflareContext();
     const db = createDb(env.HYPERDRIVE.connectionString);
+    const session = await readCustomerSession();
 
-    const res = await getOrderByNumber(db, decodeURIComponent(orderNumber));
+    const res = await getOrderByNumber(db, raw);
     if (!res) notFound();
     const { order, items } = res;
+
+    // 登录客户不得读到别人的单（连"存在与否"都不确认，所以走 notFound 而不是 403）。
+    if (session?.userId && order.customerId && order.customerId !== session.userId) notFound();
+    const isOwner = !!session?.userId && order.customerId === session.userId;
 
     return (
         <div className="mx-auto max-w-lg px-4 py-8">
             <h1 className="text-2xl font-semibold tracking-tight">Order placed 🎉</h1>
             <p className="mt-2 text-muted">Order number: <strong className="text-fg">{order.orderNumber}</strong></p>
-            <p className="mt-1 text-sm text-muted">Status: {order.status} · Payment: {order.paymentStatus} · {order.email}</p>
+            <p className="mt-1 text-sm text-muted">
+                Status: {order.status} · Payment: {order.paymentStatus} · {isOwner ? order.email : maskEmail(order.email)}
+            </p>
+            {!isOwner && (
+                <p className="mt-1 text-xs text-muted">
+                    Sign in to see the full email for this order.
+                </p>
+            )}
 
             <ul className="mt-6 divide-y divide-line">
                 {items.map((it) => (

@@ -1,9 +1,11 @@
 "use server";
 
-import { csvToObjects, PERMISSIONS } from "@onestarry/core";
+import { acceptedImageType, csvToObjects, PERMISSIONS } from "@onestarry/core";
 import { createDb, attachProductImage, upsertProductFromRow, type ImportRowInput } from "@onestarry/db";
 import { runRelayBatch, relayHandlers } from "@onestarry/jobs";
 import { requirePermission } from "@/lib/auth";
+import { isUuid } from "@/lib/ids";
+import { readCapped, safeFetch } from "@/lib/safeFetch";
 import { fetchProductFromUrl } from "@/lib/importProviders";
 
 export interface ImportSummary {
@@ -17,20 +19,35 @@ export interface ImportSummary {
 
 const MAX_ROWS = 5000;
 const MAX_IMAGE_BYTES = 8 * 1024 * 1024;
+const MAX_CSV_BYTES = 2 * 1024 * 1024;
 
-/** 拓图：下载 imageUrl → 存 R2（products/{id}/imported-…）→ 挂为商品图。 */
+/**
+ * 拓图：下载 imageUrl → 存 R2（products/{id}/imported-…）→ 挂为商品图。
+ *
+ * ⚠ 旧实现三个问题叠在一起（2026-10-23 审查 P1-9 / P1-10）：
+ *   · `fetch(url)` 不判目标 → 后台变成以我方边缘发任意请求的代理；
+ *   · `startsWith("image/")` 放行 SVG → 可执行内容存进 media 子域；
+ *   · 先 `arrayBuffer()` 再判大小 → 上限形同虚设（先把内存吃完）。
+ * 现在走 safeFetch（逐跳重判 + 超时）+ acceptedImageType 白名单 + readCapped 流式截断。
+ */
 async function importImage(env: CloudflareEnv, productId: string, url: string): Promise<{ ok: boolean; error?: string }> {
+    if (!isUuid(productId)) return { ok: false, error: "商品 id 形状不符" };
     try {
-        const res = await fetch(url);
+        const res = await safeFetch(url);
         if (!res.ok) return { ok: false, error: `HTTP ${res.status}` };
-        const ct = res.headers.get("content-type") ?? "";
-        if (!ct.startsWith("image/")) return { ok: false, error: "非图片类型" };
-        const buf = await res.arrayBuffer();
-        if (buf.byteLength > MAX_IMAGE_BYTES) return { ok: false, error: "图片过大(>8MB)" };
-        const ext = ct.includes("png") ? "png" : ct.includes("webp") ? "webp" : ct.includes("gif") ? "gif" : "jpg";
-        const key = `products/${productId}/imported-${crypto.randomUUID().slice(0, 8)}.${ext}`;
-        await env.MEDIA.put(key, buf, { httpMetadata: { contentType: ct, cacheControl: "public, max-age=31536000, immutable" } });
-        await attachProductImage(createDb(env.HYPERDRIVE.connectionString), { productId, r2Key: key, mimeType: ct, sizeBytes: buf.byteLength });
+        const img = acceptedImageType(res.headers.get("content-type"));
+        if (!img) return { ok: false, error: "非白名单图片类型（svg 不接受）" };
+        const bytes = await readCapped(res, MAX_IMAGE_BYTES);
+        const key = `products/${productId}/imported-${crypto.randomUUID().slice(0, 8)}.${img.ext}`;
+        await env.MEDIA.put(key, bytes, {
+            httpMetadata: { contentType: img.contentType, cacheControl: "public, max-age=31536000, immutable" },
+        });
+        await attachProductImage(createDb(env.HYPERDRIVE.connectionString), {
+            productId,
+            r2Key: key,
+            mimeType: img.contentType,
+            sizeBytes: bytes.byteLength,
+        });
         return { ok: true };
     } catch (e) {
         return { ok: false, error: e instanceof Error ? e.message : "抓取失败" };
@@ -55,6 +72,10 @@ export async function importProductsAction(formData: FormData): Promise<ImportSu
     const summary: ImportSummary = { total: 0, created: 0, updated: 0, imagesImported: 0, failed: [], imageFailed: [] };
     const file = formData.get("file");
     if (!(file instanceof File) || file.size === 0) return summary;
+    if (file.size > MAX_CSV_BYTES) {
+        summary.failed.push({ sku: "(整体)", reason: `文件超过 ${Math.floor(MAX_CSV_BYTES / 1024)} KB 上限` });
+        return summary;
+    }
 
     const objs = csvToObjects(await file.text());
     summary.total = objs.length;
@@ -114,6 +135,7 @@ export async function importFromUrlAction(url: string): Promise<{ ok: boolean; p
     const { env, userId } = await requirePermission(PERMISSIONS.productWrite);
     const clean = url.trim();
     if (!/^https?:\/\//i.test(clean)) return { ok: false, error: "请输入 http(s):// 开头的链接" };
+    // 具体的协议/主机/端口/凭据拦截在 safeFetch 里逐跳做（那里还能挡住重定向绕道）。
     const r = await fetchProductFromUrl(clean);
     if (!r.draft) return { ok: false, error: r.error ?? "抓取失败" };
     const d = r.draft;

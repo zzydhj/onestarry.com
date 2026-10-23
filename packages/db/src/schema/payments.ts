@@ -3,7 +3,8 @@
  * provider/status 一律 text（加 PSP / 加状态不改结构，§18）。金额整数分。
  * webhook_events 用 (provider, provider_event_id) 唯一约束做幂等接收。
  */
-import { pgTable, uuid, text, bigint, jsonb, timestamp, index, uniqueIndex } from "drizzle-orm/pg-core";
+import { pgTable, uuid, text, bigint, jsonb, timestamp, index, uniqueIndex, check } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
 import { id, timestamps } from "./columns";
 import { paymentProviderAccounts } from "./foundation";
 import { orders } from "./orders";
@@ -25,7 +26,13 @@ export const payments = pgTable(
         capturedAt: timestamp("captured_at", { withTimezone: true, mode: "date" }),
         metadata: jsonb("metadata"),
     },
-    (t) => [uniqueIndex("pay_provider_ref_uq").on(t.provider, t.providerRef), index("pay_order_idx").on(t.orderId)],
+    (t) => [
+        uniqueIndex("pay_provider_ref_uq").on(t.provider, t.providerRef),
+        index("pay_order_idx").on(t.orderId),
+        // 支付额不得为负（退款走 refunds 表，不靠写一笔负支付表达）。DB 层只保底线：
+        // “金额必须等于订单应付”这种跨表规则留在 recordPaymentSucceeded，那里才能读两边。
+        check("payment_amount_nonneg", sql`${t.amountCents} >= 0`),
+    ],
 );
 
 export const refunds = pgTable(

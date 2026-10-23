@@ -1,7 +1,8 @@
 "use server";
 
 import { eq } from "drizzle-orm";
-import { mediaUrl, PERMISSIONS } from "@onestarry/core";
+import { acceptedImageType, mediaUrl, PERMISSIONS } from "@onestarry/core";
+import { isUuid } from "@/lib/ids";
 import { createDb, attachProductImage, deleteProductImage, moveProductImage, products, setProductCatalog, setProductRichBody, setVariantOnHand, updateVariantBasePrice, upsertSeoMeta } from "@onestarry/db";
 import { runRelayBatch, relayHandlers } from "@onestarry/jobs";
 import { requirePermission } from "@/lib/auth";
@@ -81,19 +82,21 @@ export async function uploadProductImageAction(formData: FormData): Promise<void
 
     const productId = String(formData.get("productId") ?? "");
     const file = formData.get("image");
-    if (!productId || !(file instanceof File) || file.size === 0) return;
-    const type = file.type;
-    if (!type.startsWith("image/") || file.size > MAX_UPLOAD_BYTES) return;
+    if (!isUuid(productId) || !(file instanceof File) || file.size === 0) return;
+    // MIME 走 core 的显式白名单：旧写法 startsWith("image/") 会放行 image/svg+xml，
+    // 而 SVG 能带脚本 —— 存进 R2 后从 media 子域直接打开就是“在自家域名上执行脚本”的钓鱼位。
+    const img = acceptedImageType(file.type);
+    if (!img || file.size > MAX_UPLOAD_BYTES) return;
 
-    const ext = type === "image/png" ? "png" : type === "image/webp" ? "webp" : type === "image/gif" ? "gif" : "jpg";
-    const key = `products/${productId}/${crypto.randomUUID()}.${ext}`;
+    const key = `products/${productId}/${crypto.randomUUID()}.${img.ext}`;
     const bytes = await file.arrayBuffer();
     await env.MEDIA.put(key, bytes, {
-        httpMetadata: { contentType: type, cacheControl: "public, max-age=31536000, immutable" },
+        // 存归一化后的 contentType，不把客户端给的原始值写进对象存储。
+        httpMetadata: { contentType: img.contentType, cacheControl: "public, max-age=31536000, immutable" },
     });
 
     const db = createDb(env.HYPERDRIVE.connectionString);
-    await attachProductImage(db, { productId, r2Key: key, mimeType: type, sizeBytes: file.size });
+    await attachProductImage(db, { productId, r2Key: key, mimeType: img.contentType, sizeBytes: file.size });
 
     queueProductInvalidation({ ctx, db, productId });
 }
@@ -124,15 +127,14 @@ export async function uploadRichImageAction(formData: FormData): Promise<{ url: 
 
     const productId = String(formData.get("productId") ?? "");
     const file = formData.get("image");
-    if (!productId || !(file instanceof File) || file.size === 0) return { url: "", error: "无效文件" };
-    const type = file.type;
-    if (!type.startsWith("image/") || file.size > MAX_UPLOAD_BYTES) return { url: "", error: "图片类型或大小不符" };
+    if (!isUuid(productId) || !(file instanceof File) || file.size === 0) return { url: "", error: "无效文件" };
+    const img = acceptedImageType(file.type);
+    if (!img || file.size > MAX_UPLOAD_BYTES) return { url: "", error: "图片类型或大小不符（svg 不接受）" };
 
-    const ext = type === "image/png" ? "png" : type === "image/webp" ? "webp" : type === "image/gif" ? "gif" : "jpg";
-    const key = `products/${productId}/content/${crypto.randomUUID()}.${ext}`;
+    const key = `products/${productId}/content/${crypto.randomUUID()}.${img.ext}`;
     const bytes = await file.arrayBuffer();
     await env.MEDIA.put(key, bytes, {
-        httpMetadata: { contentType: type, cacheControl: "public, max-age=31536000, immutable" },
+        httpMetadata: { contentType: img.contentType, cacheControl: "public, max-age=31536000, immutable" },
     });
     return { url: mediaUrl(key) };
 }

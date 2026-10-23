@@ -1,4 +1,5 @@
 import { and, eq, inArray, sql, type SQL } from "drizzle-orm";
+import { CART_MAX_LINES, CART_MAX_QTY, genOrderNumber } from "@onestarry/core";
 import { orders, variantMarketPrices } from "../schema";
 import { uuidv7 } from "../uuid7";
 import type { Db, Tx } from "../client";
@@ -52,14 +53,20 @@ const pJson = (v: unknown): SQL => sql`${JSON.stringify(v)}::jsonb`;
 // 裸 sql 参数不会自动序列化 Date（实测报 ERR_INVALID_ARG_TYPE：The "string" argument ...）→ 手转 ISO 字符串 + cast
 const pTs = (v: Date): SQL => sql`${v.toISOString()}::timestamptz`;
 
-/** 可读单号：SO-<base36 时间>-<3位随机>。 */
-function genOrderNumber(): string {
-    const t = Date.now().toString(36).toUpperCase();
-    const r = Math.floor(Math.random() * 46656)
-        .toString(36)
-        .toUpperCase()
-        .padStart(3, "0");
-    return `SO-${t}-${r}`;
+/**
+ * 可读单号：生成逻辑已搬到 `@onestarry/core/orderNumber`（纯函数 + 单测）。
+ * 旧实现是本文件里的 `Math.floor(Math.random() * 46656)`（36³）+ 3 位，熵只够被人撞；
+ * 而前台确认页当时无鉴权，两者复合就是「猜单号 → 读别人邮箱与购物内容」。
+ */
+
+/**
+ * 下单数量的硬校验。**不能只信 readCart**：那是应用层另一道，而 createOrder 还有
+ * CSV/集成/脚本等其它调用方，金额乘法的入口必须自己把关（2026-10-23 审查的 P0-3）。
+ */
+function assertQuantity(variantId: string, quantity: number): void {
+    if (!Number.isInteger(quantity) || quantity < 1 || quantity > CART_MAX_QTY) {
+        throw new Error(`INVALID_QTY:${variantId}:${String(quantity)}`);
+    }
 }
 
 /**
@@ -80,6 +87,8 @@ function genOrderNumber(): string {
  */
 export async function createOrder(db: Db | Tx, input: CreateOrderInput): Promise<CreateOrderResult> {
     if (input.items.length === 0) throw new Error("EMPTY_ORDER");
+    if (input.items.length > CART_MAX_LINES) throw new Error("TOO_MANY_LINES");
+    if ((input.discountCents ?? 0) < 0) throw new Error("INVALID_DISCOUNT");
 
     let subtotal = 0;
     let tax = 0;
@@ -95,6 +104,7 @@ export async function createOrder(db: Db | Tx, input: CreateOrderInput): Promise
     const priceMap = new Map(prices.map((p) => [p.variantId, p]));
 
     for (const it of input.items) {
+        assertQuantity(it.variantId, it.quantity);
         const price = priceMap.get(it.variantId);
         if (!price || price.blocked) throw new Error(`NOT_SELLABLE:${it.variantId}`);
         subtotal += price.goodsCents * it.quantity;
@@ -113,6 +123,8 @@ export async function createOrder(db: Db | Tx, input: CreateOrderInput): Promise
     const discount = input.discountCents ?? 0;
     const shipping = input.shippingCents;
     const total = subtotal + tax + duty + shipping - discount;
+    // 金额底线：数量已校，但运费/优惠仍可能把总额压负（负数单入库 = 账本与发票垃圾）。
+    if (!Number.isSafeInteger(total) || total < 0) throw new Error(`INVALID_TOTAL:${String(total)}`);
 
     // 主键是应用侧默认值（库无 default），裸 SQL 拿不到 → 全预生成（行项 id 也预生，
     // 这样金额行就不依赖“插明细拿 RETURNING 再插行”那一次额外往返）
