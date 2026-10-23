@@ -34,8 +34,11 @@ test("没有 crypto.getRandomValues 时宁可抛错，也不退化成 Math.rando
     }
 });
 
-test("isOrderNumberShape 拒掉手搓的怪值（别让任意字符串进 DB 查询）", () => {
-    assert.equal(isOrderNumberShape("SO-TEST-000"), false, "旧 3 位形状不再接受");
+test("isOrderNumberShape：拦住垃圾输入，但不杀掉存量 3 位旧单（否则修复变成回归）", () => {
+    assert.equal(isOrderNumberShape("SO-MVDND92R-T16"), true, "旧 3 位后缀必须继续可读，线上实测有存量单");
+    assert.equal(isOrderNumberShape("SO-XYZ-ABCDEF12"), true, "新 8 位");
     assert.equal(isOrderNumberShape("../../../etc/passwd"), false);
-    assert.equal(isOrderNumberShape("SO-XYZ-ABCDEF12"), true);
+    assert.equal(isOrderNumberShape("SO-XYZ-0"), false, "短于 3 位不算单号");
+    assert.equal(isOrderNumberShape("SO-XYZ-ABCDEF123"), false, "长于 8 位不算单号");
+    assert.equal(isOrderNumberShape("SO-XYZ-abc12"), false, "只接大写（生成端就是大写）");
 });

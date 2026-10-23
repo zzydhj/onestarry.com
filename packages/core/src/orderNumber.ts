@@ -51,8 +51,14 @@ function randomBase36(n: number, rng?: (n: number) => number): string {
     return out;
 }
 
-/** 单号形状（用于校验外部输入，别让任意字符串进查询）。 */
-const ORDER_NUMBER_RE = /^SO-[0-9A-Z]{1,10}-[0-9A-Z]{8}$/;
+/**
+ * 单号形状（用于校验外部输入，别让任意字符串进查询）。
+ *
+ * 随机段接受 **3–8 位**：本次之前生成的是 3 位（线上实测 3 条存量单全部是 3 位后缀），
+ * 收到 8 位会把它们全打成 404 —— 那是把安全修复做成业务回归。注意这只是**输入卫生**，
+ * 不是鉴权：熵保证只对 `5a2d01d` 之后新生成的单成立，存量旧单的随机段仍是 3 位的小空间（已另掩码邮箱 + noindex 降低其价值）。
+ */
+const ORDER_NUMBER_RE = /^SO-[0-9A-Z]{1,10}-[0-9A-Z]{3,8}$/;
 
 export function isOrderNumberShape(value: string): boolean {
     return ORDER_NUMBER_RE.test(value);
