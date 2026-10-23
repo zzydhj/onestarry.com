@@ -151,9 +151,10 @@ onestarry.com/
 ### 3.7 订单 / 结账
 | 能力 | 位置 | 状态 |
 |---|---|---|
-| 购物车 | `apps/web/lib/cart.ts`（httpOnly cookie `cart` = `{variantId: qty}`，7 天）+ `queries/cart.ts` `getCartLines`（按 DB 重新取价/库存） | ✅ 无 Redis、无 carts 表 |
-| 下单 | `queries/orders.ts` → `createOrder`（幂等占位 → 地址 → 批量取 vmp → 汇总 subtotal/tax/duty/shipping/discount → orders + order_items(snapshot) + order_lines → 发 `order.created`）；单号 `SO-<base36>-<3位随机>` | ✅ 连库冒烟 + e2e |
-| 结账入口 | `apps/web/app/checkout/{page,actions}.tsx`（读 cookie → 事务内 `createOrder` → 清车 → 跳 `/order/[orderNumber]`） | 🟡 硬编码 market `us` / currency USD / locale en / 运费 500；异常统一 `catch → error=failed`（吞掉原因） |
+| 购物车 | `apps/web/lib/cart.ts`（httpOnly cookie `cart` = `{variantId: qty}`，7 天）+ `queries/cart.ts` `getCartLines`（按 DB 重新取价/库存） | ✅ 无 Redis、无 carts 表。读车经 `core/cartMap.sanitizeCartMap` 净化（整数 1..999、UUID key、行数上限）—— httpOnly 只挡脚本不挡用户改值 |
+| 下单 | `queries/orders.ts` → `createOrder`（幂等占位 → 地址 → 批量取 vmp → 汇总 subtotal/tax/duty/shipping/discount → orders + order_items(snapshot) + order_lines → 发 `order.created`）；单号 `SO-<base36 时间>-<8 位 CSPRNG>`（`core/orderNumber`，旧 3 位存量仍可读） | ✅ 连库冒烟 + e2e；数量/行数/总额均有硬校验，库侧另有 CHECK 约束 |
+| 结账入口 | `apps/web/app/checkout/{page,actions}.tsx`（读 cookie → 事务内 `createOrder` → 清车 → 跳 `/order/[orderNumber]`） | 🟡 硬编码 market `us` / currency USD / locale en / 运费 500；字段已封顶+邮箱/国码校形，失败原因进 `console.error`（给用户仍是笼统提示） |
+| 订单确认页 | `apps/web/app/order/[orderNumber]/page.tsx` | ✅ 登录态判归属（不同归属 notFound）+ 非归属掩码邮箱 + `robots index:false`；`robots.ts` 已屏蔽 `/order`。仍无游客 magic link（下一行） |
 | 订单查询 | `queries/orders.ts` `getOrderByNumber`；`adminOrders.ts` `listRecentOrders`/`listOrdersByCustomer`/`getOrderDetail` | ✅ |
 | 游客查单 magic link / 购物车合并认领 | — | ❌ 未实现 |
 
@@ -161,11 +162,25 @@ onestarry.com/
 | 能力 | 位置 | 状态 |
 |---|---|---|
 | Provider 接缝 | `core/payments.ts` → `PaymentProvider`(createCheckout/verifyWebhook/refund) + `FakePaymentProvider` | ✅ 接口就位；**Stripe/PayPal 实现 ❌**（⏸️ 待密钥） |
-| webhook 接收 | `apps/web/app/api/webhooks/[provider]/route.ts`（`pickProvider` 目前恒返回 Fake + TODO 12b-2·B）：验签失败 400；`(provider, provider_event_id)` 唯一 → `onConflictDoNothing` 幂等；成功则事务内 `recordPaymentSucceeded` | ✅ 幂等已验证 |
-| 支付段落账 | `queries/payments.ts` → `recordPaymentSucceeded`：建 payments + `ledger_transactions` + 借 psp_clearing / 贷 customer_deposits+tax_payable+duty_collected，**组内借贷 SUM≠0 整笔回滚**；`nextInvoiceNumber`（行锁 upsert 自增，`US-00000001` 式连号）+ 建 invoices；订单转 paid；发 `payment.succeeded` | ✅ 冒烟通过。MVP 假设本位币=订单币种（fxRate "1"） |
+| webhook 接收 | `apps/web/app/api/webhooks/[provider]/route.ts`：**fail-closed** —— 默认无 provider 直接 501，只有 `FAKE_PAYMENTS_ENABLED=1` 才接受 Fake 假回调（它不验签）；体上限 256KB；`(provider, provider_event_id)` 唯一 → `onConflictDoNothing` 幂等；成功则事务内 `recordPaymentSucceeded` | ✅ 幂等已验证；真 PSP 待密钥（TODO 12b-2·B） |
+| 支付段落账 | `queries/payments.ts` → `recordPaymentSucceeded`：建 payments + `ledger_transactions` + 借 psp_clearing / 贷 customer_deposits+tax_payable+duty_collected，**组内借贷 SUM≠0 整笔回滚**；同单重复落账抛 `PAYMENT_ALREADY_RECORDED`（webhook 当幂等重放回 200）、金额≠应付抛 `PAYMENT_AMOUNT_MISMATCH`；发票辖区由 market→legalEntity 带出；`nextInvoiceNumber`（行锁 upsert 自增，`US-00000001` 式连号）+ 建 invoices；订单转 paid；发 `payment.succeeded` | ✅ 冒烟通过。MVP 假设本位币=订单币种（fxRate "1"）；部分支付无状态位，接真 PSP 时要单独设计 |
 | 发货段确认 | `queries/shipments.ts` → `recordShipment`：借 customer_deposits / 贷 revenue+shipping_revenue；借 cogs / 贷 inventory_asset（**COGS 用 `variant.costCents` 近似**，移动平均未做）+ 扣 onHand + sale 流水 + `fulfilled` + 发 `order.shipped` | ✅ 冒烟通过 |
 | 科目种子 | `queries/ledger.ts` → `STANDARD_LEDGER_ACCOUNTS` / `seedLedgerAccounts` / `requireAccountId` | ✅ |
 | 退款/争议/payouts/发票 PDF/关税对账 | 表在，代码无 | ❌ |
+
+#### 输入与输出边界（2026-10-23 代码审查后新增）
+
+这一组模块的存在理由只有一个：**外部可改的东西不能直接参与钱与 HTML**。全部是纯函数（core）或单一入口 helper（admin），所以每条规则都能单测。
+
+| 位置 | 管什么 | 谁在用 |
+|---|---|---|
+| `core/orderNumber.ts` | 订单号生成（CSPRNG 8 位 base36，rejection sampling 去偏差；无 `crypto` 时**抛错而不退化到 `Math.random`**）+ 形状校验 | `queries/orders.ts`、`app/order/[orderNumber]/page.tsx` |
+| `core/cartMap.ts` | 购物车 cookie 净化：整数 1..999、UUID key、行数上限、丢弃计数 | `apps/web/lib/cart.ts` |
+| `core/safeOutput.ts` | `jsonLdScript`（转义 `< > &` 与 U+2028/29，`JSON.stringify` 不转义 `<` → 商品标题能跳出 script 上下文）、`safeHref`（协议白名单）、`acceptedImageType`（图片 MIME 白名单，**SVG 拒**） | 4 处 JSON-LD、`RichBody`、后台两处上传 + 导入拓图 |
+| `core/fetchGuard.ts` | 服务端代抓 URL 的准入（协议/端口/凭据/环回与私网与云元数据字面量）+ 字节与重定向上限常量 | `admin/lib/safeFetch.ts` |
+| `admin/lib/safeFetch.ts` | 逐跳重判（`redirect:"manual"`，否则 302 能绕进内网）+ 15s 超时 + **流式截断** | URL 抓品与拓图 |
+| `admin/lib/ids.ts` | 拼进 R2 key / SQL 条件前的 UUID 形状校验 | 两处上传 + 拓图 |
+| `drizzle/0015_order_checks.sql` | 库侧底线：`oi_quantity_range`、`order_total_nonneg`、`order_discount_nonneg`、`payment_amount_nonneg` | **已应用至 Neon**（存量违规 0，并实证负数量插入被拒） |
 
 ### 3.9 outbox / relay / cron / 保留
 | 能力 | 位置 | 状态 |
@@ -443,7 +458,7 @@ onestarry.com/
 |---|---|---|---|---|
 | T11 | Better Auth 未限流 | 🔴 | `packages/auth/src/index.ts` 全文无 `rateLimit`、无 plugins 配置，customer/admin 两实例都是裸的 | 后台登录口可被爆破，且模板的安全默认值应该是「开箱就防」。→ 配 `rateLimit: { enabled: true, window: 60, max: 10 }`（或在 CF 侧对 `/api/auth/*` 上速率规则；注意 Worker 内限流需 KV/DO 存计数） |
 | T12 | 后台不开放注册 | ✅ | 本轮已封（§4.1：HTTP 层 403 `/sign-up*`）；前台 customer 注册仍开放，符合预期 | 核对项，非缺陷 |
-| T13 | 真收款 | 🔴 | webhook `pickProvider` 恒返回 Fake（N1） | 作为「演示模板」够用，作为「能开张的店」不够。→ 与 §9 的 N1 同一条 |
+| T13 | 真收款 | 🔴 | webhook 已 fail-closed（无 provider 则 501，假回调需 `FAKE_PAYMENTS_ENABLED=1`），但**仍无任何真 PSP**（N1） | 作为「演示模板」够用，作为「能开张的店」不够。→ 与 §9 的 N1 同一条 |
 | T14 | 错误可观测 | 🔴 | 无 `apps/web/instrumentation.ts`、无 Sentry/任何告警；Cron relay 失败只落在 Workers 日志里 | 静默失败 = 价格不更新/订单不落账而没人知道。→ 模板应内置最小告警：jobs Cron 批次失败 → 一次出站通知（邮件 or Slack webhook），并把 Workers 日志接入 Grafana/Loki 写成文档步骤 |
 | T15 | 财税冷备自动化 | 🟡 | DR-RUNBOOK §2/§7 标 🟥（手动 `pg_dump`）；且 §7 仍写「GitHub Actions 定时 workflow」= 过时术语（本仓无 GH Actions） | 与 N12 同条。→ 顺手把该句改成「Workers Cron 或外部定时任务」 |
 | T16 | workerd 兼容日期 | 🟢 | `compatibility_date: 2026-01-01`（距今 >6 个月），OpenNext 构建对此**只 warn 不拦** | 不升不炸，建议随 T18 一起更新 |
