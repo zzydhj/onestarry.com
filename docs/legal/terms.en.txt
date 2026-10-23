@@ -1,0 +1,113 @@
+Last updated: October 23, 2026
+
+## 1. Agreement
+
+These Terms of Service ("Terms") form a binding agreement between you and OneStarry LLC ("we", "us", "our") governing your use of https://onestarry.com (the "Site") and any order you place through it. By using the Site or placing an order you accept these Terms. If you do not accept them, do not use the Site.
+
+These Terms apply together with our Privacy Policy (https://onestarry.com/legal/privacy), Return Policy (https://onestarry.com/legal/returns) and, where applicable, our Right of Withdrawal notice (https://onestarry.com/legal/withdrawal).
+
+## 2. Changes to these Terms
+
+We may update these Terms to reflect changes in our products, services, or in law. The version in force is the one published on the Site when you place your order; an order you have already placed is governed by the version in force at the time the order was accepted. Material changes affecting an existing order will be communicated to the email address on that order.
+
+## 3. Eligibility
+
+You must be at least 18 years old to enter into a contract through this Site, or, if you are legally able to contract in your place of residence but under 18, you may use the Site only with the involvement of a parent or guardian. By placing an order you confirm both are true.
+
+## 4. Your account
+
+You may create an account. You are responsible for keeping your password confidential and for all activity under your account, and you must notify us promptly of any unauthorised use. Account details must be accurate and current. We may suspend or close an account that is used fraudulently, that repeatedly fails payment, or that breaches these Terms. Closing your account does not delete records we are required to keep (see our Privacy Policy, Section 8).
+
+## 5. Products and product information
+
+All prices are shown in United States dollars (USD). Product descriptions, dimensions, materials and images are provided to describe the goods as accurately as we reasonably can; monitors, phones and printing processes differ, so slight colour variation is normal and is not a defect. Where a product carries a size chart, please check it before ordering — fitted goods are the most common reason for a return.
+
+Listing a product does not mean it is available in unlimited quantity. Stock levels are shown per variant; if an item sells out or becomes unavailable after you order, we will tell you and will not charge you for it, or will offer an equivalent substitute for your approval.
+
+## 6. Orders and acceptance
+
+Placing an order is your offer to buy the items listed on your order confirmation page. A contract is formed when we accept the order — which we do by confirming that the order has been placed and payment has been authorised, or when we ship the goods, whichever happens first. We may decline or cancel an order, including where the goods are unavailable, where we cannot authorise payment, where the price or description was clearly misstated, or where we have reasonable grounds to suspect fraud or a breach of these Terms. If we cancel an order and you have been charged, we will refund you in full.
+
+An order cannot be changed after it is packed for shipment. If you need to change something, contact us as soon as possible and we will do what we reasonably can.
+
+## 7. Price, payment and manifest errors
+
+The price charged is the price shown at checkout, plus the shipping fee displayed there before you confirm. The total shown at checkout is the amount you pay for that order, including any taxes and duties that we collect on the transaction. We do not add charges after you confirm an order.
+
+Payments are handled by licensed third-party payment processors. We do not see or store your full card number, expiry date or security code. Payment is authorised at the time of checkout and captured when the order is accepted. If a payment fails or is reversed by your bank or card issuer, we may cancel the order or require an alternative payment method.
+
+If a product is listed at a price that is obviously wrong — for example a decimal error, or a price far below our supplier cost — we may cancel the affected order and refund you in full, even after the order is confirmed, and we will tell you that this is why.
+
+## 8. Shipping and delivery
+
+We ship to addresses in the United States, and to other countries where the checkout allows it. Delivery dates and timeframes we show are good-faith estimates, not guarantees, except where a delivery guarantee is expressly stated for your order. We remain responsible for the goods until they are delivered to you; if a parcel is lost or arrives damaged, contact us and we will make it right under Section 9 or the Return Policy.
+
+You must provide a delivery address where someone can receive the parcel and, where required, sign for it. If a delivery fails because of information you provided, or because nobody was available after the carrier's reasonable attempts, we may charge you the actual cost of a redelivery or return and tell you before charging.
+
+Import duties and taxes that apply when goods cross a border into your country are shown at checkout where we collect them; where they are not collected by us, you are responsible for paying them to the authority that assesses them.
+
+## 9. Defective, wrong or damaged items
+
+If an item arrives damaged, defective, or is not the item you ordered, tell us within 30 days of delivery with your order number and a photograph of the item and the packaging. We will, at your option and where practicable, replace the item or refund its price, and we will pay the return and re-delivery shipping. This section does not limit your statutory consumer rights or the rights in our Return Policy.
+
+## 10. Returns and withdrawal
+
+You may return most items for a refund as described in our Return Policy (https://onestarry.com/legal/returns). If you are a consumer located in the European Union, the United Kingdom or Northern Ireland, you also have a 14-day statutory right of withdrawal described at https://onestarry.com/legal/withdrawal, which prevails over any conflicting term here.
+
+## 11. Reviews and content you submit
+
+You may post product reviews, ratings and photos. You keep ownership of what you submit, and you grant us a non-exclusive, worldwide, royalty-free licence to display, reproduce and adapt it on the Site and in our marketing, with the display name you choose. That licence ends if you ask us to remove the content, except to the extent we have already printed or distributed it, or must keep it for legal reasons.
+
+You promise that your content is yours to submit or you have permission, that it is based on your genuine experience, that it is not unlawful, defamatory, harassing, obscene, or misleading, and that it does not contain personal data of third parties, advertising, or links to malicious sites. We may moderate, edit or remove content that breaches this section, and we will not edit a review to change its rating. We do not guarantee that every submission is published.
+
+## 12. Our intellectual property
+
+The Site — including text, layout, graphics, logos, product photography we own, and the underlying software — belongs to us or our licensors and is protected by copyright, trademark and other law. Product names and marks of third parties belong to their owners.
+
+You may save a copy of pages for your own personal, non-commercial use. Anything else — republishing, selling access, scraping the Site or our catalogue in bulk, mining data, copying our product photography, reverse engineering, or using our content to train a commercial model — requires our prior written permission.
+
+## 13. Acceptable use
+
+You agree not to: interfere with or disrupt the Site, its servers or networks; attempt to gain unauthorised access to accounts, data, or systems belonging to others; probe, scan or test vulnerabilities without our written consent; register accounts or place orders by automated means that evade protections intended for humans; abuse our payment systems, including placing orders you do not intend to pay for; use any integration or API endpoint we expose for purposes outside the authorisation we granted; or transmit malware or engage in conduct that is unlawful, fraudulent or deceptive.
+
+Reasonable automated access by search engines for the purpose of indexing public pages is permitted, subject to our robots directives.
+
+## 14. Third-party links and services
+
+The Site may link to third-party sites, and parts of your experience (payment processing, carrier tracking, map or font delivery) are provided by third parties under their own terms. We are not responsible for those third parties' products, terms, or conduct.
+
+## 15. Disclaimers
+
+The Site and its information (including product descriptions, size charts, delivery estimates and blog content) are provided "as is" and "as available" without warranties of any kind to the maximum extent permitted by law, except that we warrant that goods we sell will correspond to their description and, for consumers, will be of satisfactory quality and fit for their ordinary purpose. We do not give medical, nutritional, safety, legal or fitness advice; consult a qualified professional about your own circumstances. We do not warrant that the Site will be uninterrupted, error-free, or free of harmful components.
+
+## 16. Limitation of liability
+
+Nothing in these Terms limits or excludes our liability for death or personal injury caused by our negligence, for fraud or fraudulent misrepresentation, for a defect in a product under applicable product-liability law, or for any other liability that cannot lawfully be limited or excluded.
+
+Subject to that sentence, we are liable only for losses that were foreseeable at the time the contract was formed and that arise from our breach. For consumer purchases, our total liability is limited to the price paid for the affected goods plus refundable shipping. For any other use of the Site, and in particular for business customers, our total liability arising out of or relating to these Terms or the Site is limited to the greater of the amount you paid us in the 12 months before the claim and USD 500, and we are not liable for lost profits, lost sales or revenue, lost goodwill, lost data, business interruption, or indirect, incidental, special, exemplary or consequential losses, even if we were told they might occur. These limits apply whether the claim is in contract, tort (including negligence) or otherwise, except where a court or applicable law finds them unconscionable or unlawful.
+
+## 17. Your indemnity
+
+If you breach these Terms, or if your submissions or your use of the Site cause a third-party claim against us, you will reimburse our reasonable direct costs and legal fees arising from that claim, to the extent a court awards and applicable law permits. This section does not apply to consumer purchases made for personal, household, or family use, except where your conduct was unlawful.
+
+## 18. Suspension and termination
+
+You may stop using the Site at any time and close your account by request. We may suspend or terminate your access, or refuse an order, where we reasonably suspect fraud, a material breach of these Terms, repeated non-payment, or conduct that risks harm to us, other customers, or the Site. Termination does not affect orders already accepted, and Sections 5 to 19 survive as far as they need to.
+
+## 19. Notices
+
+Notices to us: support@onestarry.com, or by post to the address in Section 20. Notices to you: the email address you provided, which we treat as delivered when we send it; please keep it current. For legal notices, we may also rely on posting on the Site where the law allows.
+
+## 20. General
+
+We may assign this agreement in connection with a merger, acquisition, reorganisation or sale of assets; you may not assign it without our consent. If any provision is held unenforceable, the rest continues in effect and the provision is read as narrowly as possible to remain enforceable. Our failure to enforce a right is not a waiver. These Terms, together with the policies referenced in Section 1, are the entire agreement between us about the Site and your orders, and they replace anything earlier. Nothing here creates rights for anyone other than you and us, except that our service providers may rely on Section 16 limits when acting for us.
+
+## 21. Governing law and disputes
+
+These Terms are governed by the laws of the State of [REPLACE: your state], United States, without regard to conflict-of-law rules, and by United States federal law where it applies. The parties submit to the exclusive jurisdiction of the state and federal courts located in [REPLACE: your county and state] for any dispute arising out of these Terms or your use of the Site, except that either party may bring a claim in the small-claims court of the customer's home jurisdiction where permitted, and except that nothing in this section limits the mandatory consumer-protection rights or the fora available to you under the law of the country where you habitually reside.
+
+This agreement is written in English. Where a translation is provided for convenience, the English version controls.
+
+## 22. Contact
+
+OneStarry LLC — [REPLACE: registered address, city, state, country]. Support: support@onestarry.com. Privacy: privacy@onestarry.com.

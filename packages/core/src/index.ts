@@ -13,3 +13,4 @@ export * from "./health";
 export * from "./isr";
 export * from "./invalidate";
 export * from "./site-status";
+export * from "./legalBody";

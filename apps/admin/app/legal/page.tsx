@@ -28,7 +28,13 @@ export default async function LegalPage() {
                 ← 返回概览
             </Link>
             <h1 className="mt-2 text-xl font-semibold">法律文档</h1>
-            <p className="mt-1 text-sm text-muted">编辑前台 <code>/legal/&lt;type&gt;</code> 正文（纯文本，空行分段）。留空则前台显示占位提示。</p>
+            <p className="mt-1 text-sm text-muted">
+                编辑前台 <code>/legal/&lt;type&gt;</code> 正文（纯文本）。约定只有三条：空行分段；行首 <code>## </code> / <code>### </code> 是小标题；
+                一个块里每行都以 <code>- </code> 开头就是列表。留空则前台显示占位提示。
+            </p>
+            <p className="mt-1 text-sm text-muted">
+                ⚠ 保存后前台**最多 60 秒**才看得到（该路由 <code>revalidate = 60</code>，预渲染条目叫不动即时失效）—— 没立即变不是没存上。
+            </p>
 
             <div className="mt-6 space-y-8">
                 {docs.map(({ type, doc }) => (
@@ -42,7 +48,7 @@ export default async function LegalPage() {
                         </h2>
                         <textarea
                             name="body"
-                            rows={10}
+                            rows={16}
                             defaultValue={doc?.body ?? ""}
                             placeholder="在此粘贴正文…"
                             className="mt-2 w-full rounded-md border border-line px-3 py-2 font-mono text-sm"

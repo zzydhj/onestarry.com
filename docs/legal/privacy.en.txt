@@ -1,0 +1,101 @@
+Last updated: October 23, 2026
+
+## 1. Who we are
+
+This Privacy Policy explains how OneStarry LLC ("we", "us", "our") handles personal data when you use the website at https://onestarry.com (the "Site") or place an order with us. We are the data controller for the personal data described here.
+
+Contact: privacy@onestarry.com — postal address: [REPLACE: registered address, city, state, country].
+
+This Site is currently operated for customers in the United States. Where we make the Site available to customers in other regions, we apply the additional protections described in Sections 8 and 10 where required.
+
+## 2. What we collect
+
+Account data. If you create an account: your name, email address, and a password (stored only as a cryptographic hash, never in readable form). We also record the date your account was created and, for security, the IP address associated with sign-in and password-reset attempts.
+
+Order data. When you order: the items you bought, the delivery and billing addresses you provide, your phone number if you supply one for carrier contact, order status, shipment tracking numbers, refund and support history.
+
+Cart data. If you add items to your cart without signing in, the cart contents are stored in a cookie on your own device (see Section 5). We can associate a cart with an order when you check out.
+
+Usage and technical data. Our hosting provider automatically receives standard request metadata: IP address (in truncated or aggregated form for traffic statistics), browser and device type, referring pages, and timestamps. This is used to deliver the Site, diagnose errors, and prevent abuse — not to build advertising profiles.
+
+Support and review content. Messages you send us, and product reviews or photos you choose to publish. Reviews are stored with your display name as you provide it.
+
+We do not intentionally collect special categories of data (health, biometrics, religion, political views, sexual orientation) and we ask you not to send such data to us.
+
+## 3. How we use it
+
+- To take orders, process payments, ship your goods, and provide order support.
+- To create and manage your account and let you view your order history.
+- To send transactional messages: order confirmation, shipping updates, password resets, and notices required by law.
+- To moderate and publish product reviews, and to detect fraudulent reviews.
+- To operate, secure and improve the Site: error diagnosis, abuse and fraud prevention, rate limiting.
+- To keep financial records and comply with tax, accounting, consumer-protection and export rules that apply to us.
+- To contact you about a product issue, recall, or legal obligation affecting an order you placed.
+- To send marketing messages, only where you have asked for them and where applicable law permits it. Every marketing email we send contains an unsubscribe link, and we do not send marketing email today.
+
+We do not sell your personal data, and we do not share it with advertising networks for behavioural advertising.
+
+## 4. Legal bases (where GDPR-style law applies)
+
+Where the EU GDPR or UK GDPR applies, our bases are: performance of the contract with you (Section 3, bullets 1 and 2); our legitimate interest in operating a secure, functional shop and preventing fraud (bullets 4, 5 and 7); compliance with legal obligations such as tax and record-keeping (bullet 6); consent, which is the basis for non-essential cookies and for marketing email if we ever send it (bullets 3 and 8). Where you give consent you may withdraw it at any time without affecting processing that already happened; withdrawing consent does not undo the delivery of goods you already ordered. If you object to processing based on legitimate interests, see Section 10.
+
+## 5. Cookies
+
+The Site uses a small number of first-party cookies only. We do not load third-party advertising, social-media or cross-site tracking scripts.
+
+- cart — stores the items in your cart. HttpOnly, SameSite=Lax, expires 7 days after last change. Strictly necessary for the cart to work.
+- Session cookies (issued when you sign in) — keep you signed in and protect the session against forgery. HttpOnly, Secure, SameSite=Lax, expire after 7 days of inactivity. Strictly necessary.
+- cookie_consent — remembers your cookie choices for 180 days so we do not ask you again. Strictly necessary for consent management.
+
+You can delete or block cookies in your browser. Blocking the "cart" or session cookies will break checkout, because those functions cannot be delivered without them. You can change your consent at any time using the "Cookie settings" link in our consent banner.
+
+## 6. Who we share data with
+
+We disclose personal data only to the following recipients, and only to the extent needed:
+
+- Cloudflare, Inc. — hosts and delivers the Site, stores page and media objects, and provides DNS and security services. They process request metadata on our behalf.
+- Neon (Databricks, Inc. / AWS) — hosts our PostgreSQL database in the United States (region us-east-2). This is where account, order and review data is stored.
+- Payment processors — when you pay, your payment is handled by a licensed payment provider under its own privacy notice. We receive only the outcome of the transaction (approved, declined, refunded) and a transaction reference. We never see or store your full card number, expiry date or security code.
+- Carriers and logistics providers — the name, delivery address and phone number needed to deliver your parcel and to provide tracking.
+- Professional advisers — our accountants, tax advisers, auditors and lawyers, and any authority where we are legally required to disclose.
+- Successors — in connection with a merger, acquisition, reorganisation or sale of assets, or an insolvency, personal data may be transferred as part of that transaction, subject to this Policy.
+
+We do not use third-party analytics or marketing platforms on this Site today. If we ever do, we will update this Policy and, where required, ask for your consent first.
+
+## 7. Where your data is stored
+
+Your data is stored and processed in the United States. If you are in the EU, UK or another region whose law requires safeguards for exports, we rely on the standard contractual clauses and the supplementary technical measures applied by our hosting providers (encryption in transit and at rest, access controls, least-privilege database roles).
+
+## 8. How long we keep it
+
+- Account data: while your account is active. You may ask us to delete your account at any time (Section 10); we then remove what is not needed for the records described in the next bullet.
+- Orders, invoices, payments and refunds: for as long as tax and commercial record-keeping rules require — generally 6 to 10 years depending on jurisdiction. This duty survives an account deletion.
+- Reviews you publish: while the product listing exists and until you ask us to remove them (see Section 10 below and Section 6 of our Terms of Service).
+- Technical queues, idempotency locks and webhook replay records used to make the Site reliable: purged automatically once expired, and in any case after 90 days by a scheduled cleanup job that runs daily.
+- Cart contents held in your browser: 7 days; we hold no separate copy of an abandoned cart.
+
+Beyond the periods above we do not run an automated deletion schedule: personal data that is no longer needed and not legally required is removed when we next review our records, or on your request. Financial ledger entries and stock movement records are append-only by design and are never deleted by automated jobs, because they are the audit trail for orders you placed with us.
+
+## 9. Security
+
+We use HTTPS for the whole Site, hash passwords with a modern adaptive algorithm, mark session and cart cookies HttpOnly, restrict the application's database role so it cannot alter accounting and stock history, and limit administrative access to named staff accounts with role-based permissions. No method of transmission or storage is perfectly secure; if we become aware of a breach that affects you and that we are legally required to report, we will notify you and the relevant authority as required.
+
+## 10. Your rights
+
+Depending on where you live, you may ask us to: access your personal data, correct it, delete it, restrict or object to processing, receive a portable copy of data you gave us, withdraw a consent, or object to processing based on legitimate interests. California residents have additional rights under the CCPA/CPRA, including the right to know the categories of personal information we collected and disclosed in the preceding 12 months, the right to delete, and the right to correct. We do not sell or share personal information for cross-context behavioural advertising, and we do not knowingly sell or share the personal information of consumers under 16.
+
+How to exercise: email privacy@onestarry.com from the address on your account and describe your request. We may ask you to confirm your identity before answering. We respond within 30 days (60 days for California requests, where extension is permitted). We will not discriminate against you for exercising your rights. Deletion requests are subject to the record-keeping duties in Section 8, which we will explain when they apply.
+
+If you are in the EEA, UK or Switzerland and believe our handling violates data-protection law, you may lodge a complaint with your local supervisory authority.
+
+## 11. Children
+
+The Site is not directed at children under 16, and we do not knowingly collect their personal data. If you believe a child has provided us data, contact privacy@onestarry.com and we will remove it.
+
+## 12. Changes
+
+We may update this Policy. When we do, we revise the "Last updated" date above and, for material changes that affect an active account, we will send you notice. The version in force is the one published on the Site at the time you use it.
+
+## 13. Contact
+
+Questions about this Policy or about your data: privacy@onestarry.com, or by post at [REPLACE: registered address, city, state, country].

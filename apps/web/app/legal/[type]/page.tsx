@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
+import { parseLegalBlocks } from "@onestarry/core";
 import { getLegalDoc, LEGAL_DOC_TYPES } from "@onestarry/db";
 import { getDb } from "@/lib/db";
 
@@ -49,18 +50,42 @@ export default async function LegalPage({ params }: { params: Promise<{ type: st
     const { type } = await params;
     if (!isLegalType(type)) notFound();
     const doc = await getLegalDoc(getDb(), { type, locale: "en" });
-    const paras = (doc?.body ?? "").split(/\n{2,}/).map((s) => s.trim()).filter(Boolean);
+    // 正文是纯文本（库里不存 HTML），结构靠 parseLegalBlocks 的三条约定：空行分段、`## `/`### ` 标题、`- ` 列表。
+    const blocks = parseLegalBlocks(doc?.body);
 
     return (
         <div className="mx-auto max-w-2xl px-4 py-10">
             <h1 className="text-2xl font-semibold tracking-tight text-brand">{TITLES[type]}</h1>
-            {paras.length === 0 ? (
+            {blocks.length === 0 ? (
                 <p className="mt-4 text-muted">This page hasn’t been written yet.</p>
             ) : (
                 <div className="mt-4 space-y-4 text-sm leading-relaxed text-fg">
-                    {paras.map((p, i) => (
-                        <p key={i}>{p}</p>
-                    ))}
+                    {blocks.map((b, i) => {
+                        switch (b.kind) {
+                            case "h2":
+                                return (
+                                    <h2 key={i} className="pt-5 text-base font-semibold tracking-tight text-brand">
+                                        {b.text}
+                                    </h2>
+                                );
+                            case "h3":
+                                return (
+                                    <h3 key={i} className="pt-2 text-sm font-semibold text-brand">
+                                        {b.text}
+                                    </h3>
+                                );
+                            case "ul":
+                                return (
+                                    <ul key={i} className="list-disc space-y-1 pl-5">
+                                        {b.items.map((item, j) => (
+                                            <li key={j}>{item}</li>
+                                        ))}
+                                    </ul>
+                                );
+                            default:
+                                return <p key={i}>{b.text}</p>;
+                        }
+                    })}
                 </div>
             )}
         </div>
