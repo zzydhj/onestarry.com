@@ -26,7 +26,7 @@ test("负数 / 0 / 小数 / 超大数 / 字符串数字全拒，且计入 droppe
 });
 
 test("key 必须是 UUID 形状（防塞 __proto__ 或任意字符串进 SQL）", () => {
-    assert.deepEqual(sanitizeCartMap({ "not-a-uuid": 2, ["__proto__"]: 2 }) .items, []);
+    assert.deepEqual(sanitizeCartMap({ "not-a-uuid": 2, ["__proto__"]: 2 }).items, []);
     assert.equal(sanitizeCartMap({ [V]: 2 }).items.length, 1);
 });
 

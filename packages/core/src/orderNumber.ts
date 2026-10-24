@@ -63,3 +63,56 @@ const ORDER_NUMBER_RE = /^SO-[0-9A-Z]{1,10}-[0-9A-Z]{3,8}$/;
 export function isOrderNumberShape(value: string): boolean {
     return ORDER_NUMBER_RE.test(value);
 }
+
+/**
+ * 订单**访问凭证**（`public_token`）：与单号分开的 128 bit 随机串。
+ *
+ * 为什么单号不够：单号要给人读、给客服对，所以短（时间前缀 + 8 位 ≈ 41 bit）；
+ * 而「游客能打开自己的单 / 能替自己的单发起支付」这件事需要一个**真凭证**。
+ * 两者分开后：单号泄露不等于能改单，凭证泄露可以**轮换**（重生成即可，单号不变）。
+ *
+ * 不做恒定时间比较：128 bit 均匀随机 + 网络抖动下计时攻击不切实际；
+ * 真要上强度应该做**尝试限速**（那属运行层职责，未接）而不是在这里加花活。
+ */
+export const ORDER_TOKEN_BYTES = 16; // 128 bit
+
+/** base64url（无 `=` 补位），22 个字符，URL 安全。 */
+export function genOrderAccessToken(rand?: Uint8Array): string {
+    const bytes = rand ?? randomBytes(ORDER_TOKEN_BYTES);
+    if (bytes.length < ORDER_TOKEN_BYTES) throw new Error("随机源不足，拒绝生成短凭证");
+    return base64Url(bytes).slice(0, 22);
+}
+
+function randomBytes(n: number): Uint8Array {
+    type RandomSource = { getRandomValues?: (buf: Uint8Array) => Uint8Array };
+    const c = (globalThis as { crypto?: RandomSource }).crypto;
+    if (typeof c?.getRandomValues !== "function") {
+        throw new Error("crypto.getRandomValues 不可用：拒绝用弱随机数生成订单凭证");
+    }
+    const buf = new Uint8Array(n);
+    c.getRandomValues(buf);
+    return buf;
+}
+
+/** 自己实现 base64url（core 不开 DOM lib，btoa 在部分运行时也没有）。 */
+function base64Url(bytes: Uint8Array): string {
+    const B64 = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
+    let out = "";
+    for (let i = 0; i < bytes.length; i += 3) {
+        const b0 = bytes[i]!;
+        const b1 = bytes[i + 1];
+        const b2 = bytes[i + 2];
+        out += B64[b0 >> 2];
+        out += B64[((b0 & 3) << 4) | ((b1 ?? 0) >> 4)];
+        if (b1 !== undefined) out += B64[((b1 & 15) << 2) | ((b2 ?? 0) >> 6)];
+        if (b2 !== undefined) out += B64[b2 & 63];
+    }
+    return out;
+}
+
+/** 凭证形状（URL 参数先过一道，不把任意字符串拿去比对）。 */
+const ORDER_TOKEN_RE = /^[0-9A-Za-z_-]{20,24}$/;
+
+export function isOrderAccessToken(value: string): boolean {
+    return ORDER_TOKEN_RE.test(value);
+}

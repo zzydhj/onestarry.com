@@ -65,6 +65,8 @@ export default async function Checkout({ searchParams }: { searchParams: Promise
             </div>
 
             <form action={checkoutAction} className="mt-6">
+                {/* 幂等键：渲染时生成一次，同一次表单的双击/重交都带同一个键 → createOrder 返回原单而不是建第二张。 */}
+                <input type="hidden" name="idempotencyKey" value={crypto.randomUUID()} />
                 <Label className="mt-3" htmlFor="email">Email *</Label>
                 <Input id="email" name="email" type="email" required placeholder="you@example.com" className="mt-1 w-full" />
                 <Label className="mt-3" htmlFor="recipient">Recipient *</Label>
@@ -91,9 +93,9 @@ export default async function Checkout({ searchParams }: { searchParams: Promise
                 </div>
                 <Label className="mt-3" htmlFor="country">Country</Label>
                 <Input id="country" name="country" defaultValue="US" className="mt-1 w-full" />
-                <Button type="submit" className="mt-6 w-full">Place order</Button>
+                <Button type="submit" className="mt-6 w-full">Continue to payment</Button>
             </form>
-            <p className="mt-3 text-xs text-muted">Note: MVP demo — payment is a placeholder (order is created without a real PSP).</p>
+            <p className="mt-3 text-xs text-muted">You’ll complete the payment on the next step (PayPal). Placing the order doesn’t charge you.</p>
         </div>
     );
 }

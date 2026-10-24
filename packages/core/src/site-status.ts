@@ -203,6 +203,17 @@ export const SITE_ROUTES: SiteRoute[] = [
         dynamicSegment: true,
     },
     {
+        path: "/pay/[orderNumber]",
+        file: "apps/web/app/pay/[orderNumber]/page.tsx",
+        label: "支付",
+        kind: "private",
+        revalidateSec: null,
+        edgeCacheable: false,
+        invalidation: "none",
+        dynamicSegment: true,
+        note: "带访问凭证的支付页：读会话/凭证，绝不能被边缘缓存住上一个人的内容",
+    },
+    {
         path: "/account/orders",
         file: "apps/web/app/account/orders/page.tsx",
         label: "我的订单",

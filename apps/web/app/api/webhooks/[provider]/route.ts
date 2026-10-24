@@ -1,7 +1,8 @@
 import { eq } from "drizzle-orm";
 import { getCloudflareContext } from "@opennextjs/cloudflare";
-import { createDb, recordPaymentSucceeded, webhookEvents } from "@onestarry/db";
+import { createDb, getOrderByNumber, recordPaymentSucceeded, webhookEvents } from "@onestarry/db";
 import { FakePaymentProvider, type NormalizedWebhookEvent, type PaymentProvider } from "@onestarry/core";
+import { PaypalPaymentProvider, readPaypalConfig } from "@/lib/paypal";
 
 export const dynamic = "force-dynamic";
 
@@ -18,11 +19,13 @@ function pickProvider(env: CloudflareEnv, name: string): PaymentProvider | null 
     // TODO(12b-2·B): if (name === "stripe" && env.STRIPE_SECRET_KEY) return new StripeProvider(...)
     //
     // ⚠ 默认值必须是「不收」。旧实现无条件返回 FakePaymentProvider，而 Fake 的
-    // verifyWebhook **根本不看签名**（参数叫 _signature）—— 那等于在公网上开了一个
-    // 「把任意订单标成已付 + 生成发票 + 记账本」的入口，只差一个 uuidv7 的 orderId。
-    // 现在只有显式开了 FAKE_PAYMENTS_ENABLED=1（本地/dev 冒烟）才接受假回调。
+    // verifyWebhook **根本不看签名** —— 那等于在公网上开了一个「把任意订单标成已付 + 生成发票 + 记账本」
+    // 的入口。现在：paypal 且配齐凭据 → 真验签；显式开 FAKE_PAYMENTS_ENABLED=1 → 才接受假回调；否则 null。
+    if (name === "paypal") {
+        const cfg = readPaypalConfig(env);
+        return cfg ? new PaypalPaymentProvider(cfg) : null;
+    }
     if (env.FAKE_PAYMENTS_ENABLED === "1") return new FakePaymentProvider();
-    void name;
     return null;
 }
 
@@ -42,12 +45,13 @@ export async function POST(req: Request, ctx: { params: Promise<{ provider: stri
 
     const raw = await req.text();
     if (raw.length > MAX_BODY_BYTES) return new Response("payload too large", { status: 413 });
-    const signature = req.headers.get("stripe-signature") ?? req.headers.get("paypal-transmission-sig") ?? "";
 
     let normalized: NormalizedWebhookEvent;
     try {
-        normalized = await provider.verifyWebhook(raw, signature);
-    } catch {
+        normalized = await provider.verifyWebhook(raw, req.headers);
+    } catch (e) {
+        // 验签失败不写事件表：那会变成一个可以任意灌的垃圾表。原因进日志供排错。
+        console.warn(`[webhook:${providerName}] 验签/解析失败：`, e instanceof Error ? e.message : e);
         return new Response("invalid signature/payload", { status: 400 });
     }
 
@@ -67,7 +71,14 @@ export async function POST(req: Request, ctx: { params: Promise<{ provider: stri
             if (!inserted) return; // 重复回调，幂等跳过
 
             if (normalized.succeeded) {
-                const orderId = (normalized.raw as { orderId?: string }).orderId;
+                // PSP 给哪个标识就查哪个：PayPal 只给 custom_id（我方单号），Fake 直接给内部 id。
+                // 两个都没 → 只存事件不落账（宁可不标已付，也不猜是哪张单）。
+                let orderId = normalized.orderId;
+                if (!orderId && normalized.orderNumber) {
+                    const res = await getOrderByNumber(tx, normalized.orderNumber);
+                    orderId = res?.order.id ?? null;
+                    if (!orderId) console.warn(`[webhook:${providerName}] custom_id 对应的单不存在：${normalized.orderNumber}`);
+                }
                 if (orderId) {
                     await recordPaymentSucceeded(tx, {
                         orderId,

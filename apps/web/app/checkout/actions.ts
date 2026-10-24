@@ -52,11 +52,17 @@ export async function checkoutAction(formData: FormData): Promise<void> {
     if (items.length === 0) redirect("/cart");
     if (!market) redirect("/checkout?error=failed");
 
+    // 幂等键由**表单带回来**（结账页渲染时生成）：旧实现每次提交现取一个 randomUUID，
+    // 等于幂等键只是个形式——双击/重交照样建两张单。形状不合就现生成一个：
+    // 宁可这一次不幂等，也不让任意字符串进 idempotency_keys。
+    const submittedKey = clean(formData.get("idempotencyKey"), 64);
+    const idempotencyKey = /^[0-9a-fA-F-]{16,64}$/.test(submittedKey) ? submittedKey : crypto.randomUUID();
+
     try {
         // 不再包 db.transaction：createOrder 现在是**一条 data-modifying CTE**，单语句天然原子，
         // 而 BEGIN/COMMIT 在 max:1 的连接上是**两次额外的跨洋往返**。幂等仍由 createOrder 内部保证。
         const result = await createOrder(db, {
-            idempotencyKey: crypto.randomUUID(),
+            idempotencyKey,
             email,
             customerId,
             marketId: market.id,
@@ -67,7 +73,9 @@ export async function checkoutAction(formData: FormData): Promise<void> {
             shippingCents: SHIPPING_CENTS,
         });
         await writeCart({}); // 下单成功清空
-        redirect(`/order/${result.orderNumber}`);
+        // 先去支付页：钱没到之前不把用户丢到「订单已下」的庆功页（旧流程就是这么默认“已付”的）。
+        // `t=` 是这张单的访问凭证，后面支付页与两个 API 路由都只认它。
+        redirect(`/pay/${result.orderNumber}?t=${encodeURIComponent(result.publicToken)}`);
     } catch (e) {
         // 给用户看的仍是笼统提示（错误码里带 variantId，不该泄到前台），
         // 但原因必须进日志：旧实现空 catch 让"为什么没下单"变成客服查不出的黑盒。

@@ -99,6 +99,14 @@ export const orders = pgTable(
         ...timestamps(),
         id: id(),
         orderNumber: text("order_number").notNull(), // 人类可读单号
+        /**
+         * 游客访问凭证（22 位 base64url，`core/orderNumber.genOrderAccessToken`）。
+         * 与单号**分开**的理由：单号短是为了给人读（熵只够算“难猜”），而「能打开这单 / 能替这单发起支付」
+         * 需要 128 bit 真凭证；泄露了可以只换凭证、单号不动。
+         */
+        publicToken: text("public_token").notNull(),
+        /** PayPal Orders v2 的订单 id：存下来才能「同一张我方单反复点支付不会造出两笔可扣款」，见 web 侧 create 路由。 */
+        paypalOrderId: text("paypal_order_id"),
         status: orderStatusEnum("status").notNull().default("pending"),
         paymentStatus: paymentStatusEnum("payment_status").notNull().default("unpaid"),
         fulfillmentStatus: fulfillmentStatusEnum("fulfillment_status").notNull().default("unfulfilled"),
@@ -123,6 +131,7 @@ export const orders = pgTable(
     },
     (t) => [
         uniqueIndex("order_number_uq").on(t.orderNumber),
+        uniqueIndex("order_public_token_uq").on(t.publicToken),
         index("order_customer_idx").on(t.customerId),
         index("order_status_placed_idx").on(t.status, t.placedAt),
         // 金额底线（2026-10-23 审查 P0-3 的最后一层）：应用层已校数量与金额，但

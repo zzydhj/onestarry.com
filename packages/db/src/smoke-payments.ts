@@ -26,7 +26,7 @@ async function main() {
             await tx.insert(productVariants).values({ productId: prod!.id, sku: `PY-${suffix}` });
             const [order] = await tx
                 .insert(orders)
-                .values({ orderNumber: `PY-${suffix}`, email: "p@example.com", marketId: mk!.id, currency: "USD", totalCents: 26680 })
+                .values({ orderNumber: `PY-${suffix}`, publicToken: `tok-${suffix}`, email: "p@example.com", marketId: mk!.id, currency: "USD", totalCents: 26680 })
                 .returning();
 
             const [pay] = await tx

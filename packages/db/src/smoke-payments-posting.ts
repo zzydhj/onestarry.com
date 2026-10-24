@@ -35,6 +35,7 @@ async function main() {
                 .insert(orders)
                 .values({
                     orderNumber: `PO-${suffix}`,
+                    publicToken: `tok-${suffix}`, // 访问凭证：列已 NOT NULL，绕过 createOrder 的写法要自己给
                     email: "p@example.com",
                     marketId: mk!.id,
                     currency: "USD",

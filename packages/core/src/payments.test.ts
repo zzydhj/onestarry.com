@@ -16,18 +16,19 @@ test("Fake createCheckout 返回确定 providerRef", async () => {
     assert.ok(s.clientSecret);
 });
 
-test("Fake verifyWebhook 解析归一化事件", async () => {
+test("Fake verifyWebhook 解析归一化事件（接口现在收整个 header 集合，因为 PayPal 要五条）", async () => {
     const p = new FakePaymentProvider();
-    const body = JSON.stringify({ providerEventId: "evt_1", type: "payment.succeeded", providerRef: "fake_pi_ord-1", amountCents: 26680 });
-    const ev = await p.verifyWebhook(body, "sig-ignored");
+    const body = JSON.stringify({ providerEventId: "evt_1", type: "payment.succeeded", providerRef: "fake_pi_ord-1", amountCents: 26680, orderId: "ord-1" });
+    const ev = await p.verifyWebhook(body, { get: () => null });
     assert.equal(ev.providerEventId, "evt_1");
     assert.equal(ev.succeeded, true);
     assert.equal(ev.amountCents, 26680);
+    assert.equal(ev.orderId, "ord-1", "Fake 给内部 id；PayPal 则只给 orderNumber，两者不能混");
 });
 
 test("Fake verifyWebhook 缺字段应抛错", async () => {
     const p = new FakePaymentProvider();
-    await assert.rejects(() => p.verifyWebhook(JSON.stringify({ type: "x" }), "sig"), /FAKE_WEBHOOK_BAD_PAYLOAD/);
+    await assert.rejects(() => p.verifyWebhook(JSON.stringify({ type: "x" }), { get: () => null }), /FAKE_WEBHOOK_BAD_PAYLOAD/);
 });
 
 test("Fake refund 返回 succeeded", async () => {

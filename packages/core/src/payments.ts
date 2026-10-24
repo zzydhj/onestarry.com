@@ -31,6 +31,13 @@ export interface NormalizedWebhookEvent {
     providerRef: string | null;
     amountCents: number | null;
     succeeded: boolean;
+    /**
+     * 这笔钱属于哪张单。PSP 给的形式不一样，所以两个字段分开：
+     * PayPal 只给 `custom_id`（我方可读单号）→ `orderNumber`；Fake 直接给内部 id → `orderId`。
+     * 两者至多一个有值；都为 null 时上层**只能记账不能落账**（宁可不标已付，也不猜是哪张单）。
+     */
+    orderNumber: string | null;
+    orderId: string | null;
     raw: Record<string, unknown>;
 }
 
@@ -45,11 +52,23 @@ export interface RefundResult {
     status: string;
 }
 
+/**
+ * 回调头的最小形状（不用 Workers/DOM 的 `Headers` 类型：core 不开那些 lib，
+ * 而且验签逻辑只用到 `get(name)`，给它一个结构类型反而能单测）。
+ */
+export interface WebhookHeaders {
+    get(name: string): string | null;
+}
+
 export interface PaymentProvider {
     readonly name: string;
     createCheckout(input: CreateCheckoutInput): Promise<CheckoutSession>;
-    /** 验签 + 解析原始回调体；验签失败应抛错。 */
-    verifyWebhook(rawBody: string, signature: string): Promise<NormalizedWebhookEvent>;
+    /**
+     * 验签 + 解析原始回调体；验签失败应抛错。
+     * 传整个 header 集合而不是单条签名：Stripe 只要一个 `stripe-signature`，
+     * 而 PayPal 要五条（transmission id/time、cert url、sig、auth algo）。
+     */
+    verifyWebhook(rawBody: string, headers: WebhookHeaders): Promise<NormalizedWebhookEvent>;
     refund(input: RefundInput): Promise<RefundResult>;
 }
 
@@ -68,7 +87,7 @@ export class FakePaymentProvider implements PaymentProvider {
         };
     }
 
-    async verifyWebhook(rawBody: string, _signature: string): Promise<NormalizedWebhookEvent> {
+    async verifyWebhook(rawBody: string, _headers: WebhookHeaders): Promise<NormalizedWebhookEvent> {
         const body = JSON.parse(rawBody) as Partial<NormalizedWebhookEvent> & { providerEventId?: string; type?: string };
         if (!body.providerEventId || !body.type) throw new Error("FAKE_WEBHOOK_BAD_PAYLOAD");
         return {
@@ -77,6 +96,8 @@ export class FakePaymentProvider implements PaymentProvider {
             providerRef: body.providerRef ?? null,
             amountCents: body.amountCents ?? null,
             succeeded: body.succeeded ?? body.type === "payment.succeeded",
+            orderNumber: body.orderNumber ?? null,
+            orderId: body.orderId ?? null,
             raw: (body.raw ?? {}) as Record<string, unknown>,
         };
     }

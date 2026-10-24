@@ -4,7 +4,7 @@ config({ path: "../../.env.local" });
 import assert from "node:assert/strict";
 import { and, eq, sql } from "drizzle-orm";
 import { createDb } from "./client";
-import { legalEntities, markets, orderLines, products, productVariants, transactionalOutbox } from "./schema";
+import { legalEntities, markets, orderLines, orders, products, productVariants, transactionalOutbox } from "./schema";
 import { createOrder, recomputeVariantMarketPrice, type RecomputeInput } from "./queries";
 
 /**
@@ -69,24 +69,31 @@ async function main() {
                 .where(and(eq(transactionalOutbox.aggregateType, "order"), eq(transactionalOutbox.aggregateId, result.orderId)));
             assert.ok((evs[0]?.c ?? 0) >= 1, "应发出 order.created 事件");
 
-            // 幂等：相同 key 重放应被拦
-            let threw = false;
-            try {
-                await createOrder(tx, {
-                    idempotencyKey: `idem-${suffix}`,
-                    email: "buyer@example.com",
-                    marketId: mk!.id,
-                    currency: "USD",
-                    shippingAddress: { recipient: "Jane Doe", line1: "1 Main St", country: "US" },
-                    items: [{ variantId: variant!.id, quantity: 2 }],
-                    shippingCents: 500,
-                });
-            } catch (e) {
-                threw = (e as Error).message === "IDEMPOTENT_REPLAY";
-            }
-            assert.ok(threw, "相同幂等键重放应被拦截");
+            // 幂等：相同 key 重放必须返回**原单**。旧行为是抛 IDEMPOTENT_REPLAY，
+            // 于双击会把已经建好的单显示成“下单失败”，用户再提交一次 → 那才是重复下单。
+            const replay = await createOrder(tx, {
+                idempotencyKey: `idem-${suffix}`,
+                email: "buyer@example.com",
+                marketId: mk!.id,
+                currency: "USD",
+                shippingAddress: { recipient: "Jane Doe", line1: "1 Main St", country: "US" },
+                items: [{ variantId: variant!.id, quantity: 2 }],
+                shippingCents: 500,
+            });
+            assert.equal(replay.replayed, true, "重放应标记 replayed");
+            assert.equal(replay.orderId, result.orderId, "重放必须返回同一张单");
+            assert.equal(replay.publicToken, result.publicToken, "重放不能发新凭证，否则旧链接失效");
+            const dup = await tx.select({ c: sql<number>`count(*)::int` }).from(orders).where(eq(orders.orderNumber, result.orderNumber));
+            assert.equal(dup[0]?.c, 1, "重放不许建出第二张单");
 
-            console.log(`✅ 结账：建单 ${result.orderNumber} 总=${result.totalCents}，4 明细求和一致，已发 order.created，幂等重放已拦`);
+            // 单号熵与访问凭证（这两条是 2026-10-23 审查 P0-1/P0-2 的正身）
+            assert.match(result.orderNumber, /^SO-[0-9A-Z]+-[0-9A-Z]{8}$/, "新单号随机段应为 8 位");
+            assert.match(result.publicToken, /^[0-9A-Za-z_-]{22}$/, "新单必须带 22 位 base64url 访问凭证");
+
+            console.log(
+                `✅ 结账：建单 ${result.orderNumber} 总=${result.totalCents}，4 明细求和一致，已发 order.created，` +
+                `幂等重放返回原单，凭证 ${result.publicToken.length} 位`,
+            );
             throw ROLLBACK;
         });
     } catch (e) {

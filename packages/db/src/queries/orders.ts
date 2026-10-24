@@ -1,5 +1,5 @@
 import { and, eq, inArray, sql, type SQL } from "drizzle-orm";
-import { CART_MAX_LINES, CART_MAX_QTY, genOrderNumber } from "@onestarry/core";
+import { CART_MAX_LINES, CART_MAX_QTY, genOrderAccessToken, genOrderNumber } from "@onestarry/core";
 import { orders, variantMarketPrices } from "../schema";
 import { uuidv7 } from "../uuid7";
 import type { Db, Tx } from "../client";
@@ -38,6 +38,10 @@ export interface CreateOrderResult {
     orderId: string;
     orderNumber: string;
     totalCents: number;
+    /** 游客访问凭证（只给结账链路，不进任何可索引页面）。 */
+    publicToken: string;
+    /** true = 同一个幂等键的第二次提交，返回的是原单（不是新建）。 */
+    replayed: boolean;
 }
 
 /**
@@ -130,6 +134,7 @@ export async function createOrder(db: Db | Tx, input: CreateOrderInput): Promise
     // 这样金额行就不依赖“插明细拿 RETURNING 再插行”那一次额外往返）
     const orderId = uuidv7();
     const orderNumber = genOrderNumber();
+    const publicToken = genOrderAccessToken();
     const addrId = uuidv7();
     const keyId = uuidv7();
     const eventId = uuidv7();
@@ -140,12 +145,12 @@ export async function createOrder(db: Db | Tx, input: CreateOrderInput): Promise
     );
     const itemLineTuples = sql.join(built.map((b) => sql`(${pUuid(b.lineId)}, ${pUuid(b.id)})`), sql`, `);
 
-    const [res] = await db.execute<{ created: boolean }>(sql`
+    const [res] = await db.execute<{ created: boolean; order_id: string | null }>(sql`
         with ins_key as (
-            insert into idempotency_keys (id, "key", scope, expires_at)
-            values (${pUuid(keyId)}, ${pTxt(input.idempotencyKey)}, ${pTxt("checkout.create")}, ${pTs(new Date(Date.now() + 60 * 60 * 1000))})
+            insert into idempotency_keys (id, "key", scope, response_hash, expires_at)
+            values (${pUuid(keyId)}, ${pTxt(input.idempotencyKey)}, ${pTxt("checkout.create")}, ${pTxt(orderId)}, ${pTs(new Date(Date.now() + 60 * 60 * 1000))})
             on conflict do nothing
-            returning 1 as ok
+            returning id
         ),
         ins_addr as (
             insert into addresses (id, customer_id, recipient, phone, country, region, city, line1, line2, postal_code, address_type)
@@ -156,9 +161,9 @@ export async function createOrder(db: Db | Tx, input: CreateOrderInput): Promise
             returning id
         ),
         ins_order as (
-            insert into orders (id, order_number, customer_id, email, market_id, locale, currency, shipping_address_id, address_snapshot,
+            insert into orders (id, order_number, public_token, customer_id, email, market_id, locale, currency, shipping_address_id, address_snapshot,
                                 subtotal_cents, discount_cents, shipping_cents, tax_cents, duty_cents, total_cents)
-            select ${pUuid(orderId)}, ${pTxt(orderNumber)}, ${pTxt(input.customerId)}, ${pTxt(input.email)}, ${pUuid(input.marketId)},
+            select ${pUuid(orderId)}, ${pTxt(orderNumber)}, ${pTxt(publicToken)}, ${pTxt(input.customerId)}, ${pTxt(input.email)}, ${pUuid(input.marketId)},
                    ${pTxt(input.locale ?? "en")}, ${pTxt(input.currency)}, a.id, ${pJson({ ...input.shippingAddress })},
                    ${pBig(subtotal)}, ${pBig(discount)}, ${pBig(shipping)}, ${pBig(tax)}, ${pBig(duty)}, ${pBig(total)}
             from ins_addr a
@@ -190,13 +195,44 @@ export async function createOrder(db: Db | Tx, input: CreateOrderInput): Promise
                    ${pJson({ orderNumber, totalCents: total, marketId: input.marketId })}
             from ins_order o
         )
-        select exists (select 1 from ins_order) as created
+        -- 重放时订单 id 从幂等键的 response_hash 取：orderId 在 JS 里是**预先生成**的，
+        -- 所以它能随键一起写入，不需要事后回写 —— 同一语句里 UPDATE 是**看不见**刚由
+        -- INSERT 插进去的那行的（Postgres 的 data-modifying CTE 共享语句开始时的快照，实测如此）。
+        select exists (select 1 from ins_order) as created,
+               coalesce(
+                   (select o.id from ins_order o limit 1),
+                   (select k.response_hash::uuid from idempotency_keys k
+                     where k."key" = ${pTxt(input.idempotencyKey)} and k.scope = ${pTxt("checkout.create")})
+               ) as order_id
     `);
 
-    // 一行没写 = 幂等键已存在（铁律②）。错误文案与旧实现一致，调用方靠它回 error=failed。
-    if (!res?.created) throw new Error("IDEMPOTENT_REPLAY");
+    // 一行没写 = 幂等键已存在（铁律②）。
+    if (!res?.created) {
+        // 旧行为是直接抛 IDEMPOTENT_REPLAY：于「双击提交」会显示成下单失败，
+        // 而单子其实已经建好了 —— 用户再点一次或重新填表，那才是重复下单的起点。
+        // 现在把原单读回来返回，调用方照旧跳支付页，重放对用户无感。
+        const existingId = res?.order_id ?? null;
+        if (existingId) {
+            const [existing] = await db.select(orderCols).from(orders).where(eq(orders.id, existingId)).limit(1);
+            if (existing) {
+                return {
+                    orderId: existing.id,
+                    orderNumber: existing.orderNumber,
+                    totalCents: existing.totalCents,
+                    publicToken: existing.publicToken,
+                    replayed: true,
+                };
+            }
+        }
+        throw new Error("IDEMPOTENT_REPLAY");
+    }
 
-    return { orderId, orderNumber, totalCents: total };
+    return { orderId, orderNumber, totalCents: total, publicToken, replayed: false };
+}
+
+/** 记下 PayPal 侧订单 id（幂等复用与对账用）。传 null 表示作废重建。 */
+export async function setOrderPaypalOrderId(db: Db | Tx, input: { orderId: string; paypalOrderId: string | null }): Promise<void> {
+    await db.update(orders).set({ paypalOrderId: input.paypalOrderId }).where(eq(orders.id, input.orderId));
 }
 
 /**
@@ -206,6 +242,8 @@ export async function createOrder(db: Db | Tx, input: CreateOrderInput): Promise
 export const orderCols = {
     id: orders.id,
     orderNumber: orders.orderNumber,
+    publicToken: orders.publicToken,
+    paypalOrderId: orders.paypalOrderId,
     status: orders.status,
     paymentStatus: orders.paymentStatus,
     fulfillmentStatus: orders.fulfillmentStatus,

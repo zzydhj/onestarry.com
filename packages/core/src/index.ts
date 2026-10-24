@@ -18,3 +18,4 @@ export * from "./orderNumber";
 export * from "./cartMap";
 export * from "./safeOutput";
 export * from "./fetchGuard";
+export * from "./paypal";

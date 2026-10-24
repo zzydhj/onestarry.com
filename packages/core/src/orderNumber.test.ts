@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { ORDER_NUMBER_RANDOM_LEN, genOrderNumber, isOrderNumberShape } from "./orderNumber";
+import { ORDER_NUMBER_RANDOM_LEN, genOrderAccessToken, genOrderNumber, isOrderAccessToken, isOrderNumberShape } from "./orderNumber";
 
 /**
  * 订单号熵与形状的契约。旧实现（Math.random × 46656 + 3 位）在这里会全部红：
@@ -41,4 +41,20 @@ test("isOrderNumberShape：拦住垃圾输入，但不杀掉存量 3 位旧单�
     assert.equal(isOrderNumberShape("SO-XYZ-0"), false, "短于 3 位不算单号");
     assert.equal(isOrderNumberShape("SO-XYZ-ABCDEF123"), false, "长于 8 位不算单号");
     assert.equal(isOrderNumberShape("SO-XYZ-abc12"), false, "只接大写（生成端就是大写）");
+});
+
+test("访问凭证：22 位 base64url、URL 安全、空不可预测；与单号分开", () => {
+    const t = genOrderAccessToken();
+    assert.equal(t.length, 22, "16 字节 base64 去掉补位正好 22 字符");
+    assert.match(t, /^[0-9A-Za-z_-]+$/, "不能出现 + / = 这种要转义的字符");
+    assert.ok(isOrderAccessToken(t), "自己生成的凭证要过自己的形状校验");
+    const seen = new Set<string>();
+    for (let i = 0; i < 500; i++) seen.add(genOrderAccessToken());
+    assert.equal(seen.size, 500, "500 个凭证出现重复 = 随机源有问题");
+});
+
+test("凭证字节不够时拒绝生成（不给截断后的弱值开口子）", () => {
+    assert.throws(() => genOrderAccessToken(new Uint8Array(8)), /随机源不足/);
+    assert.equal(isOrderAccessToken("short"), false);
+    assert.equal(isOrderAccessToken("../../../../x"), false);
 });
