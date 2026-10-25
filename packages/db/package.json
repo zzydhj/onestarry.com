@@ -18,6 +18,7 @@
         "smoke": "tsx src/smoke.ts",
         "smoke:catalog": "tsx src/smoke-catalog.ts",
         "smoke:catalog-page": "tsx src/smoke-catalog-page.ts",
+        "smoke:admin-detail": "tsx src/smoke-admin-detail.ts",
         "smoke:inventory": "tsx src/smoke-inventory.ts",
         "smoke:pricing": "tsx src/smoke-pricing.ts",
         "smoke:outbox": "tsx src/smoke-outbox.ts",

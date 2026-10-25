@@ -8,6 +8,7 @@ export * from "./category";
 export * from "./brand";
 export * from "./product";
 export * from "./catalogPage";
+export * from "./adminProductDetail";
 export * from "./seo";
 export * from "./legal";
 export * from "./catalogAdmin";
