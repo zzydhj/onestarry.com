@@ -1,5 +1,5 @@
 import { and, eq, sql } from "drizzle-orm";
-import { SITE_ORIGIN, readIsrHealthReport } from "@onestarry/core";
+import { SITE_ORIGIN, ADMIN_ORIGIN, readIsrHealthReport } from "@onestarry/core";
 import { createDb, listActiveProductSlugs, runDataRetention, transactionalOutbox } from "@onestarry/db";
 import { pruneStaleIsrCache, relayHandlers, runIsrProbe, runRelayBatch } from "@onestarry/jobs";
 
@@ -46,15 +46,45 @@ async function probeIsr(env: Env): Promise<void> {
 }
 
 /**
+ * 后台 Worker 保活：发一发 `/signin`（真页面、不查库、不需登录）。
+ *
+ * 为什么要：2026-10-25 线上实测，后台闲置后的第一发要 2.9–3.8s，而热起来只跟 0.7–1.0s；
+ * 拆开看是 **冷 isolate 的模块编译被计进 cpuTime**（冷 340–1003ms vs 热 28–106ms），
+ * 不是缓存未命中。密集刷新时那些冷启动还会撞 CPU 上限 → 503。保活同时消掉这三个。
+ * 代价：每 5 分钟 1 个请求 = 288/天（免费额度 10 万/天的 0.3%），不引入新计费项。
+ *
+ * ⚠ 两个已知边界（别把这块当保证）：
+ *  · Workers isolate 是**按 colo** 的，cron 这一发落在哪个 PoP 不由我们定，
+ *    不保证就是用户浏览器那个 —— 所以这是“大概率变热”，不是“必然不冷”。
+ *  · 预热的是共享的服务端 bundle；路由自己的 chunk 未必被拉起来。上线后要拿真实“静置后首发”复量，
+ *    没效果就删（取证口径见 docs/PERF.md §2）。
+ */
+async function keepWarmAdmin(): Promise<void> {
+    try {
+        const res = await fetch(`${ADMIN_ORIGIN}/signin`, {
+            headers: { "user-agent": "onestarry-keepwarm" },
+            redirect: "manual",
+        });
+        if (!res.ok && res.status !== 307 && res.status !== 308) {
+            console.warn(`[keepwarm] admin /signin 回了 ${res.status}`);
+        }
+    } catch (e) {
+        // 保活失败不影响探针，也不该把整条 cron 带红：下一轮还会再试。
+        console.warn("[keepwarm] admin 保活请求失败：", e);
+    }
+}
+
+/**
  * Cloudflare Cron Trigger Worker：
  * - scheduled：每分钟消费 outbox 待办事件；每日一条 cron 跑数据保留清理 + 陈旧 ISR 条目清理；
- *   每 5 分钟一条 cron 跑 ISR 健康探针（按 event.cron 分流）。
+ *   每 5 分钟一条 cron 跑 ISR 健康探针（按 event.cron 分流），顺带保活后台 Worker。
  * - fetch：只读健康端点，回 outbox 待办计数 + 最近一次 ISR 探针结论，用于验证连通性与放量判别。
  */
 export default {
-    async scheduled(event: ScheduledController, env: Env, _ctx: ExecutionContext): Promise<void> {
+    async scheduled(event: ScheduledController, env: Env, ctx: ExecutionContext): Promise<void> {
         if (event.cron === ISR_CRON) {
             await probeIsr(env);
+            ctx.waitUntil(keepWarmAdmin());
             return;
         }
         const db = createDb(env.HYPERDRIVE.connectionString);

@@ -9,6 +9,7 @@
  * ⚠ 本文件是**声明**，不是探测结果。真实运行态来自 `/api/health`（版本、ISR verdict）与探针。
  *   两者不一致 = 代码或文档说谎，守卫测试会让它变红。
  */
+import { ADMIN_ORIGIN } from "./site";
 
 /** 渲染策略。决定"内容多久变新"与"边缘会不会存"。 */
 export type RenderKind = "static" | "prerender-isr" | "dynamic" | "private";
@@ -342,7 +343,7 @@ export interface SiteWorker {
 
 export const SITE_WORKERS: SiteWorker[] = [
     { name: "onestarry-com", role: "前台（Next + OpenNext）", url: "https://onestarry.com", healthUrl: "https://onestarry.com/api/health" },
-    { name: "onestarry-admin", role: "后台（Next + OpenNext）", url: "https://admin.onestarry.com", healthUrl: "https://admin.onestarry.com/api/health" },
+    { name: "onestarry-admin", role: "后台（Next + OpenNext）", url: ADMIN_ORIGIN, healthUrl: `${ADMIN_ORIGIN}/api/health` },
     { name: "onestarry-jobs", role: "cron：relay / 探针 / 清理", url: "—", healthUrl: null },
 ];
 
