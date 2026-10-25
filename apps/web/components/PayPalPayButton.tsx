@@ -25,19 +25,26 @@ export interface PayPalPayButtonProps {
     orderNumber: string;
     /** 结账链路发下来的访问凭证；两个路由都要它，缺了就 403。 */
     token: string;
-    sdkUrl: string;
+    /** 按优先级排列的 SDK 地址（主选环境 + 备选 host，见 core/paypal 的 paypalSdkUrls）。 */
+    sdkUrls: string[];
     /** 支付成功后的落地页（服务端拼好，避免前端拼 URL 拼出歧义）。 */
     successHref: string;
 }
 
-function loadSdk(url: string): Promise<PaypalGlobal> {
+function loadOneSdk(url: string): Promise<PaypalGlobal> {
     return new Promise((resolve, reject) => {
         if (window.paypal) return resolve(window.paypal);
         const done = () => (window.paypal ? resolve(window.paypal) : reject(new Error("PAYPAL_SDK_MISSING")));
-        const existing = document.querySelector<HTMLScriptElement>("script[data-onestarry-paypal]");
+        // 从事件目标拿节点（而不是引用后面才声明的 script）：两条分支都要用，引用变量会撞 TDZ。
+        // 失败的标签必须摸掉，否则下一个候选地址会被下面的 existing 分支当成“已在加载”。
+        const failed = (e: Event) => {
+            (e.target as HTMLScriptElement | null)?.remove();
+            reject(new Error("PAYPAL_SDK_LOAD_FAILED"));
+        };
+        const existing = document.querySelector<HTMLScriptElement>(`script[data-onestarry-paypal][src^="${url.split("?")[0]}"]`);
         if (existing) {
             existing.addEventListener("load", done, { once: true });
-            existing.addEventListener("error", () => reject(new Error("PAYPAL_SDK_LOAD_FAILED")), { once: true });
+            existing.addEventListener("error", failed, { once: true });
             return;
         }
         const script = document.createElement("script");
@@ -45,9 +52,22 @@ function loadSdk(url: string): Promise<PaypalGlobal> {
         script.async = true;
         script.setAttribute("data-onestarry-paypal", "1");
         script.addEventListener("load", done, { once: true });
-        script.addEventListener("error", () => reject(new Error("PAYPAL_SDK_LOAD_FAILED")), { once: true });
+        script.addEventListener("error", failed, { once: true });
         document.body.appendChild(script);
     });
+}
+
+/** 逐个试：沙箱该用哪个 SDK host 新旧文档不一致，不赌 —— 第一个失败就换下一个。 */
+async function loadSdk(urls: string[]): Promise<PaypalGlobal> {
+    let lastErr: unknown = null;
+    for (const url of urls) {
+        try {
+            return await loadOneSdk(url);
+        } catch (e) {
+            lastErr = e;
+        }
+    }
+    throw lastErr instanceof Error ? lastErr : new Error("PAYPAL_SDK_LOAD_FAILED");
 }
 
 async function postJson(path: string, body: unknown): Promise<{ ok: boolean; data: Record<string, unknown> }> {
@@ -60,7 +80,7 @@ async function postJson(path: string, body: unknown): Promise<{ ok: boolean; dat
     return { ok: res.ok, data };
 }
 
-export function PayPalPayButton({ orderNumber, token, sdkUrl, successHref }: PayPalPayButtonProps) {
+export function PayPalPayButton({ orderNumber, token, sdkUrls, successHref }: PayPalPayButtonProps) {
     const holder = useRef<HTMLDivElement | null>(null);
     const [error, setError] = useState<string | null>(null);
     const [busy, setBusy] = useState(false);
@@ -72,7 +92,7 @@ export function PayPalPayButton({ orderNumber, token, sdkUrl, successHref }: Pay
         setError(null);
         el.replaceChildren(); // StrictMode 下 effect 会跑两遍，不清空会渲染出两个按钮
 
-        loadSdk(sdkUrl)
+        loadSdk(sdkUrls)
             .then((paypal) => {
                 if (!alive) return;
                 return paypal
@@ -109,7 +129,7 @@ export function PayPalPayButton({ orderNumber, token, sdkUrl, successHref }: Pay
         return () => {
             alive = false;
         };
-    }, [orderNumber, token, sdkUrl, successHref]);
+    }, [orderNumber, token, sdkUrls, successHref]);
 
     return (
         <div>

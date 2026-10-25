@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { getCloudflareContext } from "@opennextjs/cloudflare";
-import { paypalSdkUrl } from "@onestarry/core";
+import { paypalSdkUrls } from "@onestarry/core";
 import { PayPalPayButton } from "@/components/PayPalPayButton";
 import { resolveOrderAccess } from "@/lib/orderAccess";
 import { readPaypalConfig } from "@/lib/paypal";
@@ -63,10 +63,11 @@ export default async function PayPage({
 
     const { env } = getCloudflareContext();
     const cfg = readPaypalConfig(env);
-    let sdkUrl: string | null = null;
+    let sdkUrls: string[] = [];
     if (cfg) {
         try {
-            sdkUrl = paypalSdkUrl({ clientId: cfg.clientId, currency: order.currency, env: cfg.env });
+            // 两个候选 host（主选 + 备选）：按钮出不来时不至于先怀疑凭据。见 core/paypal 的 paypalSdkUrls。
+            sdkUrls = paypalSdkUrls({ clientId: cfg.clientId, currency: order.currency, env: cfg.env });
         } catch (e) {
             // client-id 填错（带了引号/空格/误填 secret）：页面上说清楚，别让人对着空白按钮猜。
             console.error("[paypal] SDK URL 构造失败：", e instanceof Error ? e.message : e);
@@ -103,15 +104,15 @@ export default async function PayPage({
             </div>
 
             <div className="mt-8">
-                {sdkUrl && token ? (
-                    <PayPalPayButton orderNumber={order.orderNumber} token={token} sdkUrl={sdkUrl} successHref={href} />
+                {sdkUrls.length > 0 && token ? (
+                    <PayPalPayButton orderNumber={order.orderNumber} token={token} sdkUrls={sdkUrls} successHref={href} />
                 ) : (
                     <div className="rounded-md border border-line bg-surface p-4">
                         <p className="text-sm font-medium">PayPal is not available yet</p>
                         <ul className="mt-2 list-disc space-y-1 pl-5 text-xs text-muted">
                             {!cfg && <li>Set the worker variables PAYPAL_CLIENT_ID, PAYPAL_SECRET and PAYPAL_ENV (see docs/IMPLEMENTATION.md).</li>}
-                            {cfg && !sdkUrl && <li>PAYPAL_CLIENT_ID looks malformed — check for quotes or stray spaces.</li>}
-                            {cfg && sdkUrl && !token && <li>Open this page from the payment link you received after checkout.</li>}
+                            {cfg && sdkUrls.length === 0 && <li>PAYPAL_CLIENT_ID looks malformed — check for quotes or stray spaces.</li>}
+                            {cfg && sdkUrls.length > 0 && !token && <li>Open this page from the payment link you received after checkout.</li>}
                         </ul>
                     </div>
                 )}

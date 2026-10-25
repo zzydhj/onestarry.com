@@ -14,6 +14,8 @@ import {
     paypalEventOutcome,
     paypalSdkRoot,
     paypalSdkUrl,
+    paypalSdkUrls,
+    paypalSdkAlternateRoot,
     paypalSandboxBlocked,
     paypalVerifySignatureBody,
 } from "./paypal";
@@ -31,6 +33,17 @@ test("环境判定：只有显式 live 才打生产，缺省一律 sandbox", () 
     assert.equal(paypalApiBase("live"), "https://api-m.paypal.com");
     assert.equal(paypalApiBase("sandbox"), "https://api-m.sandbox.paypal.com");
     assert.equal(paypalSdkRoot("sandbox"), "https://www.sandbox.paypal.com");
+});
+
+test("SDK 候选地址：主选 = 当前环境 host，备选 = 另一个 host（不赌哪个才是官方推荐的）", () => {
+    const input = { clientId: "A" + "b".repeat(24), currency: "USD", env: "sandbox" as const };
+    const urls = paypalSdkUrls(input);
+    assert.equal(urls.length, 2);
+    assert.ok(urls[0]!.startsWith("https://www.sandbox.paypal.com/sdk/js?"), "沙箱先试沙箱 host");
+    assert.ok(urls[1]!.startsWith("https://www.paypal.com/sdk/js?"), "失败后退到统一 host");
+    assert.equal(paypalSdkAlternateRoot("sandbox"), "https://www.paypal.com");
+    assert.equal(paypalSdkAlternateRoot("live"), "https://www.sandbox.paypal.com");
+    assert.throws(() => paypalSdkUrls({ ...input, clientId: "short" }), /形状不符/, "候选地址也不能绕过 client-id 形状门控");
 });
 
 test("金额：分 → 字符串两位小数；JPY 这类 0 位小数币种不除 100", () => {

@@ -26,9 +26,19 @@ export function paypalApiBase(env: PaypalEnv): string {
     return env === "live" ? "https://api-m.paypal.com" : "https://api-m.sandbox.paypal.com";
 }
 
-/** JS SDK 根（浏览器用；与 API 域名不同，别混）。 */
+/** JS SDK 根（浏览器用；与 API 域名不同，别混）。*/
 export function paypalSdkRoot(env: PaypalEnv): string {
     return env === "live" ? "https://www.paypal.com" : "https://www.sandbox.paypal.com";
+}
+
+/**
+ * 另一个候选根。为什么要备一份：沙箱按钮到底从 `www.sandbox.paypal.com/sdk/js` 还是
+ * 统一从 `www.paypal.com/sdk/js` 加载，PayPal 新旧文档两种写法都出现过，而**选错的代价不是报错，
+ * 是页面上根本不出按钮** —— 拿凭据实测时这会立刻变成最难定位的那类问题。
+ * 所以不赌哪个对：两个都试（见 PayPalPayButton 的逐个加载）。
+ */
+export function paypalSdkAlternateRoot(env: PaypalEnv): string {
+    return env === "live" ? "https://www.sandbox.paypal.com" : "https://www.paypal.com";
 }
 
 export interface PaypalSdkUrlInput {
@@ -44,7 +54,7 @@ export interface PaypalSdkUrlInput {
  * 拼 JS SDK 的 script URL。`client-id` 是**公开**的（PayPal 设计如此，浏览器要拿它建会话），
  * 真正的 `PAYPAL_SECRET` 永远只在服务端用 —— 这条边界必须清楚，否则会有人把 secret 塞进前端。
  */
-export function paypalSdkUrl(input: PaypalSdkUrlInput): string {
+export function paypalSdkUrl(input: PaypalSdkUrlInput, root: string = paypalSdkRoot(input.env)): string {
     if (!/^[A-Za-z0-9_-]{20,256}$/.test(input.clientId)) {
         throw new Error("PAYPAL_CLIENT_ID 形状不符（检查是否误填了 secret 或带了引号/换行）");
     }
@@ -55,7 +65,12 @@ export function paypalSdkUrl(input: PaypalSdkUrlInput): string {
         components: "buttons",
     });
     if (input.locale) q.set("locale", input.locale);
-    return `${paypalSdkRoot(input.env)}/sdk/js?${q.toString()}`;
+    return `${root}/sdk/js?${q.toString()}`;
+}
+
+/** 按优先级给出两个可用 SDK 地址（主选 = 当前环境那个，备选 = 另一个 host）。*/
+export function paypalSdkUrls(input: PaypalSdkUrlInput): string[] {
+    return [paypalSdkUrl(input), paypalSdkUrl(input, paypalSdkAlternateRoot(input.env))];
 }
 
 /** 0 位小数币种（PayPal 支持列表里最常遇到的两个）。 */

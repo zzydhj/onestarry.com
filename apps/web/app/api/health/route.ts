@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { getCloudflareContext } from "@opennextjs/cloudflare";
-import { healthPayload, readIsrHealthReport } from "@onestarry/core";
+import { healthPayload, paypalEnv, readIsrHealthReport } from "@onestarry/core";
 
 /** 不查库：依赖故障时也要能回答，同时充当 Worker 预热/放量判别靶子。 */
 export const dynamic = "force-dynamic";
@@ -10,11 +10,20 @@ export async function GET() {
     // 不能让本端点丢掉「必答」的性质（readIsrHealthReport 内部已吞异常，这里只兜无 Workers 上下文）。
     let isr: Awaited<ReturnType<typeof readIsrHealthReport>> = null;
     let invalidateConfigured = false;
+    let paypal: { configured: boolean; env: string; webhookIdConfigured: boolean; allowSandboxWrites: boolean } | null = null;
     try {
         const { env } = getCloudflareContext();
         isr = await readIsrHealthReport((key) => env.NEXT_INC_CACHE_R2_BUCKET.get(key));
         // 只报布尔、绝不报值：后台站点状态页要回答“那条失效通道到底配了没”，但不能把密钥泄到接口里。
         invalidateConfigured = Boolean(env.INVALIDATE_SECRET);
+        // 支付凭据同理：配没配、跑在哪个环境、沙箱能不能动账 —— 这四个就能定位“按钮不出/建单 503”是哪一环，
+        // 不需要任何人去挨个猜变量名，也不用把 client-id 粘出来。
+        paypal = {
+            configured: Boolean(env.PAYPAL_CLIENT_ID?.trim() && env.PAYPAL_SECRET?.trim()),
+            env: paypalEnv(env.PAYPAL_ENV),
+            webhookIdConfigured: Boolean(env.PAYPAL_WEBHOOK_ID?.trim()),
+            allowSandboxWrites: env.PAYPAL_ALLOW_SANDBOX?.trim() === "1",
+        };
     } catch {
         isr = null;
     }
@@ -24,5 +33,6 @@ export async function GET() {
         // null = 探针还没跑过（与 "ok" 必须区分，否则监控会把没数据当成健康）
         isr: isr ? { verdict: isr.verdict, badStreak: isr.badStreak, checkedAt: isr.checkedAt } : null,
         invalidateConfigured,
+        paypal,
     });
 }
