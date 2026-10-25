@@ -171,7 +171,7 @@ export function AdminSideNav({ permissions = [], alert = null }: { permissions?:
                         <button
                             type="button"
                             onClick={() => toggleGroup(g.id)}
-                            className={`flex w-full items-center justify-between rounded-md px-2 py-1.5 text-[11px] font-semibold tracking-[0.08em] transition hover:bg-slate-50 ${hasActive ? "text-accent" : "text-slate-400 hover:text-slate-600"}`}
+                            className={`flex w-full items-center justify-between rounded-md px-2 py-1.5 text-[11px] font-semibold tracking-[0.08em] transition hover:bg-slate-50 ${hasActive ? "text-slate-700" : "text-slate-400 hover:text-slate-600"}`}
                             aria-expanded={open}
                         >
                             <span className="flex items-center gap-1.5">
