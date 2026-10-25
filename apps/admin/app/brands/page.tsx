@@ -1,4 +1,5 @@
-import { createBrand, createDb, listAllBrands } from "@onestarry/db";
+import { createBrand, listAllBrands } from "@onestarry/db";
+import { getRequestDb } from "@/lib/db";
 import { PERMISSIONS } from "@onestarry/core";
 import { requirePermission } from "@/lib/auth";
 import { Button, Input } from "@onestarry/ui";
@@ -9,7 +10,7 @@ export const dynamic = "force-dynamic";
 /** 品牌管理（受保护）：列表 + 新增（slug）+ 改名/改 slug。 */
 export default async function BrandsPage() {
     const { env } = await requirePermission(PERMISSIONS.categoryWrite);
-    const db = createDb(env.HYPERDRIVE.connectionString);
+    const db = getRequestDb(env.HYPERDRIVE.connectionString);
     const brands = await listAllBrands(db);
 
     return (

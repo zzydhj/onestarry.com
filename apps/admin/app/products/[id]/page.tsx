@@ -1,7 +1,8 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { mediaUrl, PERMISSIONS } from "@onestarry/core";
-import { createDb, loadAdminProductDetail } from "@onestarry/db";
+import { loadAdminProductDetail } from "@onestarry/db";
+import { getRequestDb } from "@/lib/db";
 import { requirePermission } from "@/lib/auth";
 import { Button, Input, Select, TableFrame, THead, Th, Tr, Td } from "@onestarry/ui";
 import { assignCatalogAction, saveSeoMetaAction, setProductStatusAction, updateBasePriceAction, updateInventoryAction } from "./actions";
@@ -15,7 +16,7 @@ export default async function AdminProductDetail({ params }: { params: Promise<{
     const { id } = await params;
     const { env } = await requirePermission(PERMISSIONS.productWrite);
 
-    const db = createDb(env.HYPERDRIVE.connectionString);
+    const db = getRequestDb(env.HYPERDRIVE.connectionString);
     // 一条 SQL 取回本页要的全部数据。原先是 8 次串行跨洋往返（products → 译文 → 变体 → 库存 →
     // 图片 → SEO → 全量类目 → 全量品牌），那正是“点进来要 6 秒”的来源；并行也救不了（同一
     // max:1 连接会排队）。字段口径与逐处对应关系见 queries/adminProductDetail.ts 顶部注释。

@@ -1,7 +1,8 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { PERMISSIONS } from "@onestarry/core";
-import { createDb, getContentForEdit } from "@onestarry/db";
+import { getContentForEdit } from "@onestarry/db";
+import { getRequestDb } from "@/lib/db";
 import { requirePermission } from "@/lib/auth";
 import { Button, Input, Select, Textarea, Label } from "@onestarry/ui";
 import { ContentEditor } from "../ContentEditor";
@@ -13,7 +14,7 @@ export const dynamic = "force-dynamic";
 export default async function ContentEditPage({ params }: { params: Promise<{ id: string }> }) {
     const { id } = await params;
     const { env } = await requirePermission(PERMISSIONS.seoWrite);
-    const db = createDb(env.HYPERDRIVE.connectionString);
+    const db = getRequestDb(env.HYPERDRIVE.connectionString);
     const item = await getContentForEdit(db, id);
     if (!item) notFound();
 

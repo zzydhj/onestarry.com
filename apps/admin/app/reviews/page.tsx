@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { PERMISSIONS } from "@onestarry/core";
-import { createDb, listReviewsForModeration, type ReviewStatus } from "@onestarry/db";
+import { listReviewsForModeration, type ReviewStatus } from "@onestarry/db";
+import { getRequestDb } from "@/lib/db";
 import { requirePermission } from "@/lib/auth";
 import { ReviewList } from "./ReviewList";
 
@@ -18,7 +19,7 @@ export default async function ReviewsPage({ searchParams }: { searchParams: Prom
     const { env } = await requirePermission(PERMISSIONS.productWrite);
     const { status: q } = await searchParams;
     const status: ReviewStatus = (TABS.some((t) => t.key === q) ? q : "pending") as ReviewStatus;
-    const db = createDb(env.HYPERDRIVE.connectionString);
+    const db = getRequestDb(env.HYPERDRIVE.connectionString);
     const rows = await listReviewsForModeration(db, status);
 
     return (

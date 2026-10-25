@@ -4,7 +4,8 @@ import { headers } from "next/headers";
 import { revalidatePath } from "next/cache";
 import { createAdminAuth } from "@onestarry/auth";
 import { PERMISSIONS, type RoleKey } from "@onestarry/core";
-import { assignRole, createDb, listAdminMembers, revokeRole } from "@onestarry/db";
+import { assignRole, listAdminMembers, revokeRole } from "@onestarry/db";
+import { getRequestDb } from "@/lib/db";
 import { requirePermission } from "@/lib/auth";
 
 /** 团队页只分配后台角色（customer 是前台档，不在此管理）。 */
@@ -20,12 +21,13 @@ export async function createStaffAction(formData: FormData): Promise<void> {
     if (!email || password.length < 8 || !isBackendRole(roleKey)) return;
 
     const h = await headers();
+    const db = getRequestDb(env.HYPERDRIVE.connectionString);
     const auth = createAdminAuth({
         connString: env.HYPERDRIVE.connectionString,
+        db,
         baseURL: `https://${h.get("host") ?? "localhost"}`,
         secret: env.BETTER_AUTH_SECRET,
     });
-    const db = createDb(env.HYPERDRIVE.connectionString);
 
     let userId: string | undefined;
     try {
@@ -47,7 +49,7 @@ export async function assignRoleAction(formData: FormData): Promise<void> {
     const subjectId = String(formData.get("subjectId") ?? "");
     const roleKey = String(formData.get("roleKey") ?? "");
     if (!subjectId || !isBackendRole(roleKey)) return;
-    const db = createDb(env.HYPERDRIVE.connectionString);
+    const db = getRequestDb(env.HYPERDRIVE.connectionString);
     await assignRole(db, { subjectId, roleKey });
     revalidatePath("/team");
 }
@@ -59,7 +61,7 @@ export async function revokeRoleAction(formData: FormData): Promise<void> {
     const roleKey = String(formData.get("roleKey") ?? "");
     if (!subjectId || !isBackendRole(roleKey)) return;
 
-    const db = createDb(env.HYPERDRIVE.connectionString);
+    const db = getRequestDb(env.HYPERDRIVE.connectionString);
     if (roleKey === "super_admin") {
         const members = await listAdminMembers(db);
         const saCount = members.filter((m) => m.roles.includes("super_admin")).length;

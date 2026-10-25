@@ -4,7 +4,6 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { PERMISSIONS } from "@onestarry/core";
 import {
-    createDb,
     getContentForEdit,
     upsertContent,
     updateContentBody,
@@ -14,6 +13,7 @@ import {
     type ContentStatus,
 } from "@onestarry/db";
 import { requirePermission } from "@/lib/auth";
+import { getRequestDb } from "@/lib/db";
 import { contentStorefrontPaths, queueContentInvalidation, queuePathsInvalidation } from "@/lib/invalidate";
 
 const TYPES: readonly string[] = ["blog", "page", "landing"];
@@ -29,7 +29,7 @@ export async function createContentAction(formData: FormData): Promise<void> {
     const type = asType(String(formData.get("type") ?? "page"));
     const title = String(formData.get("title") ?? "").trim();
     if (!title) return;
-    const db = createDb(env.HYPERDRIVE.connectionString);
+    const db = getRequestDb(env.HYPERDRIVE.connectionString);
     const id = await upsertContent(db, { type, title });
     redirect(`/content/${id}`);
 }
@@ -43,7 +43,7 @@ export async function saveContentMetaAction(formData: FormData): Promise<void> {
     const excerpt = String(formData.get("excerpt") ?? "").trim() || null;
     const slug = String(formData.get("slug") ?? "").trim() || undefined;
     if (!id || !title) return;
-    const db = createDb(env.HYPERDRIVE.connectionString);
+    const db = getRequestDb(env.HYPERDRIVE.connectionString);
     await upsertContent(db, { id, type, title, excerpt, slug });
     revalidatePath("/content");
     revalidatePath(`/content/${id}`);
@@ -63,7 +63,7 @@ export async function saveContentBodyAction(formData: FormData): Promise<void> {
     } catch {
         return; // JSON 不合法：忽略
     }
-    const db = createDb(env.HYPERDRIVE.connectionString);
+    const db = getRequestDb(env.HYPERDRIVE.connectionString);
     await updateContentBody(db, { id, body: parsed });
     revalidatePath(`/content/${id}`);
     queueContentInvalidation({ ctx, db, contentId: id });
@@ -76,7 +76,7 @@ export async function publishContentAction(formData: FormData): Promise<void> {
     const rawStatus = String(formData.get("status") ?? "");
     const status = STATUSES.find((s) => s === rawStatus);
     if (!id || !status) return;
-    const db = createDb(env.HYPERDRIVE.connectionString);
+    const db = getRequestDb(env.HYPERDRIVE.connectionString);
     await setContentStatus(db, id, status);
     revalidatePath("/content");
     revalidatePath(`/content/${id}`);
@@ -89,7 +89,7 @@ export async function deleteContentAction(formData: FormData): Promise<void> {
     const { env, ctx } = await requirePermission(PERMISSIONS.seoWrite);
     const id = String(formData.get("id") ?? "");
     if (!id) return;
-    const db = createDb(env.HYPERDRIVE.connectionString);
+    const db = getRequestDb(env.HYPERDRIVE.connectionString);
     // 先读再删：删完就不知道它原本挂在哪个 URL 上（前台那一页得按原地址失效）
     const row = await getContentForEdit(db, id);
     await deleteContent(db, id);

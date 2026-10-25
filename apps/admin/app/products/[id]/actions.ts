@@ -3,7 +3,8 @@
 import { eq } from "drizzle-orm";
 import { acceptedImageType, mediaUrl, PERMISSIONS } from "@onestarry/core";
 import { isUuid } from "@/lib/ids";
-import { createDb, attachProductImage, deleteProductImage, moveProductImage, products, setProductCatalog, setProductRichBody, setVariantOnHand, updateVariantBasePrice, upsertSeoMeta } from "@onestarry/db";
+import { attachProductImage, deleteProductImage, moveProductImage, products, setProductCatalog, setProductRichBody, setVariantOnHand, updateVariantBasePrice, upsertSeoMeta } from "@onestarry/db";
+import { getRequestDb } from "@/lib/db";
 import { runRelayBatch, relayHandlers } from "@onestarry/jobs";
 import { requirePermission } from "@/lib/auth";
 import { queueCatalogInvalidation, queueProductInvalidation } from "@/lib/invalidate";
@@ -20,7 +21,7 @@ export async function updateBasePriceAction(formData: FormData): Promise<void> {
     const cents = Math.round(parseFloat(String(formData.get("price") ?? "")) * 100);
     if (!variantId || !Number.isFinite(cents) || cents < 0) return; // 价格不合法：静默忽略
 
-    const db = createDb(env.HYPERDRIVE.connectionString);
+    const db = getRequestDb(env.HYPERDRIVE.connectionString);
     await db.transaction(async (tx) => {
         await updateVariantBasePrice(tx, { variantId, basePriceCents: cents, changedBy: userId });
     });
@@ -45,7 +46,7 @@ export async function setProductStatusAction(formData: FormData): Promise<void> 
     const status = String(formData.get("status") ?? "");
     if (!productId || !(STATUSES as readonly string[]).includes(status)) return;
 
-    const db = createDb(env.HYPERDRIVE.connectionString);
+    const db = getRequestDb(env.HYPERDRIVE.connectionString);
     await db
         .update(products)
         .set({ status: status as ProductStatus, updatedAt: new Date() })
@@ -66,7 +67,7 @@ export async function updateInventoryAction(formData: FormData): Promise<void> {
     const onHand = Number.parseInt(String(formData.get("onHand") ?? ""), 10);
     if (!variantId || !Number.isInteger(onHand) || onHand < 0) return;
 
-    const db = createDb(env.HYPERDRIVE.connectionString);
+    const db = getRequestDb(env.HYPERDRIVE.connectionString);
     await db.transaction(async (tx) => {
         await setVariantOnHand(tx, { variantId, onHand, changedBy: userId });
     });
@@ -95,7 +96,7 @@ export async function uploadProductImageAction(formData: FormData): Promise<void
         httpMetadata: { contentType: img.contentType, cacheControl: "public, max-age=31536000, immutable" },
     });
 
-    const db = createDb(env.HYPERDRIVE.connectionString);
+    const db = getRequestDb(env.HYPERDRIVE.connectionString);
     await attachProductImage(db, { productId, r2Key: key, mimeType: img.contentType, sizeBytes: file.size });
 
     queueProductInvalidation({ ctx, db, productId });
@@ -115,7 +116,7 @@ export async function saveRichBodyAction(formData: FormData): Promise<void> {
         return; // JSON 不合法：忽略
     }
 
-    const db = createDb(env.HYPERDRIVE.connectionString);
+    const db = getRequestDb(env.HYPERDRIVE.connectionString);
     await setProductRichBody(db, { productId, richBody: parsed });
 
     queueProductInvalidation({ ctx, db, productId });
@@ -147,7 +148,7 @@ export async function deleteProductImageAction(formData: FormData): Promise<void
     const mediaId = String(formData.get("mediaId") ?? "");
     if (!productId || !mediaId) return;
 
-    const db = createDb(env.HYPERDRIVE.connectionString);
+    const db = getRequestDb(env.HYPERDRIVE.connectionString);
     const { r2Key } = await deleteProductImage(db, { productId, mediaId });
     if (r2Key) {
         try {
@@ -168,7 +169,7 @@ export async function moveProductImageAction(formData: FormData): Promise<void> 
     const dir = String(formData.get("dir") ?? "") === "up" ? "up" : "down";
     if (!productId || !mediaId) return;
 
-    const db = createDb(env.HYPERDRIVE.connectionString);
+    const db = getRequestDb(env.HYPERDRIVE.connectionString);
     await moveProductImage(db, { productId, mediaId, dir });
     queueProductInvalidation({ ctx, db, productId });
 }
@@ -181,7 +182,7 @@ export async function saveSeoMetaAction(formData: FormData): Promise<void> {
     if (!productId) return;
     const noindex = formData.get("noindex") === "on";
 
-    const db = createDb(env.HYPERDRIVE.connectionString);
+    const db = getRequestDb(env.HYPERDRIVE.connectionString);
     await upsertSeoMeta(db, {
         entityType: "product",
         entityId: productId,
@@ -205,7 +206,7 @@ export async function assignCatalogAction(formData: FormData): Promise<void> {
     const categoryId = String(formData.get("categoryId") ?? "").trim() || null;
     const brandId = String(formData.get("brandId") ?? "").trim() || null;
 
-    const db = createDb(env.HYPERDRIVE.connectionString);
+    const db = getRequestDb(env.HYPERDRIVE.connectionString);
     // 旧归属必须在写之前读：UPDATE ... RETURNING 只给新行，写完就查不到旧类目/品牌了，
     // 而它们那一页里这件商品刚被摘掉，同样得失效。
     const [prev] = await db

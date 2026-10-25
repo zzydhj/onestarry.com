@@ -4,12 +4,12 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import {
     createAttributeDefinition,
-    createDb,
     deleteAttributeDefinition,
     updateAttributeDefinition,
     type AttributeDefInput,
 } from "@onestarry/db";
 import { requirePermission } from "@/lib/auth";
+import { getRequestDb } from "@/lib/db";
 import { PERMISSIONS } from "@onestarry/core";
 
 const DATA_TYPES = ["text", "number", "select", "multi_select", "boolean", "range"];
@@ -42,7 +42,7 @@ export async function createAttributeAction(fd: FormData): Promise<void> {
     const { env } = await requirePermission(PERMISSIONS.configWrite);
     const input = parseInput(fd);
     if (!input.slug || !input.name) return;
-    const db = createDb(env.HYPERDRIVE.connectionString);
+    const db = getRequestDb(env.HYPERDRIVE.connectionString);
     const res = await createAttributeDefinition(db, input);
     if (!res.ok) redirect("/attributes?error=duplicate");
     revalidatePath("/attributes");
@@ -55,7 +55,7 @@ export async function updateAttributeAction(fd: FormData): Promise<void> {
     if (!id) return;
     const input = parseInput(fd);
     if (!input.name) return;
-    const db = createDb(env.HYPERDRIVE.connectionString);
+    const db = getRequestDb(env.HYPERDRIVE.connectionString);
     await updateAttributeDefinition(db, { id, ...input });
     revalidatePath("/attributes");
 }
@@ -65,7 +65,7 @@ export async function deleteAttributeAction(fd: FormData): Promise<void> {
     const { env } = await requirePermission(PERMISSIONS.configWrite);
     const id = String(fd.get("id") ?? "");
     if (!id) return;
-    const db = createDb(env.HYPERDRIVE.connectionString);
+    const db = getRequestDb(env.HYPERDRIVE.connectionString);
     await deleteAttributeDefinition(db, id);
     revalidatePath("/attributes");
 }

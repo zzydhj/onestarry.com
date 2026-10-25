@@ -1,6 +1,7 @@
-import Link from "next/link";
+import { PrefetchLink } from "@/components/PrefetchLink";
 import { PERMISSIONS } from "@onestarry/core";
-import { createDb, listContent } from "@onestarry/db";
+import { listContent } from "@onestarry/db";
+import { getRequestDb } from "@/lib/db";
 import { requirePermission } from "@/lib/auth";
 import { Button, Input, Select, TableFrame, THead, Th, Tr, Td } from "@onestarry/ui";
 import { createContentAction } from "./actions";
@@ -13,7 +14,7 @@ const STATUS_LABELS: Record<string, string> = { draft: "草稿", published: "已
 /** 内容管理列表（受保护）：列全部内容 + 新建（选类型 + 标题）。需 seoWrite。 */
 export default async function ContentListPage() {
     const { env } = await requirePermission(PERMISSIONS.seoWrite);
-    const db = createDb(env.HYPERDRIVE.connectionString);
+    const db = getRequestDb(env.HYPERDRIVE.connectionString);
     const items = await listContent(db);
 
     return (
@@ -53,9 +54,9 @@ export default async function ContentListPage() {
                             {items.map((it) => (
                                 <Tr key={it.id}>
                                     <Td>
-                                        <Link href={`/content/${it.id}`} prefetch={false} className="text-brand transition hover:text-accent">
+                                        <PrefetchLink href={`/content/${it.id}`} className="text-brand transition hover:text-accent">
                                             {it.title ?? "（无标题）"}
-                                        </Link>
+                                        </PrefetchLink>
                                     </Td>
                                     <Td>{TYPE_LABELS[it.type] ?? it.type}</Td>
                                     <Td>{STATUS_LABELS[it.status] ?? it.status}</Td>

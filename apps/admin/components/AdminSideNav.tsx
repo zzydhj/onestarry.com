@@ -1,11 +1,11 @@
 "use client";
 
-import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { makeAuthClient } from "@onestarry/auth/client";
 import { SITE_NAME } from "@onestarry/core";
 import type { MaintenanceAlert, PermissionKey } from "@onestarry/core";
+import { PrefetchLink } from "./PrefetchLink";
 
 const authClient = makeAuthClient();
 
@@ -87,9 +87,12 @@ function isActive(pathname: string, href: string): boolean {
  * 后台左侧导航（ERP 式：分组 + 可折叠 + 二级入口）。
  *
  * 三条硬约束，改这里前先读：
- * 1. **一律 `prefetch={false}`**：后台整棵树是 force-dynamic，Next 的"进视口就预取"会把所有入口
- *    各真渲染一遍（每个 = 查会话 + 查权限 + 查数据），实测一次加载打出 36–45 个请求，
- *    把 Worker 与数据库连接池挤干、主文档 TTFB 拖到 2.8–4.9s。悬停仍会预取，体感不变差。
+ * 1. **一律 `prefetch={false}`，预取改由 {@link PrefetchLink} 在悬停时做**：后台整棵树是 force-dynamic，
+ *    Next 的“进视口就预取”会把所有入口各真渲染一遍（每个 = 查会话 + 查权限 + 查数据），
+ *    实测一次加载打出 36–45 个请求，把 Worker 与数据库连接池挤干、主文档 TTFB 拖到 2.8–4.9s。
+ *    ⚠ 本处原先写着“悬停仍会预取，体感不变差”—— 2026-10-25 实测**不成立**：App Router 没有内置
+ *    悬停预取（悬停 2.5 秒不发任何请求），于是每次点击都要现场等一次渲染（2.4–3.4s）。
+ *    现在由 components/PrefetchLink.tsx 真的补上：停留满 150ms 才取、只取鼠标停住的那一个。
  * 2. 隐藏入口只是体验优化，真正的强制在各页 `requirePermission` 与 Server Action 里。
  * 3. 折叠偏好写 localStorage，**首屏必须与服务端渲染一致**（默认全展开，挂载后再应用偏好）——
  *    否则 React 会因 hydration 不匹配整棵导航重挂，出现"点一下闪一下"。
@@ -135,9 +138,9 @@ export function AdminSideNav({ permissions = [], alert = null }: { permissions?:
     const nav = (
         <nav className="flex h-full flex-col gap-1 overflow-y-auto px-3 py-4">
             <div className="px-2 pb-3">
-                <Link href="/" className="block text-base font-semibold tracking-tight text-brand" prefetch={false}>
+                <PrefetchLink href="/" className="block text-base font-semibold tracking-tight text-brand">
                     {SITE_NAME}
-                </Link>
+                </PrefetchLink>
                 <span className="text-xs text-muted">管理后台</span>
             </div>
 
@@ -161,9 +164,8 @@ export function AdminSideNav({ permissions = [], alert = null }: { permissions?:
                                     const active = isActive(pathname, i.href);
                                     return (
                                         <li key={i.href}>
-                                            <Link
+                                            <PrefetchLink
                                                 href={i.href}
-                                                prefetch={false}
                                                 onClick={() => setDrawerOpen(false)}
                                                 className={`block rounded-lg px-2 py-1.5 text-sm transition ${active ? "bg-slate-100 font-medium text-brand" : "text-muted hover:bg-slate-50 hover:text-brand"}`}
                                             >
@@ -175,7 +177,7 @@ export function AdminSideNav({ permissions = [], alert = null }: { permissions?:
                                                         className={`ml-1 inline-block h-1.5 w-1.5 rounded-full align-middle ${alert.level === "expired" ? "bg-red-500" : "bg-amber-500"}`}
                                                     />
                                                 ) : null}
-                                            </Link>
+                                            </PrefetchLink>
                                         </li>
                                     );
                                 })}
@@ -186,13 +188,12 @@ export function AdminSideNav({ permissions = [], alert = null }: { permissions?:
             })}
 
             {alert ? (
-                <Link
+                <PrefetchLink
                     href="/status"
-                    prefetch={false}
                     className={`mt-2 rounded-lg border px-2 py-1.5 text-xs font-medium leading-snug ${alert.level === "expired" ? "border-red-200 bg-red-50 text-red-800" : "border-amber-200 bg-amber-50 text-amber-800"}`}
                 >
                     {alert.text}
-                </Link>
+                </PrefetchLink>
             ) : null}
 
             <div className="mt-auto pt-4">
@@ -210,9 +211,9 @@ export function AdminSideNav({ permissions = [], alert = null }: { permissions?:
 
             {/* 移动：顶栏 + 抽屉 */}
             <header className="sticky top-0 z-40 flex items-center justify-between border-b border-line bg-white px-4 py-3 md:hidden">
-                <Link href="/" className="font-semibold tracking-tight text-brand" prefetch={false}>
+                <PrefetchLink href="/" className="font-semibold tracking-tight text-brand">
                     {SITE_NAME} · 后台
-                </Link>
+                </PrefetchLink>
                 <button
                     type="button"
                     onClick={() => setDrawerOpen((v) => !v)}

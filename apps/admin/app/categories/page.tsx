@@ -1,4 +1,5 @@
-import { createDb, listAllCategories, mapCurrentSlugsByEntity } from "@onestarry/db";
+import { listAllCategories, mapCurrentSlugsByEntity } from "@onestarry/db";
+import { getRequestDb } from "@/lib/db";
 import { PERMISSIONS } from "@onestarry/core";
 import { requirePermission } from "@/lib/auth";
 import { CategoryManager } from "./CategoryManager";
@@ -11,7 +12,7 @@ export const dynamic = "force-dynamic";
  */
 export default async function CategoriesPage() {
     const { env } = await requirePermission(PERMISSIONS.categoryWrite);
-    const db = createDb(env.HYPERDRIVE.connectionString);
+    const db = getRequestDb(env.HYPERDRIVE.connectionString);
     const cats = await listAllCategories(db);
     // 一次查回全部当前 slug（旧写法是逐条 getEntitySlug，N 个类目 = N 次跨洋往返）
     const slugById = await mapCurrentSlugsByEntity(db, "category");

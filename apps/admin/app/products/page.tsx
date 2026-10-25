@@ -1,6 +1,7 @@
-import Link from "next/link";
+import { PrefetchLink } from "@/components/PrefetchLink";
 import { and, desc, eq } from "drizzle-orm";
-import { createDb, products, productTranslations } from "@onestarry/db";
+import { products, productTranslations } from "@onestarry/db";
+import { getRequestDb } from "@/lib/db";
 import { PERMISSIONS } from "@onestarry/core";
 import { requirePermission } from "@/lib/auth";
 import { buttonVariants, TableFrame, THead, Th, Tr, Td } from "@onestarry/ui";
@@ -10,7 +11,7 @@ export const dynamic = "force-dynamic";
 /** 后台商品列表（受保护）：未登录跳登录页；读全部商品（跨市场/状态）。 */
 export default async function AdminProducts() {
     const { env } = await requirePermission(PERMISSIONS.productWrite);
-    const db = createDb(env.HYPERDRIVE.connectionString);
+    const db = getRequestDb(env.HYPERDRIVE.connectionString);
     const rows = await db
         .select({
             id: products.id,
@@ -30,8 +31,8 @@ export default async function AdminProducts() {
             <div className="flex items-center justify-between">
                 <h1 className="text-2xl font-semibold tracking-tight">商品 <span className="text-sm font-normal text-muted">（{rows.length}）</span></h1>
                 <div className="flex gap-2">
-                    <Link href="/products/new" prefetch={false} className={buttonVariants()}>＋ 新建商品</Link>
-                    <Link href="/products/import" prefetch={false} className={buttonVariants({ variant: "secondary" })}>⇪ 批量导入</Link>
+                    <PrefetchLink href="/products/new" className={buttonVariants()}>＋ 新建商品</PrefetchLink>
+                    <PrefetchLink href="/products/import" className={buttonVariants({ variant: "secondary" })}>⇪ 批量导入</PrefetchLink>
                 </div>
             </div>
             <TableFrame className="mt-6">
@@ -47,9 +48,9 @@ export default async function AdminProducts() {
                         {rows.map((r) => (
                             <Tr key={r.id}>
                                 <Td>
-                                    <Link href={`/products/${r.id}`} prefetch={false} className="text-accent hover:underline">
+                                    <PrefetchLink href={`/products/${r.id}`} className="text-accent hover:underline">
                                         {r.title ?? <em className="text-red-600">（缺英文文案）</em>}
-                                    </Link>
+                                    </PrefetchLink>
                                 </Td>
                                 <Td>{r.status}</Td>
                                 <Td className="font-mono text-xs text-muted">{r.id}</Td>

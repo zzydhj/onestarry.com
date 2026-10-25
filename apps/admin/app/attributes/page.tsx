@@ -1,4 +1,5 @@
-import { createDb, listAttributeDefinitions } from "@onestarry/db";
+import { listAttributeDefinitions } from "@onestarry/db";
+import { getRequestDb } from "@/lib/db";
 import { PERMISSIONS } from "@onestarry/core";
 import { requirePermission } from "@/lib/auth";
 import { Button, Card, Input, Label, Select } from "@onestarry/ui";
@@ -22,7 +23,7 @@ const checkCls = "h-4 w-4 accent-accent";
 export default async function AttributesPage({ searchParams }: { searchParams: Promise<{ error?: string }> }) {
     const { env } = await requirePermission(PERMISSIONS.configWrite);
     const { error } = await searchParams;
-    const db = createDb(env.HYPERDRIVE.connectionString);
+    const db = getRequestDb(env.HYPERDRIVE.connectionString);
     const attrs = await listAttributeDefinitions(db);
 
     return (

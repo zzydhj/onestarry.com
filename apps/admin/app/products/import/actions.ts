@@ -1,7 +1,8 @@
 "use server";
 
 import { acceptedImageType, csvToObjects, PERMISSIONS } from "@onestarry/core";
-import { createDb, attachProductImage, upsertProductFromRow, type ImportRowInput } from "@onestarry/db";
+import { attachProductImage, upsertProductFromRow, type ImportRowInput } from "@onestarry/db";
+import { getRequestDb } from "@/lib/db";
 import { runRelayBatch, relayHandlers } from "@onestarry/jobs";
 import { requirePermission } from "@/lib/auth";
 import { isUuid } from "@/lib/ids";
@@ -42,7 +43,7 @@ async function importImage(env: CloudflareEnv, productId: string, url: string): 
         await env.MEDIA.put(key, bytes, {
             httpMetadata: { contentType: img.contentType, cacheControl: "public, max-age=31536000, immutable" },
         });
-        await attachProductImage(createDb(env.HYPERDRIVE.connectionString), {
+        await attachProductImage(getRequestDb(env.HYPERDRIVE.connectionString), {
             productId,
             r2Key: key,
             mimeType: img.contentType,
@@ -84,7 +85,7 @@ export async function importProductsAction(formData: FormData): Promise<ImportSu
         return summary;
     }
 
-    const db = createDb(env.HYPERDRIVE.connectionString);
+    const db = getRequestDb(env.HYPERDRIVE.connectionString);
     for (const o of objs) {
         const sku = (o.sku || "").trim();
         if (!sku) {
@@ -139,7 +140,7 @@ export async function importFromUrlAction(url: string): Promise<{ ok: boolean; p
     const r = await fetchProductFromUrl(clean);
     if (!r.draft) return { ok: false, error: r.error ?? "抓取失败" };
     const d = r.draft;
-    const db = createDb(env.HYPERDRIVE.connectionString);
+    const db = getRequestDb(env.HYPERDRIVE.connectionString);
     const sku = d.sku?.trim() || `IMP-${Date.now().toString(36).toUpperCase()}`;
     const res = await db.transaction(async (tx) =>
         upsertProductFromRow(tx, {

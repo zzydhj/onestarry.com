@@ -2,7 +2,8 @@
 
 import { revalidatePath } from "next/cache";
 import { PERMISSIONS } from "@onestarry/core";
-import { createDb, createMarket } from "@onestarry/db";
+import { createMarket } from "@onestarry/db";
+import { getRequestDb } from "@/lib/db";
 import { requirePermission } from "@/lib/auth";
 
 export type MarketCreateResult = { ok: true } | { ok: false; error: string };
@@ -26,7 +27,7 @@ export async function createMarketAction(formData: FormData): Promise<MarketCrea
 
     if (!code || !name || !currency || !legalEntityId) return { ok: false, error: "code / 名称 / 币种 / 法人 都必填" };
 
-    const db = createDb(env.HYPERDRIVE.connectionString);
+    const db = getRequestDb(env.HYPERDRIVE.connectionString);
     try {
         await createMarket(db, { code, name, currency, legalEntityId, pricingMode, dutyPresentation });
     } catch (e) {

@@ -2,7 +2,8 @@
 
 import { redirect } from "next/navigation";
 import { PERMISSIONS } from "@onestarry/core";
-import { createDb, createProductWithVariant } from "@onestarry/db";
+import { createProductWithVariant } from "@onestarry/db";
+import { getRequestDb } from "@/lib/db";
 import { runRelayBatch, relayHandlers } from "@onestarry/jobs";
 import { requirePermission } from "@/lib/auth";
 
@@ -33,7 +34,7 @@ export async function createProductAction(formData: FormData): Promise<void> {
 
     let target = "/products/new?error=invalid";
     if (sku && title && slug && Number.isFinite(cents) && cents >= 0) {
-        const db = createDb(env.HYPERDRIVE.connectionString);
+        const db = getRequestDb(env.HYPERDRIVE.connectionString);
         try {
             const res = await db.transaction(async (tx) =>
                 createProductWithVariant(tx, {

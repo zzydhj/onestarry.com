@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { createDb, getOrderDetail } from "@onestarry/db";
+import { getOrderDetail } from "@onestarry/db";
+import { getRequestDb } from "@/lib/db";
 import { PERMISSIONS } from "@onestarry/core";
 import { requirePermission } from "@/lib/auth";
 import { TableFrame, THead, Th, Tr, Td } from "@onestarry/ui";
@@ -17,7 +18,7 @@ export default async function AdminOrderDetail({ params }: { params: Promise<{ i
     const { id } = await params;
     const { env } = await requirePermission(PERMISSIONS.orderWrite);
 
-    const db = createDb(env.HYPERDRIVE.connectionString);
+    const db = getRequestDb(env.HYPERDRIVE.connectionString);
     const detail = await getOrderDetail(db, id);
     if (!detail) notFound();
     const { order, items, lines, shipment } = detail;

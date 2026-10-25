@@ -1,4 +1,5 @@
-import { createDb, listLegalEntities, listMarkets } from "@onestarry/db";
+import { listLegalEntities, listMarkets } from "@onestarry/db";
+import { getRequestDb } from "@/lib/db";
 import { PERMISSIONS } from "@onestarry/core";
 import { requirePermission } from "@/lib/auth";
 import { MarketsPanel } from "./MarketsPanel";
@@ -11,7 +12,7 @@ export const dynamic = "force-dynamic";
  */
 export default async function MarketsPage() {
     const { env } = await requirePermission(PERMISSIONS.marketWrite);
-    const db = createDb(env.HYPERDRIVE.connectionString);
+    const db = getRequestDb(env.HYPERDRIVE.connectionString);
     // 写成一排 Promise.all 只是把"互不依赖"说明白：max:1 连接上它们仍然串行，
     // 并不省时间（探针⑥）；要真省往返得改单条 SQL 聚合，或开 Hyperdrive 缓存。
     const [markets, entities] = await Promise.all([listMarkets(db), listLegalEntities(db)]);

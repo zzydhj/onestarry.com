@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { PERMISSIONS, computeMaintenanceWindow, readIsrHealthReport } from "@onestarry/core";
-import { createDb, getOutboxHealth } from "@onestarry/db";
+import { getOutboxHealth } from "@onestarry/db";
+import { getRequestDb } from "@/lib/db";
 import { requireAdmin } from "@/lib/auth";
 import { OpsPanel } from "@/components/OpsPanel";
 
@@ -14,7 +15,7 @@ export default async function AdminHome() {
     // outbox 走 Neon、isr 走 R2：两个不同后端，并行拿掉一段串行等待（同一后端并行无收益，见 docs/PERF.md）。
     const opsData = permissions.has(PERMISSIONS.configWrite)
         ? await Promise.all([
-            getOutboxHealth(createDb(env.HYPERDRIVE.connectionString)),
+            getOutboxHealth(getRequestDb(env.HYPERDRIVE.connectionString)),
             readIsrHealthReport((key) => env.ISR_CACHE.get(key)),
         ])
         : null;

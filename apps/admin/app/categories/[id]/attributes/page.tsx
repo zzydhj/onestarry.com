@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { createDb, getCategoryAttributes, getCategoryById, listAttributeDefinitions } from "@onestarry/db";
+import { getCategoryAttributes, getCategoryById, listAttributeDefinitions } from "@onestarry/db";
+import { getRequestDb } from "@/lib/db";
 import { PERMISSIONS } from "@onestarry/core";
 import { requirePermission } from "@/lib/auth";
 import { Button, Select } from "@onestarry/ui";
@@ -12,7 +13,7 @@ export const dynamic = "force-dynamic";
 export default async function CategoryAttributesPage({ params }: { params: Promise<{ id: string }> }) {
     const { id } = await params;
     const { env } = await requirePermission(PERMISSIONS.categoryWrite);
-    const db = createDb(env.HYPERDRIVE.connectionString);
+    const db = getRequestDb(env.HYPERDRIVE.connectionString);
     const cat = await getCategoryById(db, id);
     if (!cat) notFound();
     const attached = await getCategoryAttributes(db, id);

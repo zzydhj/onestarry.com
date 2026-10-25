@@ -1,5 +1,6 @@
-import Link from "next/link";
-import { createDb, listRecentOrders } from "@onestarry/db";
+import { PrefetchLink } from "@/components/PrefetchLink";
+import { listRecentOrders } from "@onestarry/db";
+import { getRequestDb } from "@/lib/db";
 import { PERMISSIONS } from "@onestarry/core";
 import { requirePermission } from "@/lib/auth";
 import { TableFrame, THead, Th, Tr, Td } from "@onestarry/ui";
@@ -13,7 +14,7 @@ function money(cents: number, cur: string): string {
 /** 后台订单列表（受保护）：最近订单，点进详情。 */
 export default async function AdminOrders() {
     const { env } = await requirePermission(PERMISSIONS.orderWrite);
-    const db = createDb(env.HYPERDRIVE.connectionString);
+    const db = getRequestDb(env.HYPERDRIVE.connectionString);
     const rows = await listRecentOrders(db, 200);
 
     return (
@@ -37,9 +38,9 @@ export default async function AdminOrders() {
                         {rows.map((o) => (
                             <Tr key={o.id} className="hover:bg-surface">
                                 <Td className="font-mono text-xs">
-                                    <Link href={`/orders/${o.id}`} prefetch={false} className="text-accent hover:underline">
+                                    <PrefetchLink href={`/orders/${o.id}`} className="text-accent hover:underline">
                                         {o.orderNumber}
-                                    </Link>
+                                    </PrefetchLink>
                                 </Td>
                                 <Td>{o.email}</Td>
                                 <Td>{money(o.totalCents, o.currency)}</Td>

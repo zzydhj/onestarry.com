@@ -2,7 +2,8 @@
 
 import { revalidatePath } from "next/cache";
 import { PERMISSIONS } from "@onestarry/core";
-import { createDb, recordShipment } from "@onestarry/db";
+import { recordShipment } from "@onestarry/db";
+import { getRequestDb } from "@/lib/db";
 import { requirePermission } from "@/lib/auth";
 
 /**
@@ -18,7 +19,7 @@ export async function markShippedAction(formData: FormData): Promise<{ ok: boole
     const carrier = String(formData.get("carrier") ?? "").trim() || undefined;
     const trackingNumber = String(formData.get("trackingNumber") ?? "").trim() || undefined;
 
-    const db = createDb(env.HYPERDRIVE.connectionString);
+    const db = getRequestDb(env.HYPERDRIVE.connectionString);
     try {
         await db.transaction(async (tx) => {
             await recordShipment(tx, { orderId, carrier, trackingNumber });

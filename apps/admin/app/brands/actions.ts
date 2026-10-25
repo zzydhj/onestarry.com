@@ -1,6 +1,7 @@
 "use server";
 
-import { createBrand, createDb, updateBrand } from "@onestarry/db";
+import { createBrand, updateBrand } from "@onestarry/db";
+import { getRequestDb } from "@/lib/db";
 import { PERMISSIONS } from "@onestarry/core";
 import { requirePermission } from "@/lib/auth";
 import { queueEntityPageInvalidation } from "@/lib/invalidate";
@@ -11,7 +12,7 @@ export async function createBrandAction(formData: FormData): Promise<void> {
     const name = String(formData.get("name") ?? "").trim();
     const slug = String(formData.get("slug") ?? "").trim() || undefined;
     if (!name) return;
-    const db = createDb(env.HYPERDRIVE.connectionString);
+    const db = getRequestDb(env.HYPERDRIVE.connectionString);
     const created = await createBrand(db, { name, slug });
     queueEntityPageInvalidation({ ctx, db, kind: "brand", entityId: created.id, slug: created.slug });
 }
@@ -23,7 +24,7 @@ export async function updateBrandAction(formData: FormData): Promise<void> {
     const name = String(formData.get("name") ?? "").trim();
     const slug = String(formData.get("slug") ?? "").trim() || undefined;
     if (!id || !name) return;
-    const db = createDb(env.HYPERDRIVE.connectionString);
+    const db = getRequestDb(env.HYPERDRIVE.connectionString);
     const newSlug = await updateBrand(db, { id, name, slug });
     // 没改 slug 时 updateBrand 返回 null，helper 会自己现查当前 slug：名称变了，那一页也得重渲染
     queueEntityPageInvalidation({ ctx, db, kind: "brand", entityId: id, slug: newSlug });

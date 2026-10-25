@@ -1,7 +1,8 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { createDb, removeCategoryAttribute, setCategoryAttribute } from "@onestarry/db";
+import { removeCategoryAttribute, setCategoryAttribute } from "@onestarry/db";
+import { getRequestDb } from "@/lib/db";
 import { PERMISSIONS } from "@onestarry/core";
 import { requirePermission } from "@/lib/auth";
 
@@ -11,7 +12,7 @@ export async function attachCategoryAttributeAction(formData: FormData): Promise
     const categoryId = String(formData.get("categoryId") ?? "");
     const attributeId = String(formData.get("attributeId") ?? "");
     if (!categoryId || !attributeId) return;
-    const db = createDb(env.HYPERDRIVE.connectionString);
+    const db = getRequestDb(env.HYPERDRIVE.connectionString);
     await setCategoryAttribute(db, { categoryId, attributeId });
     revalidatePath(`/categories/${categoryId}/attributes`);
 }
@@ -22,7 +23,7 @@ export async function removeCategoryAttributeAction(formData: FormData): Promise
     const categoryId = String(formData.get("categoryId") ?? "");
     const attributeId = String(formData.get("attributeId") ?? "");
     if (!categoryId || !attributeId) return;
-    const db = createDb(env.HYPERDRIVE.connectionString);
+    const db = getRequestDb(env.HYPERDRIVE.connectionString);
     await removeCategoryAttribute(db, { categoryId, attributeId });
     revalidatePath(`/categories/${categoryId}/attributes`);
 }

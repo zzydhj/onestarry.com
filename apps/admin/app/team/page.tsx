@@ -1,5 +1,6 @@
 import { PERMISSIONS } from "@onestarry/core";
-import { createDb, listAdminMembers } from "@onestarry/db";
+import { listAdminMembers } from "@onestarry/db";
+import { getRequestDb } from "@/lib/db";
 import { requirePermission } from "@/lib/auth";
 import { Button } from "@onestarry/ui";
 import { assignRoleAction, createStaffAction, revokeRoleAction } from "./actions";
@@ -15,7 +16,7 @@ const ROLE_LABELS: Record<string, string> = {
 /** 团队管理（super_admin 专属，需 role:manage）：新建员工 + 分配/移除后台角色。 */
 export default async function TeamPage() {
     const { env } = await requirePermission(PERMISSIONS.roleManage);
-    const db = createDb(env.HYPERDRIVE.connectionString);
+    const db = getRequestDb(env.HYPERDRIVE.connectionString);
     const members = await listAdminMembers(db);
 
     return (

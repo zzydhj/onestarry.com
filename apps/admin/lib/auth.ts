@@ -3,7 +3,8 @@ import { redirect } from "next/navigation";
 import { cache } from "react";
 import { getCloudflareContext } from "@opennextjs/cloudflare";
 import { createAdminAuth } from "@onestarry/auth";
-import { createDb, getPrincipalPermissions } from "@onestarry/db";
+import { getPrincipalPermissions } from "@onestarry/db";
+import { getRequestDb } from "./db";
 import type { PermissionKey } from "@onestarry/core";
 
 /**
@@ -15,18 +16,24 @@ import type { PermissionKey } from "@onestarry/core";
  * 主库在 US-East、边缘在 HK，每次往返 ~150–190ms，双份白付 0.6–1.1s。
  * `cache()` 的键是函数参数（此处无参）→ 同一请求内只跑一次，不跨请求缓存，
  * 所以权限变更仍是即时生效（区别于带 TTL 的 isolate 缓存）。详见 docs/PERF.md。
+ *
+ * ⏱ 连接也只一条：本函数与 better-auth、页面/Action 共用 `getRequestDb` 的结果。
+ * 原先三处各自 `createDb` → 一次渲染 3 条新连接，而每条连接要 4–6 次跨洋往返（握手），
+ * 实测就是后台“每次点击 2.4 秒”的主因（取证与算法见 lib/db.ts 顶部注释）。
  */
 async function loadAdminSession() {
     const { env, ctx } = getCloudflareContext();
     const h = await headers();
+    // 客户端是惰建连的：无 cookie 时 getSession 直接返回 null，一次查询也不发，未登录仍然很快。
+    const db = getRequestDb(env.HYPERDRIVE.connectionString);
     const auth = createAdminAuth({
         connString: env.HYPERDRIVE.connectionString,
+        db,
         baseURL: `https://${h.get("host") ?? "localhost"}`,
         secret: env.BETTER_AUTH_SECRET,
     });
     const session = await auth.api.getSession({ headers: h });
     if (!session?.user) return null;
-    const db = createDb(env.HYPERDRIVE.connectionString);
     const permissions = await getPrincipalPermissions(db, session.user.id);
     return { env, ctx, userId: session.user.id, permissions };
 }

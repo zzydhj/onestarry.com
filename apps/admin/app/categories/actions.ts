@@ -1,6 +1,7 @@
 "use server";
 
-import { createDb, createCategory, updateCategory } from "@onestarry/db";
+import { createCategory, updateCategory } from "@onestarry/db";
+import { getRequestDb } from "@/lib/db";
 import { PERMISSIONS } from "@onestarry/core";
 import { requirePermission } from "@/lib/auth";
 import { queueEntityPageInvalidation } from "@/lib/invalidate";
@@ -24,7 +25,7 @@ export async function createCategoryAction(formData: FormData): Promise<Category
     const slug = String(formData.get("slug") ?? "").trim() || undefined;
     const parentId = String(formData.get("parentId") ?? "").trim() || null;
     if (!name) return { ok: false, error: "名称不能为空" };
-    const db = createDb(env.HYPERDRIVE.connectionString);
+    const db = getRequestDb(env.HYPERDRIVE.connectionString);
     let finalSlug: string;
     let createdId: string;
     try {
@@ -45,7 +46,7 @@ export async function updateCategoryAction(formData: FormData): Promise<Category
     const slug = String(formData.get("slug") ?? "").trim() || undefined;
     if (!id) return { ok: false, error: "缺少类目 id" };
     if (!name) return { ok: false, error: "名称不能为空" };
-    const db = createDb(env.HYPERDRIVE.connectionString);
+    const db = getRequestDb(env.HYPERDRIVE.connectionString);
     let finalSlug: string | null;
     try {
         finalSlug = await updateCategory(db, { id, name, slug });

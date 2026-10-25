@@ -1,5 +1,6 @@
 import Link from "next/link";
-import { createDb, getLegalDoc, LEGAL_DOC_TYPES } from "@onestarry/db";
+import { getLegalDoc, LEGAL_DOC_TYPES } from "@onestarry/db";
+import { getRequestDb } from "@/lib/db";
 import { PERMISSIONS } from "@onestarry/core";
 import { requirePermission } from "@/lib/auth";
 import { Button } from "@onestarry/ui";
@@ -17,7 +18,7 @@ const LABELS: Record<string, string> = {
 /** 法律文档编辑（受保护）：四类文档各一表单，正文纯文本、空行分段。 */
 export default async function LegalPage() {
     const { env } = await requirePermission(PERMISSIONS.seoWrite);
-    const db = createDb(env.HYPERDRIVE.connectionString);
+    const db = getRequestDb(env.HYPERDRIVE.connectionString);
     const docs = await Promise.all(
         LEGAL_DOC_TYPES.map(async (t) => ({ type: t, doc: await getLegalDoc(db, { type: t, locale: "en" }) })),
     );

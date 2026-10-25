@@ -1,17 +1,27 @@
 import { betterAuth } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
-import { createDb, customerAuthSchema, adminAuthSchema } from "@onestarry/db";
+import { createDb, customerAuthSchema, adminAuthSchema, type Db } from "@onestarry/db";
 import { SITE_NAME } from "@onestarry/core";
 
 /**
  * Better Auth 双实例工厂（Workers 友好）。
- * Workers 无常驻模块级 db：每次请求用 env.HYPERDRIVE.connectionString 构造实例。
+ * Workers 无常驻模块级 db：每次请求构造实例（不跳请求复用，原因见 packages/db/src/client.ts）。
  * customer 与 admin 为两套隔离实例（独立表前缀 + 独立 cookie 域/名称）。
  */
 export interface AuthEnvConfig {
-    connString: string; // env.HYPERDRIVE.connectionString
+    connString: string; // env.HYPERDRIVE.connectionString（未注入 db 时才用它建客户端）
     baseURL: string; // 站点 origin
     secret: string; // BETTER_AUTH_SECRET
+    /**
+     * 可选：注入已经建好的客户端。
+     *
+     * 为什么需要：一次后台页面渲染原先要建 **3 条**数据库连接（这里一条 + 守卫查权限一条
+     * + 页面自己一条），而一条新 postgres 连接是 4–6 次跨洋往返（TCP/TLS/SCRAM/参数协商），
+     * 实测占掉 1.8–2.2 秒（取证见 docs/PERF.md §2 第⑩行与 apps/admin/lib/db.ts 顶部）。
+     * 调用方传 `getRequestDb(...)` 的结果进来，同一次请求就只有一连接。
+     * 不传则保持旧行为（自带一条），所以现有调用点不会因本参数而改变。
+     */
+    db?: Db;
 }
 
 /**
@@ -49,8 +59,8 @@ const ADVANCED = {
     ipAddress: { ipAddressHeaders: ["cf-connecting-ip", "x-forwarded-for"] },
 };
 
-export function createCustomerAuth({ connString, baseURL, secret }: AuthEnvConfig) {
-    const db = createDb(connString);
+export function createCustomerAuth({ connString, baseURL, secret, db: injected }: AuthEnvConfig) {
+    const db = injected ?? createDb(connString);
     return betterAuth({
         // appName 会出现在重置密码邮件等对外文案里 → 跟着品牌走，不写字面量
         appName: SITE_NAME,
@@ -63,8 +73,8 @@ export function createCustomerAuth({ connString, baseURL, secret }: AuthEnvConfi
     });
 }
 
-export function createAdminAuth({ connString, baseURL, secret }: AuthEnvConfig) {
-    const db = createDb(connString);
+export function createAdminAuth({ connString, baseURL, secret, db: injected }: AuthEnvConfig) {
+    const db = injected ?? createDb(connString);
     return betterAuth({
         appName: `${SITE_NAME}-admin`,
         baseURL,

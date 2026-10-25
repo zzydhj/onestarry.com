@@ -36,12 +36,27 @@
 | ⑦ | 下单写路径 `createOrder`（事务内跑完 ROLLBACK） | **874ms**（旧 7 条串行 = 4386ms） | 合成单条 data-modifying CTE + 摘掉外层事务 |
 | ⑨ | 类目页取数：5 次串行 vs 1 条聚合 + 1 条列表（本地直连 Neon，`smoke:catalog-page` 逐字段对照） | **2256–4640ms → 999–1280ms**（聚合那一条单独 ~500ms） | 同上——只有合并有效；见 `queries/catalogPage.ts` |
 | ⑩ | 后台**商品详情**取数：8 次串行 vs 1 条聚合（本地直连 Neon，`smoke:admin-detail` 逐字段对照，5 个商品各 3 轮取中位） | 每商品 **4.4–5.3s → 0.53–0.65s**；5 商品合计 **23288ms → 2933ms（7.9x）** | 同一手法第二次生效，这次打在**后台**（用户报“从列表点进详情要 6 秒”）；绝对值含 CN→US 直连 RTT，不能当线上时长，结构收益是“往返 8→1”；见 `queries/adminProductDetail.ts` |
+| ⑪ | **线上**后台每次导航的 wall / cpu 拆解（`wrangler tail onestarry-admin --format json`，同一 script version） | `/api/health` wall 6–121ms / **cpu 5ms**；`/signin`（已登录，只鉴权）wall **1677–2017ms** / cpu 34ms；`/products`、`/orders`、`/categories` wall **2361–2930ms** / cpu **44–55ms** | **CPU 只有 50ms，其余全是 I/O 等待；而且复杂度完全不同的页面耗时几乎一样** → 这是每请求固定开销。来源是**连接握手次数**：一次渲染要建 3 条连接（better-auth 一条 + 守卫查权限一条 + 页面一条），每条新 postgres 连接是 4–6 次跨洋往返（TCP/TLS/SCRAM/参数协商）→ 白付 1.8–2.2s。只鉴权（2 条）1.8s、鉴权+页面（3 条）2.4s，数字自洽。修法见下面第 4 条规矩与 `apps/admin/lib/db.ts` |
 
-### 由此得出的三条硬规矩
+### 量这类东西时用过的工具（两个假结论都是工具给的）
+
+- ⚠ **curl 量不了“服务端多快”**：Windows curl 每次新建连接，`time_appconnect`（TLS）实测 **0.7–5.0 秒**，完全淹没 60–110ms 的服务端时间。
+  本节一度把“闲置后第一发 2808ms”当成冷 isolate，那是错的 —— 扣掉 TLS 后只剩 100ms 左右。要复用连接得在**同一次 curl 里传多个 URL**。
+- ⚠ **`workers.dev` 直连看起来“快 100 倍”是假快**：`onestarry-admin.zzydhj.workers.dev` 上 `/products` 只要 26ms，
+  但那是因为 cookie 按域名隔离、那一发**未登录**（直接跳 /signin，一次库都没查）。同一份代码、同一个 script version。
+  比两个入口之前先确认“会话真的带过去了”，否则会把“没干活”读成“干得快”。
+- ✅ **`wrangler tail --format json` 是拆 wall/cpu 的正确工具**：一条命令就能看到“2.4 秒里只有 50ms 是 CPU”，
+  直接把问题从“查询慢”翻到“连接多”。另外 better-auth 的登录端点用 curl 打会 **400**，得带 `origin` 头。
+- ✅ **软导航只能用浏览器量**（`performance` + `MutationObserver`）；curl 加 `?_rsc=` 拿不到 flight 载荷。
+
+### 由此得出的四条硬规矩
 
 1. **同一个 `db` 实例里的多条查询，别用 `Promise.all` 骗自己** —— `max:1` 会把它们排队。要提速就合成一条 SQL（`json_build_object` / `count(*) over ()` / 相关子查询）。
 2. **`Promise.all` 只在两个独立连接之间有效** —— 典型例子是结账 action：会话走 better-auth 自己的 client、市场查找走请求内 `db`，这是两个连接，并行确实省一个 RTT。判断标准是「这两次读是不是各自的 client」。
 3. **写路径优先合成单条语句** —— 一条语句天然原子，`db.transaction()` 在外层只是多加 `BEGIN`/`COMMIT` **两次跨洋往返**。幂等/金额口径要留在 SQL 的门控里（见 `queries/orders.ts` 的 CTE 写法）。
+4. **一次请求只建一条连接** —— 合并 SQL 只省“查询次数”，不省“握手次数”。后台原先每次渲染 3 条连接（better-auth / 守卫 / 页面各自 `createDb`），实测占 1.8–2.2s（上表 ⑪）。
+   现在统一走 `apps/admin/lib/db.ts` 的 `getRequestDb()`（React `cache()` 做请求级 memo）；`createAdminAuth`/`createCustomerAuth` 接受注入的 `db`。
+   ⚠ 这层**不能**下移到 `packages/db`：那里还被 node 脚本与 `packages/jobs`（长驻 isolate 的 cron Worker）使用，没有 React 请求边界时 `cache()` 会退化成**进程级**缓存，正好把“每请求新建 client”防的那个死连接问题（见 `client.ts` 注释）重新引入。
 
 ### postgres-js / drizzle 合并查询时会咬人的四处（都踩过）
 
