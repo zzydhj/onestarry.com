@@ -2,7 +2,7 @@ import { isPaypalOrderReusable } from "@onestarry/core";
 import { setOrderPaypalOrderId } from "@onestarry/db";
 import { getCloudflareContext } from "@opennextjs/cloudflare";
 import { resolveOrderAccess } from "@/lib/orderAccess";
-import { paypalCreateOrder, paypalShowOrder, readPaypalConfig } from "@/lib/paypal";
+import { paypalCreateOrder, paypalShowOrder, paypalWriteBlocked, readPaypalConfig } from "@/lib/paypal";
 
 export const dynamic = "force-dynamic";
 
@@ -40,6 +40,10 @@ export async function POST(req: Request): Promise<Response> {
     const { env } = getCloudflareContext();
     const cfg = readPaypalConfig(env);
     if (!cfg) return json({ error: "PAYPAL_NOT_CONFIGURED" }, { status: 503 });
+    // 沙箱凭据默认不许动生产账（要测就显式开 PAYPAL_ALLOW_SANDBOX）。在建单这一环就拦，
+    // 而不是等扣款那一步才报错：别让买家走完一整个 PayPal 弹窗才发现不能付。
+    const blocked = paypalWriteBlocked(cfg, env.PAYPAL_ALLOW_SANDBOX);
+    if (blocked) return json({ error: blocked }, { status: 503 });
 
     const access = await resolveOrderAccess(orderNumber, token);
     if (!access.ok) return json({ error: access.reason }, { status: access.status });

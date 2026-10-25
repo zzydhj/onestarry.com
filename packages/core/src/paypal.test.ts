@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import {
     buildPaypalOrderBody,
     extractPaypalCapture,
+    extractPaypalEventRefs,
     isPaypalCertUrl,
     isPaypalOrderReusable,
     mapPaypalWebhookEvent,
@@ -10,8 +11,10 @@ import {
     paypalApiBase,
     paypalCentsFromValue,
     paypalEnv,
+    paypalEventOutcome,
     paypalSdkRoot,
     paypalSdkUrl,
+    paypalSandboxBlocked,
     paypalVerifySignatureBody,
 } from "./paypal";
 
@@ -145,12 +148,14 @@ test("回调映射：capture 完成才算成功，单号来自 custom_id", () =>
     assert.equal(e.amountCents, 26680);
 });
 
-test("回调映射：未完成/被拒的事件 succeeded=false，且金额形状不合时不硬编", () => {
+test("回调映射：未完成/被拒的事件 succeeded=false 且归到 revoked", () => {
     const denied = mapPaypalWebhookEvent({
         id: "WH-1", event_type: "PAYMENT.CAPTURE.DENIED",
-        resource: { id: "C1", status: "DENIED", custom_id: "SO-A", amount: { currency_code: "USD", value: "12.00" } },
+        resource: { id: "826413372K501814R", status: "DECLINED", custom_id: "SO-A", amount: { currency_code: "USD", value: "12.00" } },
     });
     assert.equal(denied.succeeded, false);
+    assert.equal(denied.outcome, "revoked", "被拒必须归到 revoked：不处理就是「钱没到手但系统以为已付」");
+    assert.equal(denied.captureRef, "826413372K501814R", "capture 事件的 resource.id 就是收款号");
     assert.equal(denied.amountCents, 1200);
 
     const approved = mapPaypalWebhookEvent({
@@ -158,7 +163,73 @@ test("回调映射：未完成/被拒的事件 succeeded=false，且金额形状
         resource: { id: "5O190127TN364715T", status: "APPROVED", purchase_units: [{ custom_id: "SO-B" }] },
     });
     assert.equal(approved.succeeded, false, "APPROVED 只代表买家批准了，钱还没扣");
+    assert.equal(approved.outcome, "ignored");
     assert.equal(approved.orderNumber, "SO-B", "订单类事件的 custom_id 在 purchase_units 上");
+    assert.equal(approved.captureRef, null, "订单体的 id 是 PayPal 订单号，当 capture 递下去会永远查不到那笔钱");
+});
+
+test("事件分类：钱的正反方向靠事件名判，名字错一个字母就静默归入 ignored", () => {
+    assert.equal(paypalEventOutcome("PAYMENT.CAPTURE.COMPLETED", "COMPLETED"), "paid");
+    // COMPLETED 事件配非 COMPLETED 状态（重放/乱序）不能入账
+    assert.equal(paypalEventOutcome("PAYMENT.CAPTURE.COMPLETED", "PENDING"), "ignored");
+    assert.equal(paypalEventOutcome("PAYMENT.CAPTURE.DENIED", "DECLINED"), "revoked");
+    assert.equal(paypalEventOutcome("PAYMENT.CAPTURE.REVERSED", "REVERSED"), "revoked");
+    assert.equal(paypalEventOutcome("CHECKOUT.PAYMENT-APPROVAL.REVERSED", undefined), "revoked");
+    assert.equal(paypalEventOutcome("PAYMENT.CAPTURE.REFUNDED", "COMPLETED"), "refunded");
+    assert.equal(paypalEventOutcome("PAYMENT.CAPTURE.PARTIALLY_REFUNDED", "COMPLETED"), "refunded");
+    // PENDING / UNHELD / 争议类：钱还会动，本轮不动账
+    assert.equal(paypalEventOutcome("PAYMENT.CAPTURE.PENDING", "PENDING"), "ignored");
+    assert.equal(paypalEventOutcome("CUSTOMER.DISPUTE.CREATED", undefined), "ignored");
+    assert.equal(paypalEventOutcome("  payment.capture.denied ", undefined), "revoked", "大小写与空格不能影响判定");
+});
+
+test("关联提取：官方 DENIED 样本（related_ids 是对象 + links.up 指 orders）全部对上", () => {
+    const refs = extractPaypalEventRefs(
+        {
+            id: "826413372K501814R",
+            status: "DECLINED",
+            custom_id: "MERCHANT_CUSTOM_ID",
+            supplementary_data: { related_ids: { order_id: "5O190127TN364715T" } },
+            links: [
+                { rel: "self", href: "https://api-m.sandbox.paypal.com/v2/payments/captures/826413372K501814R" },
+                { rel: "refund", href: "https://api-m.sandbox.paypal.com/v2/payments/captures/826413372K501814R/refund" },
+                { rel: "up", href: "https://api-m.sandbox.paypal.com/v2/checkout/orders/5O190127TN364715T" },
+            ],
+        },
+        "PAYMENT.CAPTURE.DENIED",
+    );
+    assert.deepEqual(refs, { orderNumber: "MERCHANT_CUSTOM_ID", captureId: "826413372K501814R", paypalOrderId: "5O190127TN364715T" });
+});
+
+test("关联提取：退款事件的 resource 是退款体，靠 links.up 回溯原 capture（冲账就靠它）", () => {
+    const refs = extractPaypalEventRefs(
+        {
+            id: "1H730916DD7496419",
+            status: "COMPLETED",
+            amount: { currency_code: "USD", value: "30.00" },
+            links: [{ rel: "up", href: "https://api-m.paypal.com/v2/payments/captures/7X123456A1234567B" }],
+        },
+        "PAYMENT.CAPTURE.REFUNDED",
+    );
+    assert.equal(refs.captureId, "7X123456A1234567B", "拿不到 custom_id 时，capture id 就是唯一回溯依据");
+    assert.equal(refs.orderNumber, null, "没给就不造：给个错单号比给 null 贵得多");
+    assert.equal(refs.paypalOrderId, null, "up 指向 captures，不能被 /orders/ 正则误读");
+});
+
+test("关联提取：related_ids 是数组形状时也能拿到（只读对象会在退款路上丢关联）", () => {
+    const refs = extractPaypalEventRefs(
+        { id: "REF-9XY16098CD512345W", supplementary_data: { related_ids: ["CAP-99984968BB243503C", "REF-9XY16098CD512345W"] } },
+        "PAYMENT.CAPTURE.REFUNDED",
+    );
+    assert.equal(refs.captureId, "CAP-99984968BB243503C");
+});
+
+test("沙箱闸：缺省禁止拿沙箱凭据动账，live 永远放行", () => {
+    assert.equal(paypalSandboxBlocked("sandbox", undefined), true, "没显式开就不许动账（默认必须是‘不改账’）");
+    assert.equal(paypalSandboxBlocked("sandbox", ""), true);
+    assert.equal(paypalSandboxBlocked("sandbox", "0"), true, "写 0 不等于开");
+    assert.equal(paypalSandboxBlocked("sandbox", " 1 "), false, "显式开了就要生效（带空格是常见的 env 写法）");
+    assert.equal(paypalSandboxBlocked("live", undefined), false, "生产凭据不该被这个闸误伤");
 });
 
 test("回调信封不合就抛（没有 id / event_type 的东西不进账本）", () => {

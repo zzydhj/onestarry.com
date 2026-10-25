@@ -353,7 +353,10 @@ export const invoices = pgTable(
         buyer: jsonb("buyer"), // 抬头/地址快照
         pdfKey: text("pdf_key"), // R2
     },
-    (t) => [uniqueIndex("invoice_number_uq").on(t.invoiceNumber), index("invoice_order_idx").on(t.orderId)],
+    // 唯一性范围 = 发票号的法务语义范围：**出票人**。要求是「同一出票人连续且唯一」，
+    // 两个法人各自从 1 开始是合法的（EU 只管自己那一段）。旧定义是全表唯一：
+    // 单一法人时看不出来，一旦多法人（一站一收款主体）两个主体同时开 US-00000001 就直接撞约束。
+    (t) => [uniqueIndex("invoice_entity_number_uq").on(t.legalEntityId, t.invoiceNumber), index("invoice_order_idx").on(t.orderId)],
 );
 
 export const creditNotes = pgTable(
@@ -370,7 +373,8 @@ export const creditNotes = pgTable(
         reason: text("reason"),
         pdfKey: text("pdf_key"),
     },
-    (t) => [uniqueIndex("cn_number_uq").on(t.creditNoteNumber), index("cn_invoice_idx").on(t.invoiceId)],
+    // 同上：红字凭证也按出票人判重，不是全表。
+    (t) => [uniqueIndex("cn_entity_number_uq").on(t.legalEntityId, t.creditNoteNumber), index("cn_invoice_idx").on(t.invoiceId)],
 );
 
 /* ------------------------------ Relations ------------------------------ */

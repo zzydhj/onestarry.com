@@ -12,7 +12,7 @@
  * - `cert_url` 来自回调头，**不能直接信**：必须判它确实是 `*.paypal.com` 的 https 地址，
  *   否则攻击者可以递自己的证书让验签“成功”。
  */
-import type { NormalizedWebhookEvent } from "./payments";
+import type { NormalizedWebhookEvent, PaymentOutcome } from "./payments";
 
 export type PaypalEnv = "sandbox" | "live";
 
@@ -225,9 +225,127 @@ export function isPaypalCertUrl(raw: string | null | undefined): boolean {
     return host === "paypal.com" || host.endsWith(".paypal.com");
 }
 
-/** 我们关心的事件类型（其余照收进 webhook_events 但不落账）。 */
+/**
+ * capture 生命周期事件名（逐字照 developer.paypal.com「Webhook event names」）。
+ * 必须逐字对：错一个字母的代价不是「报错」，而是**静默地归到 ignored** ——
+ * 钱已被 PayPal 收回，我们系统里还显示已付、货照发。所以名字集中在这一处，不分散到路由里。
+ * （旧版本这里还写了 `PAYMENT.CAPTURE.FAILED`，官方列表里没这个名，已删 —— 宁缺不假编。）
+ */
 export const PAYPAL_CAPTURE_COMPLETED = "PAYMENT.CAPTURE.COMPLETED";
-export const PAYPAL_CAPTURE_REVERSED = new Set(["PAYMENT.CAPTURE.DENIED", "PAYMENT.CAPTURE.FAILED", "PAYMENT.CAPTURE.REVERSED"]);
+
+/** 钱从未到账，或已到账又被 PayPal 收回：订单必须回到未收钱的状态。 */
+const PAYPAL_REVOKED = new Set(["PAYMENT.CAPTURE.DENIED", "PAYMENT.CAPTURE.REVERSED", "CHECKOUT.PAYMENT-APPROVAL.REVERSED"]);
+/** 我方主动退款（含部分退）：钱已出账，需要红字凭证。 */
+const PAYPAL_REFUNDED = new Set(["PAYMENT.CAPTURE.REFUNDED", "PAYMENT.CAPTURE.PARTIALLY_REFUNDED"]);
+
+/**
+ * 事件类型 + 资金状态 → 归一判定。
+ *
+ * ⚠ 为什么 `COMPLETED` 还要再看 `resource.status`：事件会重放、会乱序，
+ * 一个带 `status: "PENDING"` 的 COMPLETED 事件照旧入账就是「钱没到位先发货」。
+ * 判不出来就归 `ignored`：事件照存但不敢动账。
+ */
+export function paypalEventOutcome(eventType: string, resourceStatus?: unknown): PaymentOutcome {
+    const t = eventType.trim().toUpperCase();
+    if (t === PAYPAL_CAPTURE_COMPLETED) return resourceStatus === "COMPLETED" ? "paid" : "ignored";
+    if (PAYPAL_REVOKED.has(t)) return "revoked";
+    if (PAYPAL_REFUNDED.has(t)) return "refunded";
+    // PENDING / UNHELD / 争议类…：都是“钱还会动”的中间态，本轮不动账（宁可人工看事件表）。
+    return "ignored";
+}
+
+/** 退款类事件的 `resource` 是**退款体**，不是收款体（回溯原收款要靠 refs）。 */
+export function isPaypalRefundEvent(eventType: string): boolean {
+    return PAYPAL_REFUNDED.has(eventType.trim().toUpperCase());
+}
+
+/**
+ * 生产 Worker 上挂着沙箱凭据时，**假钱能把真订单标成已付**，而这一条我在代码里挡住不了：
+ * 沙箱里那张单确实是我们建的、custom_id 与金额也都对得上，三道闸全部会过 ——
+ * PayPal Orders v2 的响应里没有可靠的收款方标识可比，所以只剩「不许拿沙箱凭据改生产账」这一条。
+ * 写成代码而不是约定：要拿沙箱改账就必须显式开 `PAYPAL_ALLOW_SANDBOX=1`（本地 .dev.vars 默认给，线上默认没有）。
+ */
+export function paypalSandboxBlocked(env: PaypalEnv, allowRaw: string | null | undefined): boolean {
+    return env === "sandbox" && allowRaw?.trim() !== "1";
+}
+
+export interface PaypalEventRefs {
+    /** 我方可读单号（create 时带进去的 custom_id）。 */
+    orderNumber: string | null;
+    /** 原收款交易号（capture id）= `payments.provider_ref`。 */
+    captureId: string | null;
+    /** PayPal 订单 id = `orders.paypal_order_id`（只能用来对账，不能当入账凭据）。 */
+    paypalOrderId: string | null;
+}
+
+/**
+ * 从事件 `resource` 里榨出三个关联标识。
+ *
+ * 为什么写得这么绕：PayPal 把同一份信息在不同事件里放在不同位置，而且**形状不统一** ——
+ * capture 事件的 `supplementary_data.related_ids` 是对象（`{ "order_id": "…" }`，官方样本可证），
+ * 退款事件的同一个字段是**数组**；`links[]` 里又各有一份。只读一条路就会在另一条路上丢关联，
+ * 关联一丢，退款事件就落不到原那笔收款上（钱退了、账没冲）。
+ *
+ * 取不到就给 null，**不猜**：猜中的时候看不出来，猜错的时候是错账。
+ */
+export function extractPaypalEventRefs(resource: unknown, eventType: string): PaypalEventRefs {
+    const res = asObj(resource) ?? {};
+    const refundEvent = isPaypalRefundEvent(eventType);
+    // 只有 capture 生命周期事件的 resource 才是**收款体**；CHECKOUT.* 的 resource 是订单体，
+    // 它的 `id` 是 PayPal 订单号 —— 当成 capture 递出去，下游就会拿错的键去 AND，永远查不到那笔钱。
+    const captureEvent = eventType.trim().startsWith("PAYMENT.CAPTURE.") && !refundEvent;
+
+    // 候选 id 池：resource.id + related_ids（两种形状都收）；order_id 单独留着做订单关联
+    const pool: string[] = [];
+    const push = (v: unknown) => {
+        if (typeof v === "string" && PP_ID_RE.test(v)) pool.push(v);
+    };
+    push(res.id);
+    const sup = asObj(res.supplementary_data);
+    const related = sup?.related_ids;
+    let relatedOrderId: string | null = null;
+    if (Array.isArray(related)) related.forEach(push);
+    else if (related) {
+        Object.values(asObj(related) ?? {}).forEach(push);
+        const rawOrderId = asObj(related)?.["order_id"];
+        if (typeof rawOrderId === "string" && PP_ID_RE.test(rawOrderId)) relatedOrderId = rawOrderId;
+    }
+
+    // links[]: rel → href 尾段（href 形如 …/v2/payments/captures/… 与 …/v2/checkout/orders/…）
+    const linkHrefs: Record<string, string> = {};
+    for (const item of Array.isArray(res.links) ? res.links : []) {
+        const l = asObj(item);
+        if (!l || typeof l.rel !== "string" || typeof l.href !== "string") continue;
+        linkHrefs[l.rel] = l.href;
+    }
+    const tail = (rels: string[], re: RegExp): string | null => {
+        for (const r of rels) {
+            const href = linkHrefs[r];
+            if (!href) continue;
+            const m = re.exec(href);
+            if (m && PP_ID_RE.test(m[1]!)) return m[1]!;
+        }
+        return null;
+    };
+
+    // 单号：capture 事件放在 resource 上，订单类事件放在 purchase_units[0] 上（两处都试）
+    const units = Array.isArray(res.purchase_units) ? res.purchase_units : [];
+    const firstUnit = asObj(units[0]);
+    const orderNumber =
+        typeof res.custom_id === "string" ? res.custom_id : typeof firstUnit?.custom_id === "string" ? firstUnit.custom_id : null;
+
+    // capture id：退款体自己那个 id 是**退款号**，绝不能当 capture 用（否则冲账冲到另一笔上去）。
+    // 退款事件的 `up` 指向 captures，capture 事件的 `up` 指向 orders —— 两个正则各自，互不误读。
+    const captureId =
+        tail(["capture"], /\/captures\/([^/?#]+)/) ??
+        tail(["up", "related"], /\/captures\/([^/?#]+)/) ??
+        pool.find((v) => v.startsWith("CAP-")) ??
+        (captureEvent && typeof res.id === "string" && PP_ID_RE.test(res.id) ? res.id : null);
+
+    const paypalOrderId = tail(["up", "order", "parent"], /\/orders\/([^/?#]+)/) ?? relatedOrderId;
+
+    return { orderNumber, captureId, paypalOrderId };
+}
 
 /**
  * PayPal 回调事件 → 我们的归一化形状。
@@ -244,25 +362,20 @@ export function mapPaypalWebhookEvent(json: unknown): NormalizedWebhookEvent {
     const resource = asObj(event.resource) ?? {};
     const amount = asObj(resource.amount);
     const amountCents = paypalCentsFromValue(amount?.value, amount?.currency_code);
-    // capture 事件把 custom_id 放在 resource 上；订单类事件（CHECKOUT.ORDER.*）放在 purchase_units[0] 上。
-    const units = Array.isArray(resource.purchase_units) ? resource.purchase_units : [];
-    const firstUnit = asObj(units[0]);
-    const customId =
-        typeof resource.custom_id === "string"
-            ? resource.custom_id
-            : typeof firstUnit?.custom_id === "string"
-                ? firstUnit.custom_id
-                : null;
-
-    const isCaptureCompleted = eventType === PAYPAL_CAPTURE_COMPLETED && resource.status === "COMPLETED";
+    const refs = extractPaypalEventRefs(resource, eventType);
+    const outcome = paypalEventOutcome(eventType, resource.status);
 
     return {
         providerEventId: eventId,
         type: eventType,
         providerRef: typeof resource.id === "string" ? resource.id : null,
         amountCents,
-        succeeded: isCaptureCompleted,
-        orderNumber: customId,
+        // 两个口径必须一致：`succeeded` 就等 outcome==="paid"。留两个字段是为了读侧不用改，
+        // 但如果它们能各自乱填，就是一个「一个说已付一个说没付」的隐形歧义源。
+        succeeded: outcome === "paid",
+        outcome,
+        captureRef: refs.captureId,
+        orderNumber: refs.orderNumber,
         orderId: null, // PayPal 不给我们内部 id，只给 custom_id
         raw: event,
     };

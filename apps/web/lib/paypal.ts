@@ -6,6 +6,7 @@ import {
     mapPaypalWebhookEvent,
     paypalApiBase,
     paypalEnv,
+    paypalSandboxBlocked,
     paypalVerifySignatureBody,
     type CheckoutSession,
     type CreateCheckoutInput,
@@ -46,6 +47,20 @@ export function readPaypalConfig(env: CloudflareEnv): PaypalConfig | null {
     const secret = env.PAYPAL_SECRET?.trim();
     if (!clientId || !secret) return null;
     return { clientId, secret, env: paypalEnv(env.PAYPAL_ENV), webhookId: env.PAYPAL_WEBHOOK_ID?.trim() || null };
+}
+
+/**
+ * 「能不能拿这套凭据动账」的闸：`live` 永远可以；`sandbox` 必须显式开 `PAYPAL_ALLOW_SANDBOX=1`。
+ *
+ * 为什么需要它（而不是写在文档里靠自觉）：沙箱里走完一笔“真流程”，我们的三道闸全部会过 ——
+ * 那张 PayPal 单确实是我们建的、`custom_id` 与金额也都对得上 ——
+ * 但它一分钱都没付。拿沙箱凭据挂在线上 Worker 上测，就能把客户的真单标成已付并发货。
+ * 本地开发在 `.dev.vars` 里给 1，线上默认没有；要拿沙箱改生产账就显式开、测完删。
+ *
+ * @returns `null` = 允许；否则是错误码，直接回给调用方。
+ */
+export function paypalWriteBlocked(cfg: PaypalConfig, allowSandbox: string | undefined): string | null {
+    return paypalSandboxBlocked(cfg.env, allowSandbox) ? "PAYPAL_SANDBOX_NOT_ALLOWED" : null;
 }
 
 const API_TIMEOUT_MS = 15_000;

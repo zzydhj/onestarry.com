@@ -161,12 +161,18 @@ onestarry.com/
 ### 3.8 支付与账本
 | 能力 | 位置 | 状态 |
 |---|---|---|
-| Provider 接缝 | `core/payments.ts` → `PaymentProvider`(createCheckout/verifyWebhook/refund) + `FakePaymentProvider` | ✅ 接口就位；**Stripe/PayPal 实现 ❌**（⏸️ 待密钥） |
-| webhook 接收 | `apps/web/app/api/webhooks/[provider]/route.ts`：**fail-closed** —— 默认无 provider 直接 501，只有 `FAKE_PAYMENTS_ENABLED=1` 才接受 Fake 假回调（它不验签）；体上限 256KB；`(provider, provider_event_id)` 唯一 → `onConflictDoNothing` 幂等；成功则事务内 `recordPaymentSucceeded` | ✅ 幂等已验证；真 PSP 待密钥（TODO 12b-2·B） |
-| 支付段落账 | `queries/payments.ts` → `recordPaymentSucceeded`：建 payments + `ledger_transactions` + 借 psp_clearing / 贷 customer_deposits+tax_payable+duty_collected，**组内借贷 SUM≠0 整笔回滚**；同单重复落账抛 `PAYMENT_ALREADY_RECORDED`（webhook 当幂等重放回 200）、金额≠应付抛 `PAYMENT_AMOUNT_MISMATCH`；发票辖区由 market→legalEntity 带出；`nextInvoiceNumber`（行锁 upsert 自增，`US-00000001` 式连号）+ 建 invoices；订单转 paid；发 `payment.succeeded` | ✅ 冒烟通过。MVP 假设本位币=订单币种（fxRate "1"）；部分支付无状态位，接真 PSP 时要单独设计 |
+| Provider 接缝 | `core/payments.ts` → `PaymentProvider`(createCheckout/verifyWebhook/refund) + `FakePaymentProvider`；事件归一到 `PaymentOutcome = paid\|revoked\|refunded\|ignored`（单靠一个 `succeeded` 布尔判不出“钱被撤回”）+ `captureRef`（退款事件的 resource 是退款体，靠它回溯原收款） | ✅ |
+| PayPal 纯逻辑 | `core/paypal.ts`：金额字符串（0 位小数币种）、SDK URL、建单体、capture/refs 解析、`cert_url` 判域、验签体、事件分类 `paypalEventOutcome`、沙箱闸 `paypalSandboxBlocked` | ✅ 14+8 单测钉住（事件名逐字照官方 event-names，错一个字母就静默归 ignored） |
+| PayPal IO | `apps/web/lib/paypal.ts`：OAuth（per-isolate token 缓存 + 401 重试一次）/ create / capture / show / webhook 验签；不引官方 SDK（Workers 上 fetch 四端点更好审） | 🟡 代码就位、**未跑过真 API**（待凭据） |
+| 支付页与路由 | `/pay/[orderNumber]`（凭证页）+ `PayPalPayButton` + `POST /api/paypal/orders`（金额只取库、`PayPal-Request-Id` 幂等、复用存过的 `paypal_order_id`）+ `POST /api/paypal/capture`（**三道闸**：必须是我们为这张单建过的那张 / `custom_id` 等于我方单号 / 金额等于应付） | ✅ typecheck+冒烟；支付动作在服务端发生，不信前端递的 orderID |
+| webhook 接收 | `apps/web/app/api/webhooks/[provider]/route.ts`：**fail-closed** —— 默认无 provider 直接 501；`paypal` 且凭据齐 → 真验签（五条头 + 订阅 id + 整个 `webhook_event`）；`FAKE_PAYMENTS_ENABLED=1` 才接受假回调；按 `outcome` 分派落账/冲账/只存（`ignored` 写事件表标 ignored，方便后台筛“还要人工看的”）；体上限 256KB；`(provider, provider_event_id)` 幂等 | ✅ 幂等已验证；真回调待凭据配好 |
+| 支付段落账 | `queries/payments.ts` → `recordPaymentSucceeded`：建 payments + `ledger_transactions` + 借 psp_clearing / 贷 customer_deposits+tax_payable+duty_collected，**组内借贷 SUM≠0 整笔回滚**；同单重复落账抛 `PAYMENT_ALREADY_RECORDED`（webhook 当幂等重放回 200）、金额≠应付抛 `PAYMENT_AMOUNT_MISMATCH`；辖区由 market→legalEntity 带出；`nextDocumentNumber`（行锁 upsert 自增）+ 建 invoices；订单转 paid；发 `payment.succeeded` | ✅ 冒烟通过。MVP 假设本位币=订单币种（fxRate "1"） |
+| **支付反向落账** | `recordPaymentReversal`：钱被收回（DENIED/REVERSED）或退掉（REFUNDED）时的**红冲** —— 只追加分录不改原分录（`ledger_entries` 已 REVOKE UPDATE/DELETE）；金额走 `core/payments.splitReversal` 按原占比摊且**和恒等于本次额**；出 `CN-` 独立序列的红字凭证；refunded 写 `refunds` 台账行、revoked **不写**（不是退款，写进去污染报表）；`payment_status` 走 unpaid/refunded/partially_refunded 但**不回退 `orders.status`**（发货进度不由支付事件抹掉）；重复退款号→`PAYMENT_ALREADY_REVERSED`（去重必须排在金额校验前，否则重放被报成“超退”→ PayPal 永远重投） | ✅ 冒烟 `smoke:payments-reversal` 实测连库：分摊、借贷平、连号、不双计 |
+| 沙箱凭据闸 | `paypalWriteBlocked`：`PAYPAL_ENV=sandbox` 时未经 `PAYPAL_ALLOW_SANDBOX=1` 不得建单/扣款/落账（本地 `.dev.vars` 默认给，线上默认无） | ✅ 单测钉住 |
+| 发票号唯一约束 | `invoices`/`credit_notes` 的唯一索引范围 = **(法人, 号)** 而不是全表（旧定义全表唯一，多法人必撞 `US-00000001`）；迁移 0017 | ✅ 已应用 |
 | 发货段确认 | `queries/shipments.ts` → `recordShipment`：借 customer_deposits / 贷 revenue+shipping_revenue；借 cogs / 贷 inventory_asset（**COGS 用 `variant.costCents` 近似**，移动平均未做）+ 扣 onHand + sale 流水 + `fulfilled` + 发 `order.shipped` | ✅ 冒烟通过 |
 | 科目种子 | `queries/ledger.ts` → `STANDARD_LEDGER_ACCOUNTS` / `seedLedgerAccounts` / `requireAccountId` | ✅ |
-| 退款/争议/payouts/发票 PDF/关税对账 | 表在，代码无 | ❌ |
+| 主动退款 / 争议 / payouts / 发票 PDF / 关税对账 | 表在；`refunds` 已可由 webhook 事件填充，但**商户侧发起退款的 API 与后台动作未做**（`PaypalPaymentProvider.refund()` 显式抛 `PAYPAL_REFUND_NOT_IMPLEMENTED`）；`disputes`/`payouts` 无写入方 | ❌ |
 
 #### 输入与输出边界（2026-10-23 代码审查后新增）
 
@@ -264,7 +270,7 @@ onestarry.com/
 > 导航已换成 ERP 式左侧分栏 `components/AdminSideNav.tsx`（分组 + 可折叠存 localStorage + 移动端抽屉），**一律 `prefetch={false}`**（后台是 force-dynamic，预取会把 11 个入口全真渲染一遍，实测一次加载打出 36–45 个请求）。它按传入权限集过滤入口；**隐藏只是体验，硬强制在页面/动作的 `requirePermission`**（两者已逐项对应）。
 
 ### 3.17 前台页面清单
-`/`（首页 Hero/分类入口/精选/信任条）· `/products` `/products/[slug]` · `/products/[slug]/review`（发表评价，force-dynamic）· `/search` · `/categories` `/categories/[slug]` · `/brands` `/brands/[slug]` · `/blog` `/blog/[slug]` · `/[slug]`（page/landing）· `/cart` · `/checkout` · `/order/[orderNumber]` · `/account/orders` · `/signin` · `/legal/[type]`（terms/privacy/returns/withdrawal）· `/api/{health,db-check,auth/[...all],webhooks/[provider],internal/invalidate}` · `/integration/*`
+`/`（首页 Hero/分类入口/精选/信任条）· `/products` `/products/[slug]` · `/products/[slug]/review`（发表评价，force-dynamic）· `/search` · `/categories` `/categories/[slug]` · `/brands` `/brands/[slug]` · `/blog` `/blog/[slug]` · `/[slug]`（page/landing）· `/cart` · `/checkout` · `/order/[orderNumber]` · `/pay/[orderNumber]`（带访问凭证的支付页）· `/account/orders` · `/signin` · `/legal/[type]`（terms/privacy/returns/withdrawal）· `/api/{health,db-check,auth/[...all],webhooks/[provider],internal/invalidate}` · `/api/paypal/{orders,capture}` · `/integration/*`
 
 > 逐路由的**缓存窗口/渲染策略/失效方式**不再写在这里 —— 单一真源是 `packages/core/src/site-status.ts`，后台 `/status` 页与漂移守卫单测共用它。
 缺：收藏/心愿单、退货 RMA、订单取消、地址簿、多语言路径。
@@ -356,7 +362,7 @@ onestarry.com/
 | 9 定价与可售性 | 🟡 | 物化管道+inputsHash+price_history ✅；四个 provider 占位（D01）、`computeSellability` 未接（D02） |
 | 10 搜索与 outbox | ✅/🟡 | outbox+relay+cron+写时自派发 ✅；搜索用 Postgres FTS（Typesense 为规模路径），handler 只有 1 条 |
 | 11 结账与订单 | 🟡 | 主链通 ✅；幂等/运费/市场硬编码 + 无预留 + 无 magic link（D03） |
-| 12 支付与税务关税 | ⏸️ | Fake PSP 全链路通；Stripe/PayPal/Tax/LandedCost 待密钥；disputes 落库❌ |
+| 12 支付与税务关税 | 🟡 | PayPal Orders v2 全链路代码就位（建单/扣款/验签/**反向红冲**）但**未跑过真 API**（待凭据）；Fake PSP 全链路通；Stripe/Tax/LandedCost ❌；disputes/payouts 落库 ❌ |
 | 13 履约·发票·邮件 | 🟡 | `recordShipment` + 后台标记发货 ✅；物流商 API/PSP 运单同步/发票 PDF/Resend 邮件/退货 ❌ |
 | 14 对外集成 API | ✅ | 三端点 + 幂等 + Access 骨架（JWKS 严格验签待补） |
 | 15 Admin | 🟡 | 18 页覆盖商品/订单/目录/属性/评论/内容/市场/团队/法律/导入；税则·运费·合规·PSP 配置页 ❌ |
@@ -458,7 +464,7 @@ onestarry.com/
 |---|---|---|---|---|
 | T11 | Better Auth 未限流 | 🔴 | `packages/auth/src/index.ts` 全文无 `rateLimit`、无 plugins 配置，customer/admin 两实例都是裸的 | 后台登录口可被爆破，且模板的安全默认值应该是「开箱就防」。→ 配 `rateLimit: { enabled: true, window: 60, max: 10 }`（或在 CF 侧对 `/api/auth/*` 上速率规则；注意 Worker 内限流需 KV/DO 存计数） |
 | T12 | 后台不开放注册 | ✅ | 本轮已封（§4.1：HTTP 层 403 `/sign-up*`）；前台 customer 注册仍开放，符合预期 | 核对项，非缺陷 |
-| T13 | 真收款 | 🔴 | webhook 已 fail-closed（无 provider 则 501，假回调需 `FAKE_PAYMENTS_ENABLED=1`），但**仍无任何真 PSP**（N1） | 作为「演示模板」够用，作为「能开张的店」不够。→ 与 §9 的 N1 同一条 |
+| T13 | 真收款 | 🟡 | PayPal（Advanced Control / Orders v2）服务端已写完：凭据缺失时 fail-closed（支付页明说未配置、webhook 501）、沙箱凭据默认不得动账、反向事件会冲账。但**从未打过真 PayPal API** —— 未拿到凭据前不能称“已跑通” | 下一步只在人：建 App → 配 5 个 Workers 变量/secret → 建 webhook 订阅 → 拿沙箱走一遍（要显式开 `PAYPAL_ALLOW_SANDBOX`）→ 切 live 真收一笔 |
 | T14 | 错误可观测 | 🔴 | 无 `apps/web/instrumentation.ts`、无 Sentry/任何告警；Cron relay 失败只落在 Workers 日志里 | 静默失败 = 价格不更新/订单不落账而没人知道。→ 模板应内置最小告警：jobs Cron 批次失败 → 一次出站通知（邮件 or Slack webhook），并把 Workers 日志接入 Grafana/Loki 写成文档步骤 |
 | T15 | 财税冷备自动化 | 🟡 | DR-RUNBOOK §2/§7 标 🟥（手动 `pg_dump`）；且 §7 仍写「GitHub Actions 定时 workflow」= 过时术语（本仓无 GH Actions） | 与 N12 同条。→ 顺手把该句改成「Workers Cron 或外部定时任务」 |
 | T16 | workerd 兼容日期 | 🟢 | `compatibility_date: 2026-01-01`（距今 >6 个月），OpenNext 构建对此**只 warn 不拦** | 不升不炸，建议随 T18 一起更新 |

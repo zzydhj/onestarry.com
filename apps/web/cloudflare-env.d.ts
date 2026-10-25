@@ -33,6 +33,12 @@ interface CloudflareEnv {
     PAYPAL_ENV?: string;
     /** 开发者后台那条 webhook 订阅的 id（不是事件 id）；缺了就验不了签，回调一律拒收。 */
     PAYPAL_WEBHOOK_ID?: string;
+    /**
+     * = "1" 才允许 **沙箱**凭据动账（建单/扣款/回调落账）。缺省即禁止。
+     * 理由与 `FAKE_PAYMENTS_ENABLED` 同一口径：沙箱里走完的“真流程”三道闸全过，但它一分钱没付 ——
+     * 不给显式开关，挂沙箱凭据测一次就能把客户真单标成已付并发货。本地 `.dev.vars` 给 1，线上不给。
+     */
+    PAYPAL_ALLOW_SANDBOX?: string;
     // MEDIA: R2Bucket; // 需要 @cloudflare/workers-types，接图片上传时再补
 }
 

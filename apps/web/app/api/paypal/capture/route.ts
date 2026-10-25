@@ -1,7 +1,7 @@
 import { getCloudflareContext } from "@opennextjs/cloudflare";
 import { recordPaymentSucceeded, setOrderPaypalOrderId } from "@onestarry/db";
 import { resolveOrderAccess } from "@/lib/orderAccess";
-import { paypalCaptureOrder, readPaypalConfig } from "@/lib/paypal";
+import { paypalCaptureOrder, paypalWriteBlocked, readPaypalConfig } from "@/lib/paypal";
 
 export const dynamic = "force-dynamic";
 
@@ -43,6 +43,10 @@ export async function POST(req: Request): Promise<Response> {
     const { env } = getCloudflareContext();
     const cfg = readPaypalConfig(env);
     if (!cfg) return json({ error: "PAYPAL_NOT_CONFIGURED" }, { status: 503 });
+    // 同一个沙箱闸，而且必须卡在**真扣款之前**：过了一步就是把钱拿走了却没入账。
+    // 方向是安全的：宁可拒接一笔能成功的扣款，也不接一笔“沙箱假钱标真单已付”。
+    const blocked = paypalWriteBlocked(cfg, env.PAYPAL_ALLOW_SANDBOX);
+    if (blocked) return json({ error: blocked }, { status: 503 });
 
     const access = await resolveOrderAccess(orderNumber, token);
     if (!access.ok) return json({ error: access.reason }, { status: access.status });
