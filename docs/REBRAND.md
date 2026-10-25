@@ -48,6 +48,21 @@ rg -n "(?<!@)onestarry[\w.-]*" apps packages --glob '!cloudflare-env.d.ts'
 - `apps/admin/wrangler.jsonc` 的 `MEDIA` binding 同 web 一致
 - **实际桶要在 Cloudflare 后台先创建**（R2 → Create bucket），wrangler 只声明绑定
 
+### 3.5 D1 Tag Cache 库（`apps/web/wrangler.jsonc` 的 `d1_databases`）
+
+按需失效（`revalidatePath`）的落地处。换站要新建一个 D1，把 `database_id` / `database_name` 填进 web 的 `wrangler.jsonc`：
+
+```powershell
+npx wrangler d1 create newshop-tag-cache
+# 建表（在 apps/web 目录下跑；--local 那份供本地 preview，缺也不报错）
+npx wrangler d1 execute newshop-tag-cache --remote --file ./d1/revalidations.sql
+```
+
+- ⚠ **漏建不报错，只静默空转**：没有 D1 绑定时 `D1NextModeTagCache.getConfig()` 判 `isDisabled`、`hasBeenRevalidated()` 恒 `false`
+  → 后台改完前台叫不动（根因见 `docs/PERF.md` §7）。表结构直接用仓库里那份，不要自己改约束：
+  上游 `writeTags()` 用的是不带 `ON CONFLICT` 的裸 INSERT，必须是 `UNIQUE(tag) ON CONFLICT REPLACE`，否则二次失效会抛异常。
+- 这张表**不放进 `packages/db`**：那里只负责 Neon 的迁移，D1 是另一个引擎；混一起会让“从零部署”的清单裂成两半。
+
 ### 4. Hyperdrive ID 与 origin
 
 `apps/{web,admin,jobs}/wrangler.jsonc` 的 `hyperdrive[0].id` 是**具体实例 UUID**（`797e790c...`），换站要新建一个 Hyperdrive：
@@ -141,6 +156,7 @@ pnpm dev                      # 打开 http://localhost:3000 看品牌/域名渲
 - **只改了域名常量、没改 R2 自定义域** → 商品图 404。R2 Bucket Domains 里把新域名指向新 `*-media` 桶；DNS CNAME 经 Cloudflare 打开代理。
 - **改了 Hyperdrive ID 但没建新 Hyperdrive** → 本地 `wrangler dev` 因用 `localConnectionString` 正常、上线 500。ID 必须是 Cloudflare 侧存在的实例。
 - **`next.config.ts` 的 `transpilePackages` 里包名忘了同步改** → 若改了包作用域 `@onestarry/*` 而这里没跟着改，`next build` 找不到 workspace 包。
+- **新站没建 D1 tag-cache 库** → 按需失效变成静默空动作：不报错、内容也照旧对，`/status` 与 ISR 探针看不出区别（探针只判 HIT/STALE 形状，不判失效是否落地）。要发现只能拿一条构建期预渲染的路由做一次后台保存 + 连打穿透边缘。见 §3.5。
 - **账本科目没在新库重跑 `seed:ledger`** → 收款/发货落账全部失败，报错在 `ledger_entries` 找不到科目。见记忆《新部署法人必须预置账本科目》。
 
 ---
