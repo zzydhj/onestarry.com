@@ -18,6 +18,15 @@ interface CloudflareEnv {
     MEDIA: R2Bucket;
     /** 前台 ISR 缓存桶（只读）：取 jobs 写在 _ops/ 的 ISR 健康报告。 */
     ISR_CACHE: R2Bucket;
+    /** 会话结果边缘缓存（K 方案），见 lib/session-cache.ts。 */
+    SESSION_CACHE: SessionKV;
+}
+
+// 最小 KV 接口（仅用到 get/put/delete），与上面 R2Bucket 同一取向：不引入 @cloudflare/workers-types。
+interface SessionKV {
+    get(key: string): Promise<string | null>;
+    put(key: string, value: string, options?: { expirationTtl?: number }): Promise<unknown>;
+    delete(key: string): Promise<unknown>;
 }
 
 // 最小 R2 接口（仅用到 put/delete/get），免引入 @cloudflare/workers-types。

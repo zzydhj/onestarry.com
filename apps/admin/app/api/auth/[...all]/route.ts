@@ -1,6 +1,7 @@
 import { getCloudflareContext } from "@opennextjs/cloudflare";
 import { createAdminAuth } from "@onestarry/auth";
 import { isBlockedPublicAuthPath } from "@/lib/authGuard";
+import { evictCachedSession, sessionCacheKey } from "@/lib/session-cache";
 
 /**
  * Better Auth（admin 实例）catch-all 路由。
@@ -22,7 +23,13 @@ async function handle(req: Request): Promise<Response> {
         baseURL: url.origin,
         secret: env.BETTER_AUTH_SECRET,
     });
-    return auth.handler(req);
+    const res = await auth.handler(req);
+    // 登出成功后立刻抹掉这份会话的 KV 快路，否则旧 cookie 在 TTL（60s）内仍能过守卫。
+    // 只能抹自己这份：key 是从请求里的 cookie 算出来的。
+    if (res.ok && url.pathname.endsWith("/sign-out")) {
+        await evictCachedSession(env.SESSION_CACHE, await sessionCacheKey(req.headers.get("cookie")));
+    }
+    return res;
 }
 
 export const dynamic = "force-dynamic";

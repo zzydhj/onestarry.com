@@ -5,6 +5,7 @@ import { getCloudflareContext } from "@opennextjs/cloudflare";
 import { createAdminAuth } from "@onestarry/auth";
 import { getPrincipalPermissions } from "@onestarry/db";
 import { getRequestDb } from "./db";
+import { readCachedSession, sessionCacheKey, writeCachedSession } from "./session-cache";
 import type { PermissionKey } from "@onestarry/core";
 
 /**
@@ -13,9 +14,10 @@ import type { PermissionKey } from "@onestarry/core";
  *
  * ⏱ 必须用 React `cache()` 包住（请求级 memo）：一次导航里 layout 与 page 都会读会话，
  * 不去重就是**完整查两遍**（better-auth 取 session + 权限 JOIN，各 1–2 次往返）。
- * 主库在 US-East、边缘在 HK，每次往返 ~150–190ms，双份白付 0.6–1.1s。
- * `cache()` 的键是函数参数（此处无参）→ 同一请求内只跑一次，不跨请求缓存，
- * 所以权限变更仍是即时生效（区别于带 TTL 的 isolate 缓存）。详见 docs/PERF.md。
+ *
+ * ⏱ 跨请求还有一层 KV 边缘缓存（K 方案，见 lib/session-cache.ts）：命中时鉴权 0 次查库。
+ *    所以「权限变更即时生效」这句话现在只对**同一请求内**成立；跨请求的撤销窗口 = 60 秒
+ *    （登出走 sign-out 路由主动删 key，即时）。这是有意的取舍，理由与边界全写在那份文件顶部。
  *
  * ⏱ 连接也只一条：本函数与 better-auth、页面/Action 共用 `getRequestDb` 的结果。
  * 原先三处各自 `createDb` → 一次渲染 3 条新连接，而每条连接要 4–6 次跨洋往返（握手），
@@ -24,7 +26,17 @@ import type { PermissionKey } from "@onestarry/core";
 async function loadAdminSession() {
     const { env, ctx } = getCloudflareContext();
     const h = await headers();
-    // 客户端是惰建连的：无 cookie 时 getSession 直接返回 null，一次查询也不发，未登录仍然很快。
+    const kv = env.SESSION_CACHE;
+    const key = await sessionCacheKey(h.get("cookie"));
+
+    // 快路：60 秒内刚刚验过的会话，一次边缘 KV 读就够。
+    const hit = await readCachedSession(kv, key);
+    if (hit) {
+        return { env, ctx, userId: hit.userId, permissions: new Set<PermissionKey>(hit.permissions) };
+    }
+
+    // 权威路径：better-auth 验签 + 查会话 + 查权限。客户端是惰建连的，
+    // 无 cookie / 验签不过时 getSession 直接返回 null，一次查询也不发，未登录仍然很快。
     const db = getRequestDb(env.HYPERDRIVE.connectionString);
     const auth = createAdminAuth({
         connString: env.HYPERDRIVE.connectionString,
@@ -35,6 +47,8 @@ async function loadAdminSession() {
     const session = await auth.api.getSession({ headers: h });
     if (!session?.user) return null;
     const permissions = await getPrincipalPermissions(db, session.user.id);
+    // 只缓存已验证成功的会话；未登录不写，免得登录页与扫描流量往 KV 堆垃圾。
+    await writeCachedSession(kv, key, { userId: session.user.id, permissions: [...permissions] });
     return { env, ctx, userId: session.user.id, permissions };
 }
 

@@ -18,6 +18,15 @@
             "localConnectionString": "postgresql://postgres:postgres@127.0.0.1:5432/postgres"
         }
     ],
+    "kv_namespaces": [
+        {
+            // 会话结果边缘缓存（K 方案）：把鉴权那 2–3 趟跨洋查询换成一次边缘 KV 读。
+            // 只存 userId / 权限 key 这类派生结果，key 是会话 cookie 的 SHA-256，绝不存凭据本身。
+            // 语义代价见 lib/session-cache.ts 顶部注释：改别人权限最长 60 秒生效。
+            "binding": "SESSION_CACHE",
+            "id": "cd8b2a2b06244afdb918bf873f9ae535"
+        }
+    ],
     "r2_buckets": [
         {
             "binding": "MEDIA",
