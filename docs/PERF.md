@@ -364,14 +364,26 @@ Workers Cache **没有 UA 豁免**，只认「响应头 + 缓存键」。所以 
   ⚠ 诚实边界：这条根因解释的是「叫不动」那一半；同一轮实测里「运行时条目能被当场打断」与「tagCache 全程缺失」
   怎么共存，我没解释清楚。**这正好当验收点**：部署后若两类路由命运趋同（都叫得动），说明当时的分组只是观察偏差；
   若仍不一致，说明还有第二个变量没挖出来 —— 届时不要把本条当已完成结论。
-  **已实施（待部署验证）**：D1 库 `onestarry-tag-cache` + `d1_databases` 绑定 + `tagCache: d1NextTagCache`，
-  建表脚本 `apps/web/d1/revalidations.sql`。约束形状不是抄文档：上游 `writeTags()` 用的是**不带 ON CONFLICT 的裸 INSERT**，
-  所以必须 `UNIQUE(tag) ON CONFLICT REPLACE`；实测连插同一 tag 两次 → `rows_total=2` 且存活行 `revalidatedAt` 取后者
-  （既不抛 SQLITE_CONSTRAINT 把后台保存变 500，也不靠返回顺序赌「最新」）。
-  **验收口径**：拿一条构建期预渲染的路由（如 `/legal/privacy`）做一次后台保存，穿透边缘连打必须看到 `STALE`，
-  而不是过去那种「`s-maxage` 单调下降、一次 STALE 都不出现」。
-  **成本与止损**：每次读页多一次 D1 查询（代码内有请求级内存去重）；若 §7.5 那组基线（HIT 158/101ms、STALE 122/150/98ms）
-  变差超过 ~10ms，换 `doShardedTagCache` 或整块回退 —— 回退只是退回本轮之前的行为，不会更坏（fail-open）。
+  **已上线并已回退（2026-10-25，当天）**：装过 D1 库 `onestarry-tag-cache` + `d1_databases` 绑定 + `tagCache: d1NextTagCache`（commit `beff993`），
+  并且确实工作：一次后台保存写进 6 行正确 tag（`_N_T_/products/ceramic-mug`、`_N_T_/products`、`_N_T_/`、`_N_T_/index`、
+  以及该商品的类目与品牌路径），且两次保存后 `rows_total` 仍为 6、`revalidatedAt` 前进 —— 证明 `UNIQUE(tag) ON CONFLICT REPLACE`
+  的约束形状是对的（裸 INSERT 不抛异常、不靠返回顺序赌最新）。
+  **但它把线上打坏了**，现场取证（均为穿透边缘的 `?probe=` 请求）：
+
+  | 时刻 | 形状 |
+  | --- | --- |
+  | 保存前 | `HIT + s-maxage` 正常倒数 |
+  | 保存写入标记后（持续 ≥25 分钟） | `/`、`/products`、PDP **全部 `STALE + s-maxage=2`**；探针 `never_hits / badStreak 18` |
+  | `DELETE FROM revalidations` 后立即 | 三条全部 `HIT + s-maxage=58/57/57`，15 秒后 `19/18/18` 正常倒数 |
+
+  即：**标记永不被本次重渲染清除** —— “按需失效”变成“按需永久失效”，而且只在有人真去后台点保存时发作（低流量下看不出，
+  边缘拿到的是 `s-maxage=2` → 不存 → 每个访客全额渲染）。机制未定论（为何写回不推进条目 `lastModified`），
+  但不得把线上留在会静默塌陷的配置上，所以先回退。
+  ⛔ **我当初写的是“缺 D1 时整块 fail-open，不会更坏”—— 那句保证是错的**，而且正是它让这个改动上了线；
+  fail-open 只对“没绑定时”成立，**绑上之后的行为不在我的先验里**。
+  **下一步不要回到 tagCache**：要“预渲染条目也秒级可见”，走“失效时直接删 R2 条目”那条路
+  （`NEXT_INC_CACHE_R2_BUCKET` 已绑，键形如 `incremental-cache/<buildId>/<sha256>.cache`，`computeCacheKey` 可复刻），
+  而不是靠 tag 标记。在那之前，预渲染条目的可见上界仍就是页自己的 `revalidate` 窗口（本轮没改变）。
 - **公共读页的 `revalidate = 60` 保持不动（用户拍板：当兜底）**。理论上拉长到 300s 能让边缘真吸住流量
   （§6），但拉长后“改完可见”最多要等一个窗口（预渲染条目根叫不动 `revalidatePath`，边缘那一份也不受它管辖），
   除非先把真删除（R2 条目 / 边缘 `cache.purge()`）做出来。既然 60 秒已经是实际上界，不必拿可见性换边缘命中率。

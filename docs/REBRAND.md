@@ -48,20 +48,17 @@ rg -n "(?<!@)onestarry[\w.-]*" apps packages --glob '!cloudflare-env.d.ts'
 - `apps/admin/wrangler.jsonc` 的 `MEDIA` binding 同 web 一致
 - **实际桶要在 Cloudflare 后台先创建**（R2 → Create bucket），wrangler 只声明绑定
 
-### 3.5 D1 Tag Cache 库（`apps/web/wrangler.jsonc` 的 `d1_databases`）
+### 3.5 ⛔ D1 Tag Cache：官方“小站配方”里有这一件，本站**不要装**
 
-按需失效（`revalidatePath`）的落地处。换站要新建一个 D1，把 `database_id` / `database_name` 填进 web 的 `wrangler.jsonc`：
+`@opennextjs/cloudflare` 的官方小站配方是 `R2 + DO Queue + D1NextModeTagCache` 三件。本站 2026-10-25 把第三件装上线过，
+**当天已回退**，原因不是配错，而是它带来更坏的行为：后台一次保存写入标记后，
+`/`、`/products`、PDP **持续恒 `STALE + s-maxage=2` 至少 25 分钟**（探针 `never_hits / badStreak 18`），
+删掉标记行当场恢复 `HIT + s-maxage=58`。即“按需失效”变成“按需永久失效”，而且只在有人保存时发作。
+完整取证与机制分析见 `docs/PERF.md` §7（含为何不能拿它当“免疫”的解法）。
 
-```powershell
-npx wrangler d1 create newshop-tag-cache
-# 建表（在 apps/web 目录下跑；--local 那份供本地 preview，缺也不报错）
-npx wrangler d1 execute newshop-tag-cache --remote --file ./d1/revalidations.sql
-```
-
-- ⚠ **漏建不报错，只静默空转**：没有 D1 绑定时 `D1NextModeTagCache.getConfig()` 判 `isDisabled`、`hasBeenRevalidated()` 恒 `false`
-  → 后台改完前台叫不动（根因见 `docs/PERF.md` §7）。表结构直接用仓库里那份，不要自己改约束：
-  上游 `writeTags()` 用的是不带 `ON CONFLICT` 的裸 INSERT，必须是 `UNIQUE(tag) ON CONFLICT REPLACE`，否则二次失效会抛异常。
-- 这张表**不放进 `packages/db`**：那里只负责 Neon 的迁移，D1 是另一个引擎；混一起会让“从零部署”的清单裂成两半。
+- 新站**不要**新建这个 D1，也不要往 `wrangler.jsonc` 里加 `d1_databases`；`open-next.config.ts` 只留 `incrementalCache + queue`。
+- 现存的 `onestarry-tag-cache`（id `62b2be35-…`）已无人读、数据已清空，可删可留；要试请先读完 §7 再决定。
+- 想要“预渲染条目也秒级可见”，走的是另一条路：失效时直接删 R2 条目（`NEXT_INC_CACHE_R2_BUCKET` 已绑），不靠 tag 标记。
 
 ### 4. Hyperdrive ID 与 origin
 
@@ -156,7 +153,7 @@ pnpm dev                      # 打开 http://localhost:3000 看品牌/域名渲
 - **只改了域名常量、没改 R2 自定义域** → 商品图 404。R2 Bucket Domains 里把新域名指向新 `*-media` 桶；DNS CNAME 经 Cloudflare 打开代理。
 - **改了 Hyperdrive ID 但没建新 Hyperdrive** → 本地 `wrangler dev` 因用 `localConnectionString` 正常、上线 500。ID 必须是 Cloudflare 侧存在的实例。
 - **`next.config.ts` 的 `transpilePackages` 里包名忘了同步改** → 若改了包作用域 `@onestarry/*` 而这里没跟着改，`next build` 找不到 workspace 包。
-- **新站没建 D1 tag-cache 库** → 按需失效变成静默空动作：不报错、内容也照旧对，`/status` 与 ISR 探针看不出区别（探针只判 HIT/STALE 形状，不判失效是否落地）。要发现只能拿一条构建期预渲染的路由做一次后台保存 + 连打穿透边缘。见 §3.5。
+- **照着 OpenNext 官方文档把 D1 Tag Cache 装回来** → 后台一次保存就能让全站读页陷进恒 STALE（边缘不存、每人全额渲染），而且探针只到 5 分钟后才报红。不要装；原因与实测见 §3.5 与 `docs/PERF.md` §7。
 - **账本科目没在新库重跑 `seed:ledger`** → 收款/发货落账全部失败，报错在 `ledger_entries` 找不到科目。见记忆《新部署法人必须预置账本科目》。
 
 ---

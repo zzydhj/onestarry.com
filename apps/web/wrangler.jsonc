@@ -58,18 +58,6 @@
             "bucket_name": "onestarry-isr-cache"
         }
     ],
-    "d1_databases": [
-        {
-            /*
-             * OpenNext 的 Tag Cache（按需失效的落地处）。缺它时 revalidatePath 是静默空动作，
-             * 详见 open-next.config.ts 与 docs/PERF.md §7。建表脚本：apps/web/d1/revalidations.sql
-             * （D1 专用，不放进 packages/db —— 那里只负责 Neon 的迁移）。
-             */
-            "binding": "NEXT_TAG_CACHE_D1",
-            "database_name": "onestarry-tag-cache",
-            "database_id": "62b2be35-86b4-4612-925d-d71564c12219"
-        }
-    ],
     "services": [
         {
             // 自引用：DO Queue 后台 revalidate 时回灌本页需要

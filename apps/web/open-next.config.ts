@@ -1,10 +1,8 @@
 import { defineCloudflareConfig } from "@opennextjs/cloudflare";
 import r2IncrementalCache from "@opennextjs/cloudflare/overrides/incremental-cache/r2-incremental-cache";
 import doQueue from "@opennextjs/cloudflare/overrides/queue/do-queue";
-import d1NextTagCache from "@opennextjs/cloudflare/overrides/tag-cache/d1-next-tag-cache";
 
-// ISR 缓存三个部件：持久层 R2（成品页存 NEXT_INC_CACHE_R2_BUCKET）+ DO Queue 调度后台刷新
-// + D1 Tag Cache 让按需失效真能落地。
+// ISR 缓存：持久层 R2（成品页存 NEXT_INC_CACHE_R2_BUCKET）+ DO Queue 调度后台刷新。
 //
 // 【2026-10-22 回退：这里原先还包了一层 withRegionalCache(..., { mode: "short-lived" }) 作「B-2 提速」，已彻底移除】
 // 线上取证结论（完整过程见 docs/PERF.md）：
@@ -21,16 +19,17 @@ import d1NextTagCache from "@opennextjs/cloudflare/overrides/tag-cache/d1-next-t
 //         且 enableCacheInterception 默认 false（那条快路径整条未跑）→ 对本站零收益，只多一套时钟。
 // 因此回到「R2 单一真值源」：条目年龄只由 object.uploaded 决定，不再有第二个时钟来源。
 //
-// 【2026-10-25 更正：原先最后一行写的是「本站只用时间 revalidate，故不配 tagCache」，那句判断错了】
-// 按需失效通道（POST /api/internal/invalidate）用的正是 revalidatePath，而它属于 on-demand revalidation，
-// 按 OpenNext 的模型必须有 Tag Cache 才落地。缺它时 D1NextModeTagCache.getConfig() 直接判 isDisabled，
-// hasBeenRevalidated() 恒返回 false → 于是 docs/PERF.md §7 那条「构建期上传的条目对 revalidatePath 免疫」
-// 并不是 Next 的怪病，而是我们少装了官方「小站配方」（R2 + DO Queue + D1NextModeTagCache）的第三件。
-// 建表脚本见 apps/web/d1/revalidations.sql（约束形状已用 D1 实测钉死，不是照抄文档）。
-// 副作用：每次读页多一次 D1 查询；代码内有请求级内存去重（#resolveTagValues 的 itemsCache）。
-// 回退：删掉下面 tagCache 一行与 wrangler.jsonc 的 d1_databases 块 → 退回本轮之前的行为（fail-open，不会更坏）。
+// 【2026-10-25：试过配 D1NextModeTagCache，已上线并回退——不要装回去，除非先解决下面这个坏形状】
+// 当时的理由成立：官方三件套里 Tag Cache 专管 revalidatePath/revalidateTag，缺它时
+// D1NextModeTagCache.getConfig() 判 isDisabled、hasBeenRevalidated() 恒 false → 按需失效是静默空动作
+// （就是 §7 那条“预渲染条目免疫”的根因）。但装上后线上现场实测到更坏的行为：
+//   后台一次保存写入标记（revalidatedAt=now）后，/、/products、PDP **持续恒 STALE + s-maxage=2 至少 25 分钟**，
+//   探针报 never_hits / badStreak 18；把这些标记行删掉，当场恢复 HIT + s-maxage=58。
+//   即“标记永不被本次重渲染清除”——按需失效变成按需永久失效，且只在有人保存时发作。
+// 机制未定论（为何写回不推进条目 lastModified），但不得先把线上留在会静默塌陷的配置上。
+// 要重做“预渲染条目也能秒级失效”，走另一条路：失效时直接删 R2 条目（NEXT_INC_CACHE_R2_BUCKET 已绑），
+// 不要靠 tag 标记。取证过程与数字见 docs/PERF.md §7。
 export default defineCloudflareConfig({
     incrementalCache: r2IncrementalCache,
     queue: doQueue,
-    tagCache: d1NextTagCache,
 });
