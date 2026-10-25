@@ -364,6 +364,8 @@ Workers Cache **没有 UA 豁免**，只认「响应头 + 缓存键」。所以 
   ⚠ 诚实边界：这条根因解释的是「叫不动」那一半；同一轮实测里「运行时条目能被当场打断」与「tagCache 全程缺失」
   怎么共存，我没解释清楚。**这正好当验收点**：部署后若两类路由命运趋同（都叫得动），说明当时的分组只是观察偏差；
   若仍不一致，说明还有第二个变量没挖出来 —— 届时不要把本条当已完成结论。
+  ✅ 这个验收点当天就有了结果（见下）：补上 tagCache 后，构建期预渲染的 `/`、`/products` 与 PDP **一起被打断**，
+  所以「免疫 vs 不免疫」的分组确实是少装部件造成的观察偏差。**功能上它是对的，坏在写回** —— 别把这两件事混成一句「tagCache 有害」。
   **已上线并已回退（2026-10-25，当天）**：装过 D1 库 `onestarry-tag-cache` + `d1_databases` 绑定 + `tagCache: d1NextTagCache`（commit `beff993`），
   并且确实工作：一次后台保存写进 6 行正确 tag（`_N_T_/products/ceramic-mug`、`_N_T_/products`、`_N_T_/`、`_N_T_/index`、
   以及该商品的类目与品牌路径），且两次保存后 `rows_total` 仍为 6、`revalidatedAt` 前进 —— 证明 `UNIQUE(tag) ON CONFLICT REPLACE`
@@ -384,6 +386,16 @@ Workers Cache **没有 UA 豁免**，只认「响应头 + 缓存键」。所以 
   **下一步不要回到 tagCache**：要“预渲染条目也秒级可见”，走“失效时直接删 R2 条目”那条路
   （`NEXT_INC_CACHE_R2_BUCKET` 已绑，键形如 `incremental-cache/<buildId>/<sha256>.cache`，`computeCacheKey` 可复刻），
   而不是靠 tag 标记。在那之前，预渲染条目的可见上界仍就是页自己的 `revalidate` 窗口（本轮没改变）。
+- ⚠ **回退也差点没生效：Workers Builds 会静默不为某次 push 产出部署**（2026-10-25 实测，`beff993` 那轮就吃过一次没察觉）。
+  `a075298`（回退）推上去 **19 分钟**后 web 仍是 `ed41ae2` / `buildTime=08:48:33Z`，而同一次 push 的 **admin 已经构建到 `a075298`**；
+  这段时间 `/api/health` 一直返回 `verdict ok / badStreak 0` —— 旧版本在健康地服务，从外部看不出任何异常。
+  空提交 `e9f1143` 推上去 4 分钟内就构建并上线（`buildTime=09:17:08Z`、sha 一致），说明 CI 通道本身没坏，那一次就是没跑（或失败且无外部信号）。
+  两条规矩：① **配置类改动（`open-next.config.ts` / `wrangler.jsonc`）只在重新构建后才生效**，所以「代码已回退」≠「线上已回退」，
+  必须比对 `/api/health` 的 `gitSha`；② sha 与 HEAD 不一致且超出平时 ~5 分钟的窗口（实测 `ed41ae2` 08:44:52 → 版本 08:49:46），
+  先用 `git commit --allow-empty` 重触发，再去 Dashboard 翻那次构建的日志 —— 失败原因只有 Dashboard 有，健康端点不会告诉你。
+  回退后的读路已复核（`e9f1143`，穿透边缘）：`HIT + s-maxage` 正常倒数，`verdict ok / badStreak 0`。
+  ⚠ 部署后头几发会看到 `STALE`：Workers Cache 的键含 Worker 版本，新版本命名空间是冷的，R2 条目又早过了 60s 窗口，
+  这是**正常的冷启动形状**（随后即 `HIT`），与上面那个「恒 STALE」的区别就在于**是否出现 HIT**。
 - **公共读页的 `revalidate = 60` 保持不动（用户拍板：当兜底）**。理论上拉长到 300s 能让边缘真吸住流量
   （§6），但拉长后“改完可见”最多要等一个窗口（预渲染条目根叫不动 `revalidatePath`，边缘那一份也不受它管辖），
   除非先把真删除（R2 条目 / 边缘 `cache.purge()`）做出来。既然 60 秒已经是实际上界，不必拿可见性换边缘命中率。
