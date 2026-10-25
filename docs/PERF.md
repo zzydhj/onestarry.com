@@ -48,6 +48,13 @@
 - ✅ **`wrangler tail --format json` 是拆 wall/cpu 的正确工具**：一条命令就能看到“2.4 秒里只有 50ms 是 CPU”，
   直接把问题从“查询慢”翻到“连接多”。另外 better-auth 的登录端点用 curl 打会 **400**，得带 `origin` 头。
 - ✅ **软导航只能用浏览器量**（`performance` + `MutationObserver`）；curl 加 `?_rsc=` 拿不到 flight 载荷。
+- ⛔ **“把鉴权合成一条 SQL”（用 cookie 值直查 `admin_session.token`）这条路不成立，不要再试**。
+  2026-10-25 探针实测：`__Secure-better-auth.session_token` 的**值长 81 且含点**，而库里
+  `admin_session.token` 长 **32**、`cookie_is_raw_token = 0` —— cookie 是 `token.HMAC签名`（格式见
+  better-auth 的 `signCookieValue`：`` `${value}.${await makeSignature(value, secret)}` ``），
+  验签发生在查库**之前**（用错 secret 时 `getSession` 1ms 就返回 null，一条 SQL 都不发）。
+  所以快路必须自己复刻验签，而 `getSessionCookie()` 这个公开助手**只取值不验签**——拿它当“已验证”
+  就是认证绕过。当时写好的 `readAdminSessionByToken` 已删除，没留死代码。
 
 ### 由此得出的四条硬规矩
 
