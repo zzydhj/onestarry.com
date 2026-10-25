@@ -148,18 +148,25 @@ export function AdminSideNav({ permissions = [], alert = null }: { permissions?:
                 const open = !collapsed.includes(g.id);
                 const hasActive = g.items.some((i) => isActive(pathname, i.href));
                 return (
-                    <div key={g.id} className="mb-1">
+                    <div key={g.id} className="mb-1.5">
                         <button
                             type="button"
                             onClick={() => toggleGroup(g.id)}
-                            className={`flex w-full items-center justify-between rounded-lg px-2 py-1.5 text-xs font-medium transition hover:bg-slate-50 ${hasActive ? "text-accent" : "text-muted"}`}
+                            className={`flex w-full items-center justify-between rounded-md px-2 py-1.5 text-[11px] font-semibold tracking-[0.08em] transition hover:bg-slate-100 ${hasActive ? "text-accent" : "text-slate-500 hover:text-slate-900"}`}
                             aria-expanded={open}
                         >
-                            {g.label}
-                            <span className={`text-[10px] transition-transform ${open ? "rotate-90" : ""}`}>›</span>
+                            <span className="flex items-center gap-1.5">
+                                {g.label}
+                                {/* 折叠时组内还有当前页：不给个标记就彻底找不到自己在哪 */}
+                                {hasActive && !open ? <span aria-label="该分组内有当前页" className="inline-block h-1.5 w-1.5 rounded-full bg-accent" /> : null}
+                            </span>
+                            <span aria-hidden className={`text-xs text-slate-400 transition-transform duration-150 ${open ? "rotate-90" : ""}`}>
+                                ›
+                            </span>
                         </button>
                         {open ? (
-                            <ul className="mt-0.5 space-y-0.5">
+                            /* 竖向导引 + 缩进：展开与折叠的差别必须一眼看出来，不能只差一个箭头旋转 */
+                            <ul className="mt-0.5 ml-3 space-y-0.5 border-l border-line pl-2">
                                 {g.items.map((i) => {
                                     const active = isActive(pathname, i.href);
                                     return (
@@ -167,7 +174,7 @@ export function AdminSideNav({ permissions = [], alert = null }: { permissions?:
                                             <PrefetchLink
                                                 href={i.href}
                                                 onClick={() => setDrawerOpen(false)}
-                                                className={`block rounded-lg px-2 py-1.5 text-sm transition ${active ? "bg-slate-100 font-medium text-brand" : "text-muted hover:bg-slate-50 hover:text-brand"}`}
+                                                className={`block rounded-md px-2 py-1.5 text-[13px] leading-snug transition ${active ? "bg-accent/10 font-medium text-accent" : "text-slate-600 hover:bg-slate-100 hover:text-slate-900"}`}
                                             >
                                                 {i.label}
                                                 {i.badge ? <span className="ml-1.5 text-[10px] text-muted">{i.badge}</span> : null}
