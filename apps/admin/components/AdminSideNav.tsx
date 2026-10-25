@@ -79,8 +79,25 @@ const GROUPS: NavGroup[] = [
 /** 折叠状态存这儿；用「组 id」而不是 href 作键，改名不会让所有人的偏好失效。 */
 const STORE_KEY = "admin.nav.collapsed";
 
-function isActive(pathname: string, href: string): boolean {
+/** 单条入口是否“包含”当前路径：完全相等，或是它的子路（详情页 `/products/<id>` 归到 `/products`）。 */
+function matches(pathname: string, href: string): boolean {
     return href === "/" ? pathname === "/" : pathname === href || pathname.startsWith(`${href}/`);
+}
+
+/**
+ * 当前页高亮：**最长匹配（最具体）的那个入口才亮，只允许一个**。
+ *
+ * 为什么不能单纯用前缀匹配：`/products/new`、`/products/import` 在路径上是 `/products` 的子路，
+ * 但在导航里是**兄弟入口** —— 前缀规则会造成“跳到批量导入，商品管理还亮着”（用户 2026-10-25 报的）。
+ * 而详情页 `/products/<id>` 又**确实**应该算在“商品管理”下（它没有自己的入口）。
+ * 一条规则同时满足两者：先收集所有命中的入口，只亮名字最长（最具体）的那一个。
+ */
+function isActive(pathname: string, href: string, candidates: string[]): boolean {
+    let best = "";
+    for (const h of candidates) {
+        if (h.length > best.length && matches(pathname, h)) best = h;
+    }
+    return best !== "" && best === href;
 }
 
 /**
@@ -126,6 +143,8 @@ export function AdminSideNav({ permissions = [], alert = null }: { permissions?:
 
     const allowed = useMemo(() => new Set<string>(permissions), [permissions]);
     const groups = GROUPS.map((g) => ({ ...g, items: g.items.filter((i) => !i.perm || allowed.has(i.perm)) })).filter((g) => g.items.length > 0);
+    // 参与“最长匹配”的只算**看得见**的入口：无权限的入口不该把高亮抢过去。
+    const visibleHrefs = groups.flatMap((g) => g.items.map((i) => i.href));
 
     async function logout() {
         await authClient.signOut();
@@ -146,13 +165,13 @@ export function AdminSideNav({ permissions = [], alert = null }: { permissions?:
 
             {groups.map((g) => {
                 const open = !collapsed.includes(g.id);
-                const hasActive = g.items.some((i) => isActive(pathname, i.href));
+                const hasActive = g.items.some((i) => isActive(pathname, i.href, visibleHrefs));
                 return (
                     <div key={g.id} className="mb-1.5">
                         <button
                             type="button"
                             onClick={() => toggleGroup(g.id)}
-                            className={`flex w-full items-center justify-between rounded-md px-2 py-1.5 text-[11px] font-semibold tracking-[0.08em] transition hover:bg-slate-100 ${hasActive ? "text-accent" : "text-slate-500 hover:text-slate-900"}`}
+                            className={`flex w-full items-center justify-between rounded-md px-2 py-1.5 text-[11px] font-semibold tracking-[0.08em] transition hover:bg-slate-50 ${hasActive ? "text-accent" : "text-slate-400 hover:text-slate-600"}`}
                             aria-expanded={open}
                         >
                             <span className="flex items-center gap-1.5">
@@ -166,9 +185,9 @@ export function AdminSideNav({ permissions = [], alert = null }: { permissions?:
                         </button>
                         {open ? (
                             /* 竖向导引 + 缩进：展开与折叠的差别必须一眼看出来，不能只差一个箭头旋转 */
-                            <ul className="mt-0.5 ml-3 space-y-0.5 border-l border-line pl-2">
+                            <ul className="mt-0.5 ml-3 space-y-0.5 border-l border-slate-300 pl-2">
                                 {g.items.map((i) => {
-                                    const active = isActive(pathname, i.href);
+                                    const active = isActive(pathname, i.href, visibleHrefs);
                                     return (
                                         <li key={i.href}>
                                             <PrefetchLink
