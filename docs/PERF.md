@@ -55,8 +55,16 @@
   验签发生在查库**之前**（用错 secret 时 `getSession` 1ms 就返回 null，一条 SQL 都不发）。
   所以快路必须自己复刻验签，而 `getSessionCookie()` 这个公开助手**只取值不验签**——拿它当“已验证”
   就是认证绕过。当时写好的 `readAdminSessionByToken` 已删除，没留死代码。
+- ⚠ **`wrangler tail --format json` 的字段顺序会偷换结论**：一条记录里 `url` 在前、`outcome` 在中、
+  **`cpuTime`/`wallTime` 在后**。拿“从 outcome 往前开窗口”的写法去取 cpu，会取到**上一条记录**的值 ——
+  本节一度因此得出“cpu 从 44ms 跳到 404ms”的假趋势。要么逐行解析（每行一个 JSON），要么以 `cpuTime` 为锚往回取 url。
+- ⚠ **`/api/health` 的 JSON 是顶层字段**（`{ok, service, gitSha, buildTime, ts}`），不是 `app.gitSha`。
+  轮询脚本读错层级会“永远等不到部署”白耗十几分钟，而**线上其实早就好了** —— 部署核验要先把原样本打出来看。
+- ⚠ **PowerShell 脚本里写中文必须先转 UTF-8 BOM**：`powershell.exe -File` 会把无 BOM 的 UTF-8 当 GBK 读，
+  中文注释被拆成非法 token 直接语法报错。另：`wrangler tail` 的 node 子进程会**继承 stdout 句柄**，
+  只 kill 包装的 cmd.exe 不够，管道永不 EOF（脚本末尾必须按 StartTime 补杀 node，或干脆不把 tail 接进管道）。
 
-### 由此得出的四条硬规矩
+### 由此得出的五条硬规矩
 
 1. **同一个 `db` 实例里的多条查询，别用 `Promise.all` 骗自己** —— `max:1` 会把它们排队。要提速就合成一条 SQL（`json_build_object` / `count(*) over ()` / 相关子查询）。
 2. **`Promise.all` 只在两个独立连接之间有效** —— 典型例子是结账 action：会话走 better-auth 自己的 client、市场查找走请求内 `db`，这是两个连接，并行确实省一个 RTT。判断标准是「这两次读是不是各自的 client」。
@@ -64,6 +72,37 @@
 4. **一次请求只建一条连接** —— 合并 SQL 只省“查询次数”，不省“握手次数”。后台原先每次渲染 3 条连接（better-auth / 守卫 / 页面各自 `createDb`），实测占 1.8–2.2s（上表 ⑪）。
    现在统一走 `apps/admin/lib/db.ts` 的 `getRequestDb()`（React `cache()` 做请求级 memo）；`createAdminAuth`/`createCustomerAuth` 接受注入的 `db`。
    ⚠ 这层**不能**下移到 `packages/db`：那里还被 node 脚本与 `packages/jobs`（长驻 isolate 的 cron Worker）使用，没有 React 请求边界时 `cache()` 会退化成**进程级**缓存，正好把“每请求新建 client”防的那个死连接问题（见 `client.ts` 注释）重新引入。
+5. **快路必须能退回权威** —— 任何“为了省往返而自己判”的代码（缓存、预筛、合并 SQL）都必须做到三件：
+   未命中/异常时退回原来的权威路径（最坏 = 不变快，**不能 = 变宽松**）、**不缓存否定结果**、
+   并把“权威会拒绝而快路会接受”的形状写进对照冒烟。K 方案就按这三条写（`lib/session-cache.ts`）。
+   反面例子：拿 better-auth 公开的 `getSessionCookie()` 当“已验签”就是认证绕过（它只取值不验签）。
+
+### 后台会话边缘缓存（K 方案，2026-10-25 上线 `2eb58f7`）
+
+> ⚠ **上表 ⑪ 的归因已被后续实测部分推翻，留在这里当反面记录**：“3 条连接的握手 = 1.8–2.2s”不是主因 ——
+> 把连接 3 并 1（`45a0f54`）之后 wall 完全没降（2487ms vs 2361–2930ms）。真正吃时间的是**串行查询趟数**
+> （每趟线上实测 ≈600–700ms，比裸 RTT 贵，因为多了 Worker↔Hyperdrive 网关那一段）。
+> 另：⑪ 里的 cpu 数值取自“从 outcome 往前开窗”的错误解析（见上面字段顺序那条），只能当量级参考。
+
+把鉴权从“每次导航 2–3 趟跨洋”换成“一次边缘 KV 读”。实现：`apps/admin/lib/session-cache.ts`（key = 会话 cookie 的 SHA-256，TTL 60s，只存已验证的 userId + 权限 key）+ `lib/auth.ts` 快路优先、未命中退回 better-auth + `api/auth/[...all]` 在 sign-out 后主动删自己那份 key。
+
+**上线后实测**（登录态 curl，15 发混合页面，`非 200 = 0/15`）：
+
+| 页面 | 改前 wall | 改后 wall（热） | 页面查询趟数 |
+|---|---|---|---|
+| `/products` | 2487ms | **828 / 912 / 946ms** | 1 |
+| `/orders` | 2235ms | **856ms** | 1 |
+| `/content` | 2484ms | **857ms** | 1 |
+| `/categories` | 2197ms | 1337ms | 2 |
+| `/team` | 2556ms | 1216ms | 3 |
+| `/`（概览） | — | 1137ms | 多 |
+
+结论与边界（都是数据里读出来的，不是推断）：
+- ✅ **热起来后单趟查询的页面进了 1 秒以内**（~0.85–0.95s），与预估一致：地板 = 浏览器↔HK 往返 + 1 趟跨洋查询。
+- ⚠ **刚闲置后的前几发仍慢**（本轮前三发 3829 → 2722 → 1956ms 递减）。那个“递减”形状是 **isolate 冷启动编译**在起作用，不是 KV；所以“闲置一会儿再点的第一发”不在 1 秒内。
+- ⚠ **多趟查询的页面没到 1 秒**（`/categories` 1.34s、`/team` 1.22s）—— K 只动鉴权，这些要靠“合并 SQL”补（同详情页那次 8→1 的手法）。
+- ⚠ **语义代价**：改别人的权限/角色最长 60 秒生效（算不出对方的 key）；登出即时（sign-out 主动删）。
+- ⚠ **压测方式会把自已被 CPU 限卡停**：20 发 / 0.6s 间隔 + `wrangler tail` 同时跑，出现过 4 次 `exceededCpu` → 503；改成 15 发混合页面后 0/15 失败。这是**测量扰动**，不是稳定故障，但说明 `exceededCpu` 预算不宽（单页渲染 cpu 达 300–600ms）。
 
 ### postgres-js / drizzle 合并查询时会咬人的四处（都踩过）
 
