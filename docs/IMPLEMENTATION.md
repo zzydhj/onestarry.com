@@ -275,6 +275,19 @@ onestarry.com/
 > 逐路由的**缓存窗口/渲染策略/失效方式**不再写在这里 —— 单一真源是 `packages/core/src/site-status.ts`，后台 `/status` 页与漂移守卫单测共用它。
 缺：收藏/心愿单、退货 RMA、订单取消、地址簿、多语言路径。
 
+### 3.18 后台会话边缘缓存与保活（2026-10-25 上线）
+| 项 | 真相 |
+|---|---|
+| 模块 | `apps/admin/lib/session-cache.ts`（新）+ `lib/auth.ts` 的快路/回退/回填；绑到 Cloudflare **KV** `SESSION_CACHE`（id `cd8b2a2b06244afdb918bf873f9ae535`） |
+| 存什么 | **只存已验证过的** `{userId, permissions}`；key = SHA-256(会话 token)，不落原凭据；**不缓存 null** |
+| TTL | 60 秒。语义代价：**改别人的权限最长 60 秒生效**；登出即时（`/api/auth` catch-all 在 sign-out 后删 key），但 KV delete 传播最长约 60s；**只能清除自己这一份，无法强制作废别人的会话** |
+| 失效方向 | KV 任何异常（读/写/删、无绑定）一律吞掉并退回 better-auth 权威路径 —— 缓存故障只会变慢，不会变错也不会进不去 |
+| 实测 | `/products` 2487→~850ms、`/orders` 2235→856ms、`/content` 2484→857ms（单查询页进 1 秒）；多趟页面未达标：`/categories` 1337ms（2 趟）、`/team` 1216ms（3 趟） |
+| 安全反证 | 篡改/垃圾/无 cookie 三种情况都只拿到软跳转壳（`permissions: []`），无数据泄露；人节奏 15/15 无 503；密集刷同一页 20 发/0.6s 会撞 `exceededCpu`（4 次 503） |
+| ⛔ 已否决 | **B 方案（绕过 better-auth 直查会话表）不成立**：cookie 是 `token.HMAC签名`（长 81）而 DB token 长 32，`getSessionCookie()` 只取值不验签 —— 做快路等于复刻私有验签。取证见 `docs/PERF.md` §2 |
+| 后台保活 | `apps/jobs/index.ts` `keepWarmAdmin()` 搭 5 分钟 ISR cron 打 `admin/signin`（成本 0：288 请求/天 = 免费额度 0.3%）。⚠ **效果尚未复量**（闲置后首发），代码注释已承诺“没效果就删” |
+| 侧栏高亮 | `AdminSideNav.tsx` 的 `isActive` 改为**最长匹配唯一**（同一时刻只亮一个入口）；前缀匹配会让 `/products/import` 连带亮“商品管理”，而详情页 `/products/<id>` 又确实该归它 —— 候选集只算当前权限下看得见的入口 |
+
 ---
 
 ## 4. 权限守卫覆盖矩阵
@@ -307,9 +320,9 @@ onestarry.com/
 
 | 项 | 真相 |
 |---|---|
-| Workers | `onestarry-com`（web）· `onestarry-admin`（admin）· `onestarry-jobs`（cron，crons `* * * * *` + `20 4 * * *`） |
-| 绑定 | web：Hyperdrive `797e79…` + R2 `onestarry-media` + R2 `onestarry-isr-cache` + DO `NEXT_CACHE_DO_QUEUE` + service 自引用；admin：Hyperdrive + R2 `onestarry-media`；jobs：仅 Hyperdrive |
-| CI | **Cloudflare Workers Builds**（三 Worker 各自“就地连接 Git”，push main 自动构建）；**无 `.github/workflows`**。✅ 2026-10-21 仓库侧门禁已就位：`pnpm typecheck`（8/8）+ `pnpm test`（28/28）一键可跑；⚠️ **lint 不在门禁里**（T22：eslint 从未接通）。构建走 `cf:build`（含临时过桥 flag）；**Dashboard 的 Build command 仍待人工改一次**：改成 `pnpm install --frozen-lockfile && pnpm typecheck && pnpm test && pnpm --filter @onestarry/<app> run cf:build` |
+| Workers | `onestarry-com`（web）· `onestarry-admin`（admin）· `onestarry-jobs`（cron，crons **三条** `* * * * *` + `*/5 * * * *` + `20 4 * * *`；第三条是数据保留，第二条跑 ISR 探针+保活，第一条跑 relay） |
+| 绑定 | web：Hyperdrive `797e79…` + R2 `onestarry-media` + R2 `onestarry-isr-cache` + DO `NEXT_CACHE_DO_QUEUE` + service 自引用；admin：Hyperdrive + R2 `onestarry-media` + **KV `SESSION_CACHE`**（后台会话边缘缓存，见 §3.18）；jobs：仅 Hyperdrive |
+| CI | **Cloudflare Workers Builds**（三 Worker 各自“就地连接 Git”，push main 自动构建）；**无 `.github/workflows`**。✅ 2026-10-21 仓库侧门禁已就位：`pnpm typecheck`（8/8）+ `pnpm test`（119/119）一键可跑；⚠️ **lint 不在门禁里**（T22：eslint 从未接通）。构建走 `cf:build`（含临时过桥 flag）；**Dashboard 的 Build command 仍待人工改一次**：改成 `pnpm install --frozen-lockfile && pnpm typecheck && pnpm test && pnpm --filter @onestarry/<app> run cf:build` |
 | R2 桶 | 只有**公开桶** `onestarry-media`（+ ISR 桶 `onestarry-isr-cache`）；架构文档 §10.3 计划的**私有桶 `onestarry-files` 未建**（发票 PDF/导入暂存/未发布上传无处可放） |
 | 图片管线 | 客户端 `apps/admin/lib/image.ts` `downscaleImage`（最长边 ≤1600 → webp q0.82）→ Server Action 上传 R2；URL 导入侧 `importImage` 下载外链转存 R2。**无 Cloudflare Images/缩略变体** |
 | DB 角色 | `app_rw` 已上线（只追加表禁 UPDATE/DELETE；outbox 保 UPDATE；orders 保 DELETE）；DDL 走 `neondb_owner` |
@@ -328,7 +341,8 @@ onestarry.com/
 | `db/src/seed-demo.ts` | `seed:demo` | **1 个市场 `us`**（`pricingMode=net_plus_tax`, `dutyPresentation=separate_line`）+ 1 法人 + 3 商品（ceramic-mug/linen-tote/steel-bottle，含库存/slug/译文/vmp）；税/关/运费传 0 |
 | `db/src/seed-catalog.ts` | `seed:catalog` | 2 类目（drinkware/bags）+ 2 品牌 + 挂 3 个 demo 商品 |
 | `admin/scripts/seed-admin.ts` | `pnpm --filter @onestarry/admin seed:admin` | 超管（密码读环境变量） |
-| 便捷入口 | `pnpm seed:all`（ledger→catalog→demo→admin）· `pnpm db:partition` · `pnpm db:studio` | |
+| 便捷入口 | `pnpm seed:all`（ledger→catalog→demo→admin）· `pnpm db:partition` · `pnpm db:studio` · **`pnpm scan:dead`** | `scan:dead` = `scripts/dead-scan.mjs` 图遍历式死代码体检（认 barrel 再导出 / Next 约定入口 / wrangler `main` / 构建期 `.mjs`）；退出码可挂 CI。⚠ “无调用方”不等于无用，未接能力看 §9 |
+| 构建指纹 | `scripts/build-stamp.mjs`（由两个 `next.config.ts` 在构建期引入）注入 `APP_GIT_SHA`/`APP_BUILD_TIME` → `/api/health` **顶层** `gitSha` 暴露。**判定“新构建是否已上线”只能比它**（Workers Builds 会静默漏 push） |
 | smoke（11 个，`db/src/smoke-*.ts`） | `smoke` / `smoke:catalog` / `smoke:inventory` / `smoke:pricing` / `smoke:outbox` / `smoke:orders` / `smoke:create-order` / `smoke:payments` / `smoke:payments-posting` / `smoke:shipment`（另有 `jobs/src/relay.smoke.ts`、`jobs/smoke-admin-pricing.ts`） | 连真实 Neon 冒烟，人工触发 |
 | 连接 | 根 `.env.local`（`DATABASE_URL` 池化 / `DATABASE_URL_UNPOOLED` 直连），seed 用 `dotenv config({path:"../../.env.local"})` | ⚠️ 从不同 cwd 跑脚本时路径解析会失效 |
 
@@ -340,9 +354,9 @@ onestarry.com/
 
 | 层 | 真相 |
 |---|---|
-| 单测 | `packages/core/src/*.test.ts` **11 个**（pricing/sellability/shipping/shippingProvider/payments/csv/maintenance/health/isr/invalidate/**site-status**），跑法 `tsx --test`（**node:test，不是 Vitest**）；根 `pnpm test` → turbo `test` task → **现 67/67 全过**。内置**两道漂移护栏**：① `maintenance.test.ts` 读 `apps/web/package.json` 断言 Next 主版本与核心常量一致；② `site-status.test.ts` 扫 `apps/web/app` 源码，断言每个 `page.tsx` 都已登记、声明为整页 ISR 的动态段路由**必须有 `generateStaticParams`**、登记的 `revalidate` 与源码一致、cron 表与 `apps/jobs/wrangler.jsonc` 一致 —— 把「缓存坏法无声」变成就近失败（背书见架构方案 §22） |
-| turbo | ✅ 已加 `test` task 与根 `pnpm test`（实测 **28/28 EXIT 0**）；`pnpm typecheck` 现 **8/8 全绿**（shared 空壳已删，D14/N17 结案）。⚠️ `pnpm lint` 仍会红 —— 见 §12.2 T22 |
-| 集成 | 靠 11 个 smoke 脚本连真实 Neon（人工触发） |
+| 单测 | `packages/core/src/*.test.ts` **17 个**（pricing/sellability/shipping/shippingProvider/payments/**paypal**/csv/maintenance/health/isr/invalidate/**site-status**/cartMap/fetchGuard/legalBody/orderNumber/safeOutput），跑法 `tsx --test`（**node:test，不是 Vitest**）；根 `pnpm test` → turbo `test` task → **现 119/119 全过**（2026-10-27 实测）。内置**两道漂移护栏**：① `maintenance.test.ts` 读 `apps/web/package.json` 断言 Next 主版本与核心常量一致；② `site-status.test.ts` 扫 `apps/web/app` 源码，断言每个 `page.tsx` 都已登记、声明为整页 ISR 的动态段路由**必须有 `generateStaticParams`**、登记的 `revalidate` 与源码一致、cron 表与 `apps/jobs/wrangler.jsonc` 一致 —— 把「缓存坏法无声」变成就近失败（背书见架构方案 §22） |
+| turbo | ✅ 已加 `test` task 与根 `pnpm test`（现 **119/119**）；`pnpm typecheck` 现 **8/8 全绿**（shared 空壳已删，D14/N17 结案）。⚠️ `pnpm lint` 仍会红 —— 见 §12.2 T22 |
+| 集成 | 靠 11 个 smoke 脚本连真实 Neon（人工触发）；另有 `pnpm scan:dead` 做仓级死代码体检（见 §6） |
 | e2e / 压测 / a11y | Playwright ❌ k6 ❌ axe ❌（架构文档 §12 要求，未开工）；历史上用浏览器子代理手工点过结账（截图已 gitignore） |
 
 ---
