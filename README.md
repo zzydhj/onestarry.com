@@ -4,6 +4,8 @@
 
 > 想以此为起点改造成别的站？看 [`docs/REBRAND.md`](./docs/REBRAND.md)。
 > 想知道**代码真实现状 / 还欠什么**？看 [`docs/IMPLEMENTATION.md`](./docs/IMPLEMENTATION.md)（实现地图；§9 未接线清单、§10 偏差登记、**§12 模板完备性体检**）。
+> 想知道**该守什么规矩、哪些方案已否决**？看 [`AGENTS.md`](./AGENTS.md)（工作约定；编码代理会自动读它）。
+> 想知道**为什么这个站是这个延迟、怎么量才不出错**？看 [`docs/PERF.md`](./docs/PERF.md)。
 
 ---
 
