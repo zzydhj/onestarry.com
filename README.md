@@ -25,18 +25,30 @@
 
 ```
 apps/
-  web/         # 前台（Next.js，Workers 部署）
-  admin/       # 后台（Next.js，Workers 部署）
-  jobs/        # Cron relay（价格扫尾、每分钟）
+  web/         # 前台（Next.js on Workers）：页面 + /api/paypal + /api/webhooks + /integration
+  admin/       # 后台（Next.js on Workers）：商品/订单/目录/内容/团队，权限守卫在各页 requirePermission
+  jobs/        # Workers Cron Worker：ISR 健康探针 + 数据保留 + 价格 relay + 后台保活
 packages/
-  db/          # Drizzle schema / 迁移 / queries（唯一写库出口）
-  auth/        # Better Auth 工厂
-  core/        # 共享原语（UUIDv7、错误、类型）
-  shared/      # 业务常量/枚举
-  ui/          # 共享 UI 组件（Tailwind v4）
-  jobs/        # relay 逻辑（Worker 与脚本共用）
-  config/      # tsconfig / eslint 共享配置
+  core/        # 纯逻辑、无 IO（可单测）：paypal / payments / pricing / isr / site-status / maintenance / orderNumber / rbac / csv / fetchGuard / site.ts
+  db/          # Drizzle schema（按域分文件）/ 迁移 / queries（唯一写库出口）/ seed 与 smoke 脚本
+  auth/        # Better Auth 工厂（admin 与 customer 双域会话）+ 浏览器端 client
+  ui/          # 共享 UI 组件 + 设计 token（styles.css = 单一换肤源）
+  jobs/        # cron relay 逻辑本体（Worker 与本地脚本共用，所以不在 apps 里）
+  config/      # tsconfig 基座与 tailwind preset 共享配置
+scripts/       # 构建期注入 gitSha 的 build-stamp（部署指纹就靠它）+ ISR 观察脚本
+docs/          # 实现地图 / 性能真相 / 三个 runbook（谁答哪个问题见 AGENTS.md §0）
 ```
+
+> ⚠ 目录里**没有** `packages/shared`（空壳已于 2026-10-21 删包，登记在实现地图 D14/T7），也没有 `packages/email`、`packages/authz`：邮件未开工，RBAC 在 `core/rbac.ts` + `db/queries/authz.ts`。
+
+### 接手时按这个顺序读（15 分钟建立全貌）
+
+1. [`AGENTS.md`](./AGENTS.md) —— 守什么规矩、哪些方案已否决（**先读这个，否则会重做已删的东西**）
+2. 本 README 的技术栈表 + 上面的目录树 —— 知道代码在哪
+3. [`docs/IMPLEMENTATION.md`](./docs/IMPLEMENTATION.md) §1–§3 —— 逐模块实现地图（文件位置 + 关键函数 + 状态）
+4. 同一文件的 **§9 未接线清单 / §10 偏差登记 / §12 体检** —— 表建了但逻辑没接的那 6 处，这是本项目**最容易误判为"已完成"的地方**
+5. [`docs/PERF.md`](./docs/PERF.md) §1–§2 —— 为什么这个站是这个延迟、哪些手法实测无效
+6. 最后才是架构方案文档（v13 蓝图，只讲为什么与顺序，**不反映代码现状**）
 
 ---
 
