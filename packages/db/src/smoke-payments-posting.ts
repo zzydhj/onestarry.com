@@ -50,6 +50,21 @@ async function main() {
 
             await seedLedgerAccounts(tx, le!.id);
 
+            // —— 审查 M-8 前提负向 ——
+            // 金额与订单应付不符时，recordPaymentSucceeded 必须抛 PAYMENT_AMOUNT_MISMATCH（webhook 靠这条码
+            // 把它归为「不可恢复」→ durably 记 event 行 + 回 200 停投，不再让 PSP 无谓重投 3 天）。
+            // 并验证抛错发生在任何写入之前——不落 payment、不动账（钱安全）。
+            let mismatchMsg = "";
+            try {
+                await recordPaymentSucceeded(tx, { orderId: order!.id, provider: "stripe", providerRef: `bad_${suffix}`, jurisdiction: "US", amountCents: 26000 });
+            } catch (e) {
+                mismatchMsg = e instanceof Error ? e.message : String(e);
+            }
+            assert.match(mismatchMsg, /PAYMENT_AMOUNT_MISMATCH/, `金额≠应付必须抛 PAYMENT_AMOUNT_MISMATCH（实际：${mismatchMsg || "没报错——分类前提不成立"}）`);
+            const noBadPay = await tx.select({ id: payments.id }).from(payments).where(eq(payments.providerRef, `bad_${suffix}`));
+            assert.equal(noBadPay.length, 0, "抛错应发生在写入前，不应留下任何 payment 行");
+            console.log("✅ M-8 前提：金额不符抛 PAYMENT_AMOUNT_MISMATCH 且零写入（webhook 据此分类为不可恢复）");
+
             const res = await recordPaymentSucceeded(tx, {
                 orderId: order!.id,
                 provider: "stripe",

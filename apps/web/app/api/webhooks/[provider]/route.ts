@@ -162,8 +162,39 @@ export async function POST(req: Request, ctx: { params: Promise<{ provider: stri
         ) {
             return Response.json({ received: true, duplicate: true });
         }
-        // PAYMENT_NOT_FOUND 故意不归到 duplicate：冲账比落账先到是可能的（时间差、重投顺序），
-        // 回 500 让事务连同事件行一起回滚，PayPal 重投后就能处到。误标“已处理”反而会把钱弄丢。
+        // 审查 M-8：把「重投一万次也不会好」的不可恢复错误，与「重投能补」的可恢复错误分开处理。
+        // 不可恢复 = 我方记账不变量 / 数据不变量被破（金额≠应付、借贷不平、内部插入/事务失败、市场缺失、
+        // captureRef 多义、超额退款）。旧写法它们一律回 500 → 事务连同 event 行一起回滚（运维在
+        // webhook_events 里看不到）→ PSP 按退避重投整整 3 天、每次跑完整事务再回滚：既无谓轰炸、又零审计痕迹。
+        // 现：将失败 **durably 写进 event 行**（独立提交、不随已回滚的业务事务丢，status=failed+error）后回 200
+        // 确认收到（停掉 3 天重投），靠 status=failed（走 wh_status_idx）进运维视野。钱没落账、单仍 unpaid，不会误标已付。
+        const UNRECOVERABLE = [
+            "PAYMENT_AMOUNT_MISMATCH",
+            "LEDGER_IMBALANCE",
+            "PAYMENT_INSERT_FAILED",
+            "LEDGER_TXN_FAILED",
+            "MARKET_NOT_FOUND",
+            "PAYMENT_AMBIGUOUS",
+            "REVERSAL_AMOUNT_OVER",
+        ];
+        if (UNRECOVERABLE.some((c) => msg.startsWith(c))) {
+            console.error(`[webhook:${providerName}] 不可恢复错误，已落档并停投：${msg}`);
+            await db
+                .insert(webhookEvents)
+                .values({
+                    provider: providerName,
+                    providerEventId: normalized.providerEventId,
+                    type: normalized.type,
+                    payload: normalized.raw,
+                    status: "failed",
+                    error: msg,
+                    processedAt: new Date(),
+                })
+                .onConflictDoNothing(); // 并发重投同行已存则幂等跳过
+            return Response.json({ received: true });
+        }
+        // 其余（PAYMENT_NOT_FOUND 时序竞态、ORDER_NOT_FOUND、以及任何未知/基建错误）默认回 500 让 PSP 重投：
+        // 宁可多试，也绝不确认一个我们没真正处理成功的事件（误标“已处理”会把钱弄丢）。event 行随事务回滚，重投时重新处理。
         console.error(`[webhook:${providerName}] 处理失败：`, e instanceof Error ? e.message : e);
         return new Response("processing failed", { status: 500 });
     }
