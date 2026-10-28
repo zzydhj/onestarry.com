@@ -2,6 +2,7 @@ import Link from "next/link";
 import type { Metadata } from "next";
 import { getCloudflareContext } from "@opennextjs/cloudflare";
 import { createDb, getCartLines } from "@onestarry/db";
+import { PLACEHOLDER_SHIPPING_CENTS } from "@onestarry/core";
 import { Button, Input, Label } from "@onestarry/ui";
 import { readCart } from "@/lib/cart";
 import { checkoutAction } from "./actions";
@@ -9,8 +10,6 @@ import { checkoutAction } from "./actions";
 export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = { title: "Checkout", robots: { index: false, follow: false } };
-
-const SHIPPING_CENTS = 500;
 
 function money(cents: number, cur: string): string {
     return new Intl.NumberFormat("en-US", { style: "currency", currency: cur }).format(cents / 100);
@@ -37,13 +36,17 @@ export default async function Checkout({ searchParams }: { searchParams: Promise
     let subtotal = 0;
     for (const l of lines) subtotal += l.unitCents * (cart[l.variantId] ?? 0);
     const currency = lines[0]?.currency ?? "USD";
-    const total = subtotal + SHIPPING_CENTS;
+    const total = subtotal + PLACEHOLDER_SHIPPING_CENTS;
+    // 审查 M-7：结账页可能被直接访问（绕开购物车拦截），同样标红下架/禁售项并拦住提交。
+    const isUnavailable = (l: (typeof lines)[number]) => l.blocked || l.productStatus !== "active";
+    const hasUnavailable = lines.some(isUnavailable);
 
     return (
         <div className="mx-auto max-w-lg px-4 py-8">
             <Link href="/cart" className="text-sm text-muted transition hover:text-accent">← Back to cart</Link>
             <h1 className="mt-2 text-2xl font-semibold tracking-tight">Checkout</h1>
             {error === "invalid" && <p className="mt-3 text-sm text-red-600">Please fill in email, recipient and address.</p>}
+            {error === "unavailable" && <p className="mt-3 text-sm text-red-600">Some items are no longer available or out of stock. Remove them to continue.</p>}
             {error === "failed" && <p className="mt-3 text-sm text-red-600">Order failed: some items may be unavailable or out of stock.</p>}
 
             <h2 className="mt-6 text-base font-semibold">Order</h2>
@@ -52,7 +55,10 @@ export default async function Checkout({ searchParams }: { searchParams: Promise
                     const qty = cart[l.variantId] ?? 0;
                     return (
                         <li key={l.variantId} className="flex justify-between py-2">
-                            <span>{l.title} × {qty}</span>
+                            <span>
+                                {l.title} × {qty}
+                                {isUnavailable(l) && <span className="ml-2 text-xs text-red-600">No longer available</span>}
+                            </span>
                             <span>{money(l.unitCents * qty, l.currency)}</span>
                         </li>
                     );
@@ -60,7 +66,7 @@ export default async function Checkout({ searchParams }: { searchParams: Promise
             </ul>
             <div className="mt-2 space-y-1 text-right text-sm">
                 <div>Subtotal {money(subtotal, currency)}</div>
-                <div>Shipping {money(SHIPPING_CENTS, currency)}</div>
+                <div>Shipping {money(PLACEHOLDER_SHIPPING_CENTS, currency)}</div>
                 <div className="text-lg font-bold text-brand">Total {money(total, currency)}</div>
             </div>
 
@@ -93,7 +99,8 @@ export default async function Checkout({ searchParams }: { searchParams: Promise
                 </div>
                 <Label className="mt-3" htmlFor="country">Country</Label>
                 <Input id="country" name="country" defaultValue="US" className="mt-1 w-full" />
-                <Button type="submit" className="mt-6 w-full">Continue to payment</Button>
+                <Button type="submit" className="mt-6 w-full" disabled={hasUnavailable}>Continue to payment</Button>
+                {hasUnavailable && <p className="mt-2 text-xs text-red-600">Remove the unavailable items above to continue.</p>}
             </form>
             <p className="mt-3 text-xs text-muted">You’ll complete the payment on the next step (PayPal). Placing the order doesn’t charge you.</p>
         </div>

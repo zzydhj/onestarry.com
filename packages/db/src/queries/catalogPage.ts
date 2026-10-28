@@ -21,7 +21,7 @@ export type CatalogPageStatus = "ok" | "redirect" | "notfound";
 
 export interface CatalogPageMeta {
     status: CatalogPageStatus;
-    /** status=redirect 时的当前 slug（历史 slug → 301）。 */
+    /** status=redirect 时的当前 slug（历史 slug → 前台 permanentRedirect 308）。 */
     toSlug?: string;
     /** status=ok 时的展示名。 */
     name?: string;

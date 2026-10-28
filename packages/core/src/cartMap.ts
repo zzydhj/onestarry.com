@@ -64,3 +64,15 @@ export function parseCartCookie(value: string | null | undefined): CartSanitizeR
         return { items: [], dropped: 1 };
     }
 }
+
+/**
+ * 写侧数量归一（审查 H-2）：把任意输入折成 `0..CART_MAX_QTY` 的整数。
+ * 旧写侧不做任何归一（`addToCart` 不封顶、`setQty` 连小数/Infinity 都不处理），
+ * 而读侧 `sanitizeCartMap` 会把 `>999 / 小数 / 非整数` 整条**丢弃**——于是输入 1000
+ * 或多轮加购累加到 1010 → 下次渲染该商品整行静默消失。两侧必须同源：写侧先 clamp，
+ * 永不会写出一个读侧会丢的值。返回 0 由调用方当作「移除」处理。
+ */
+export function clampCartQty(n: number): number {
+    if (!Number.isFinite(n)) return 0;
+    return Math.min(CART_MAX_QTY, Math.max(0, Math.floor(n)));
+}

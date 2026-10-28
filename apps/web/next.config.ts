@@ -1,5 +1,6 @@
 import type { NextConfig } from "next";
 import { buildStamp } from "../../scripts/build-stamp.mjs";
+import { securityHeaders } from "../../scripts/security-headers.mjs";
 
 const nextConfig: NextConfig = {
     // 图片走 Cloudflare Images / R2 loader（后续接）；先不启用 Vercel 优化器
@@ -14,13 +15,7 @@ const nextConfig: NextConfig = {
         return [
             {
                 source: "/:path*",
-                headers: [
-                    { key: "X-Content-Type-Options", value: "nosniff" },
-                    { key: "X-Frame-Options", value: "SAMEORIGIN" },
-                    { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
-                    { key: "Permissions-Policy", value: "camera=(), microphone=(), geolocation=()" },
-                    { key: "Strict-Transport-Security", value: "max-age=63072000; includeSubDomains" },
-                ],
+                headers: securityHeaders(),
             },
             // ⚠ 下面两条是开 Workers Cache（wrangler.jsonc 的 cache.enabled）的前提。
             // 那层缓存挡在 Worker 前面，只看**响应头**决定存不存；而这两组端点原本**不带任何

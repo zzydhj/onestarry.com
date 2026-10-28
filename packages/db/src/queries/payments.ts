@@ -1,4 +1,4 @@
-import { and, eq, sql } from "drizzle-orm";
+import { and, eq, ne, sql } from "drizzle-orm";
 import {
     creditNotes,
     invoiceSequences,
@@ -14,6 +14,7 @@ import {
 import { splitReversal, type ReversalSplit } from "@onestarry/core";
 import { emitEvent } from "./outbox";
 import { requireAccountId } from "./ledger";
+import { releaseReservation } from "./inventory";
 import type { Db, Tx } from "../client";
 
 export interface RecordPaymentInput {
@@ -79,7 +80,10 @@ async function resolveLegalEntity(db: Db | Tx, marketId: string): Promise<{ lega
  * MVP 假设本位币=订单币种(USD)，amountFunctional=amountOriginal、fx=1；跨币种结算留步骤 12 后续。
  */
 export async function recordPaymentSucceeded(db: Db | Tx, input: RecordPaymentInput): Promise<RecordPaymentResult> {
-    const order = (await db.select().from(orders).where(eq(orders.id, input.orderId)).limit(1))[0];
+    // 并发孪生于发货 C-1（审查 P1）：换 event_id 的两条成功回调若都无锁读判 paymentStatus，会双双通过下面检查
+    // → 双 payment + 双发票 + 双分录。FOR UPDATE 锁订单行串行化（webhook 已将本函数包在事务内）；
+    // 末尾转 paid 的条件更新 + payments(order_id) 部分唯一索引作双兜底。
+    const order = (await db.select().from(orders).where(eq(orders.id, input.orderId)).limit(1).for("update"))[0];
     if (!order) throw new Error("ORDER_NOT_FOUND");
     // 同一订单不得出现两笔“成功支付”：幂等只按 (provider, event_id) 去重，挡不住
     // 换了 event_id 的重复回调 —— 那会多生一份 payment + 一张发票 + 一组分录，账本虚增。
@@ -160,7 +164,13 @@ export async function recordPaymentSucceeded(db: Db | Tx, input: RecordPaymentIn
         totalCents: order.totalCents,
     });
 
-    await db.update(orders).set({ status: "paid", paymentStatus: "paid", placedAt: new Date() }).where(eq(orders.id, order.id));
+    // 二次兜底（同 C-1）：带 `paymentStatus <> 'paid'` 条件更新 + .returning() 判命中；没命中即抛（整事务回滚）。
+    const moved = await db
+        .update(orders)
+        .set({ status: "paid", paymentStatus: "paid", placedAt: new Date() })
+        .where(and(eq(orders.id, order.id), ne(orders.paymentStatus, "paid")))
+        .returning({ id: orders.id });
+    if (!moved[0]) throw new Error(`PAYMENT_ALREADY_RECORDED:${order.orderNumber}`);
 
     await emitEvent(db, {
         aggregateType: "payment",
@@ -217,7 +227,10 @@ export async function recordPaymentReversal(db: Db | Tx, input: RecordReversalIn
     const conds = [eq(payments.provider, input.provider)];
     if (input.orderId) conds.push(eq(payments.orderId, input.orderId));
     if (input.captureRef) conds.push(eq(payments.providerRef, input.captureRef));
-    const rows = await db.select().from(payments).where(and(...conds));
+    // H-1：锁住这笔收款行（FOR UPDATE），把下面的 sum(refunds)/remaining/超额判断全放进锁内。
+    //   refund_payment_ref_uq 只挡同一 provider_ref 的重放；两条不同 refundRef 的并发部分退款若不串行化，
+    //   会各自读到旧 sum → 双双过 `amount > remaining` → 累计超额退 + 超开红字凭证。
+    const rows = await db.select().from(payments).where(and(...conds)).for("update");
     if (rows.length === 0) throw new Error(`PAYMENT_NOT_FOUND:${input.captureRef ?? input.orderId ?? ""}`);
     // 一个单对多笔 capture 本站还没做；真出现时宁可报错也不能挑「第一条」—— 挑错就是冲错钱。
     if (rows.length > 1) throw new Error(`PAYMENT_AMBIGUOUS:${rows.length}`);
@@ -358,6 +371,10 @@ export async function recordPaymentReversal(db: Db | Tx, input: RecordReversalIn
             ...(input.kind === "revoked" ? { paypalOrderId: null } : {}),
         })
         .where(eq(orders.id, order.id));
+
+    // H-2：整笔冲销（revoked 或退完 → full）才释放这张单下单时占的预留；部分退款订单仍有效，预留保留。
+    // releaseReservation 幂等：若已发货（预留已在 ship 时消耗并置 null）则为空转，不会误回退。
+    if (full) await releaseReservation(db, order.id);
 
     await emitEvent(db, {
         aggregateType: "payment",

@@ -88,21 +88,27 @@ export interface ReceiveInput {
  * 按收货日汇率折 USD 入成本）留 TODO——属"做进系统"的财务自动化，本模板仅保留接口与库存事实回写。
  */
 export async function receiveStock(db: Db | Tx, input: ReceiveInput): Promise<{ onHandAfter: number }> {
-    const current = (await db.select().from(inventory).where(eq(inventory.variantId, input.variantId)).limit(1))[0];
-    const oldOnHand = current?.onHand ?? 0;
     const damaged = input.qtyDamaged ?? 0;
-    const onHandAfter = oldOnHand + input.qtyReceived - damaged;
+    const net = input.qtyReceived - damaged; // on_hand 的带符号净增量
 
-    await db
+    // 并发安全（审查 M1）：无行则新建（on_hand 初值=净增量），有行则 `on_hand = on_hand + net` 增量式更新；
+    // RETURNING 拿并发后的真值（与 recordShipment 同一口径）——旧写法先 SELECT 再写绝对值，并发丢更新。
+    // 前提：本函数必须在调用方事务内执行，以便与幂等键写入同事务（见 route）。
+    const updated = await db
         .insert(inventory)
-        .values({ variantId: input.variantId, onHand: onHandAfter, reserved: current?.reserved ?? 0 })
-        .onConflictDoUpdate({ target: inventory.variantId, set: { onHand: onHandAfter, updatedAt: new Date() } });
+        .values({ variantId: input.variantId, onHand: net, reserved: 0 })
+        .onConflictDoUpdate({
+            target: inventory.variantId,
+            set: { onHand: sql`${inventory.onHand} + ${net}`, updatedAt: new Date() },
+        })
+        .returning({ onHand: inventory.onHand });
+    const onHandAfter = updated[0]?.onHand ?? 0;
 
     await db.insert(stockMovements).values({
         variantId: input.variantId,
         type: "receive",
         quantity: input.qtyReceived,
-        onHandAfter: oldOnHand + input.qtyReceived,
+        onHandAfter,
         unitCostCents: input.unitCostCents,
         referenceType: "receive",
         note: JSON.stringify({

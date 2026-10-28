@@ -4,7 +4,7 @@ config({ path: "../../.env.local" });
 import assert from "node:assert/strict";
 import { and, eq, sql } from "drizzle-orm";
 import { createDb } from "./client";
-import { legalEntities, markets, orderLines, orders, products, productVariants, transactionalOutbox } from "./schema";
+import { inventory, legalEntities, markets, orderLines, orders, products, productVariants, transactionalOutbox } from "./schema";
 import { createOrder, recomputeVariantMarketPrice, type RecomputeInput } from "./queries";
 
 /**
@@ -25,6 +25,9 @@ async function main() {
             const [mk] = await tx.insert(markets).values({ code: `co_${suffix}`, name: "CO Mkt", currency: "USD", legalEntityId: le!.id }).returning();
             const [prod] = await tx.insert(products).values({ status: "active" }).returning();
             const [variant] = await tx.insert(productVariants).values({ productId: prod!.id, sku: `CO-${suffix}`, basePriceCents: 10000, baseCurrency: "USD" }).returning();
+
+            // 可售事实：createOrder 现在按 computeSellability 校 inventory（in_stock_only 需可售库存≥数量），故补一行库存。
+            await tx.insert(inventory).values({ variantId: variant!.id, onHand: 100, reserved: 0 });
 
             // 先建全包价缓存（重算时 shipping=0）
             const priceInput: RecomputeInput = {

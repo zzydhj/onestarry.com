@@ -11,8 +11,9 @@ export const dynamic = "force-dynamic"; // 读客户会话，不缓存
 export const metadata: Metadata = { title: "Write a review", robots: { index: false, follow: false } };
 
 /** 发表评价页（需登录客户）：评分 + 标题 + 正文 → 提交进待审核队列。 */
-export default async function ReviewFormPage({ params }: { params: Promise<{ slug: string }> }) {
+export default async function ReviewFormPage({ params, searchParams }: { params: Promise<{ slug: string }>; searchParams: Promise<{ error?: string }> }) {
     const { slug } = await params;
+    const { error } = await searchParams;
     const session = await readCustomerSession();
     if (!session) redirect("/signin");
 
@@ -29,6 +30,7 @@ export default async function ReviewFormPage({ params }: { params: Promise<{ slu
             </Link>
             <h1 className="mt-2 text-2xl font-semibold tracking-tight">Write a review</h1>
             <p className="mt-1 text-sm text-muted">{p.title}</p>
+            {error && <p className="mt-3 text-sm text-red-600">Couldn’t submit your review — please try again.</p>}
 
             <form action={submitReviewAction} className="mt-6 space-y-4">
                 <input type="hidden" name="productId" value={res.entityId} />

@@ -13,6 +13,7 @@ import {
     orders,
     products,
     productVariants,
+    shipments,
     stockMovements,
     transactionalOutbox,
 } from "./schema";
@@ -106,6 +107,59 @@ async function main() {
             assert.ok(evs.length >= 2, "应发 order.created + order.shipped 两事件");
 
             console.log(`✅ 履约发货段：COGS=${ship.cogsCents}、on_hand 100→${inv?.onHand}、借贷平衡(${debit}=${credit})、订单 fulfilled、事件 ${evs.length} 条`);
+
+            // —— M-3：缺参考成本的变体不得静默记 0 COGS ——
+            const [variant2] = await tx
+                .insert(productVariants)
+                .values({ productId: prod!.id, sku: `SHNC-${suffix}`, basePriceCents: 10000, baseCurrency: "USD" }) // 不设 costCents
+                .returning();
+            await tx.insert(inventory).values({ variantId: variant2!.id, onHand: 10, reserved: 0 });
+            await recomputeVariantMarketPrice(tx, { ...priceInput, variantId: variant2!.id });
+            const order2 = await createOrder(tx, {
+                idempotencyKey: `shnc-${suffix}`,
+                email: "b2@example.com",
+                marketId: mk!.id,
+                currency: "USD",
+                shippingAddress: { recipient: "John", line1: "2 St", country: "US" },
+                items: [{ variantId: variant2!.id, quantity: 1 }],
+                shippingCents: 0,
+            });
+            await recordPaymentSucceeded(tx, { orderId: order2.orderId, provider: "fake", providerRef: `pi_2_${suffix}`, jurisdiction: "US" });
+            let cogsMsg = "";
+            try {
+                await recordShipment(tx, { orderId: order2.orderId, carrier: "fake", trackingNumber: `NC-${suffix}` });
+            } catch (e) {
+                cogsMsg = e instanceof Error ? e.message : String(e);
+            }
+            assert.match(cogsMsg, /COGS_COST_UNKNOWN/, `缺成本价应抛 COGS_COST_UNKNOWN（实际：${cogsMsg || "没报错——M-3 未修好"}）`);
+            console.log("✅ M-3：缺参考成本的变体发货被 COGS_COST_UNKNOWN 拦下（不静默记 0）");
+
+            // —— C-1 并发发货防护的负向验证 ——
+            // 1) 应用层守卫：对已 fulfilled 的单再发一次 → 必须 ALREADY_FULFILLED（不重复确认收入/重复扣库存）。
+            let guardMsg = "";
+            try {
+                await recordShipment(tx, { orderId: order.orderId, carrier: "fake", trackingNumber: `DUP-${suffix}` });
+            } catch (e) {
+                guardMsg = e instanceof Error ? e.message : String(e);
+            }
+            assert.match(guardMsg, /ALREADY_FULFILLED/, `二次发货应被应用层守卫拒（实际：${guardMsg || "没报错——守卫失效"}）`);
+
+            // 2) 数据库层兜底：退回旧单 allowed（status='returned' 排除在唯一索引外），再插第二张未退回单必须被 ship_order_uq 拒。
+            await tx.insert(shipments).values({ orderId: order.orderId, status: "returned", trackingNumber: `RTN-${suffix}` });
+            let idxViolated = false;
+            let idxInfo = "";
+            try {
+                await tx.insert(shipments).values({ orderId: order.orderId, status: "shipped", trackingNumber: `SHX-${suffix}` });
+            } catch (e) {
+                idxViolated = true;
+                const anyErr = e as { code?: string; constraint?: string; cause?: { code?: string; constraint?: string } };
+                idxInfo = `code=${anyErr.code ?? anyErr.cause?.code ?? ""} constraint=${anyErr.constraint ?? anyErr.cause?.constraint ?? ""}`;
+            }
+            // ↑ 23505 会 abort 事务，之后不能再跑 SQL，故这是本事务最后一步断言。
+            assert.ok(idxViolated, `同单第二张未退回运单必须被唯一索引拒掉（否则 C-1 DB 兜底未生效）：${idxInfo}`);
+            assert.ok(idxInfo.includes("23505") || /ship_order_uq/i.test(idxInfo), `应因 ship_order_uq 拒掉，实际：${idxInfo}`);
+            console.log("✅ C-1：二次发货被 ALREADY_FULFILLED 挡；returned 旧单放行、第二张未退回单被 ship_order_uq 拒");
+
             throw ROLLBACK;
         });
     } catch (e) {

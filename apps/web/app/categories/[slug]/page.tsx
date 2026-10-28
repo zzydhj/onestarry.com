@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { cache } from "react";
-import { notFound, redirect } from "next/navigation";
+import { notFound, permanentRedirect } from "next/navigation";
 import { jsonLdScript, SITE_ORIGIN } from "@onestarry/core";
 import { browseProducts, loadCategoryPageMeta, listCurrentSlugs } from "@onestarry/db";
 import { getDb } from "@/lib/db";
@@ -61,7 +61,8 @@ export default async function CategoryPage({ params }: { params: Promise<{ slug:
     const { slug } = await params;
     const d = await loadCategory(slug);
     if (d.status === "notfound") notFound();
-    if (d.status === "redirect") redirect(`/categories/${d.toSlug}`);
+    // 历史 slug → **永久**重定向 308（审查 M-1）：与 PDP 同口径，改名后 SEO 权重才合并；307 是临时、不合并。
+    if (d.status === "redirect") permanentRedirect(`/categories/${d.toSlug}`);
 
     const breadcrumb = {
         "@context": "https://schema.org",

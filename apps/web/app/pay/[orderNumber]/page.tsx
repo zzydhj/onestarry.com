@@ -38,7 +38,9 @@ export default async function PayPage({
     const { orderNumber } = await params;
     const { t: token, canceled } = await searchParams;
 
-    const access = await resolveOrderAccess(decodeURIComponent(orderNumber), token);
+    // 审查 L-2：同 order 页——路由段已由 Next 解码，再 `decodeURIComponent` 对非法 % 序列抛 URIError→500；
+    // `resolveOrderAccess` 内部已正则校验，直接传 orderNumber。
+    const access = await resolveOrderAccess(orderNumber, token);
     if (!access.ok) notFound();
     if (!access.canSeeFull) {
         return (
@@ -56,7 +58,11 @@ export default async function PayPage({
     }
 
     const { order, items } = access;
-    const href = `/order/${order.orderNumber}${token ? `?t=${encodeURIComponent(token)}` : ""}`;
+    // 按钮/回调需要的凭证：正常结账链路从 `?t=` 带；登录本人从「我的订单」进来时 URL 无 `?t=`，
+    // 但已能过 canSeeFull（会话归属）—— 此时用订单自身的 publicToken 兜底（publicToken 非空、且已过闸，
+    // 不是新泄露）。否则渲染条件会比服务端(/api/paypal/orders 认会话或凭证)更严 → 本人从订单列表点「去支付」变死路（审查 M3）。
+    const payToken = token ?? order.publicToken;
+    const href = `/order/${order.orderNumber}${payToken ? `?t=${encodeURIComponent(payToken)}` : ""}`;
 
     // 已付或已取消：没什么可付的，直接去确认页（重复点链接也只会看到这一条路）。
     if (!access.payable) redirect(href);
@@ -104,15 +110,14 @@ export default async function PayPage({
             </div>
 
             <div className="mt-8">
-                {sdkUrls.length > 0 && token ? (
-                    <PayPalPayButton orderNumber={order.orderNumber} token={token} sdkUrls={sdkUrls} successHref={href} />
+                {sdkUrls.length > 0 && payToken ? (
+                    <PayPalPayButton orderNumber={order.orderNumber} token={payToken} sdkUrls={sdkUrls} successHref={href} />
                 ) : (
                     <div className="rounded-md border border-line bg-surface p-4">
                         <p className="text-sm font-medium">PayPal is not available yet</p>
                         <ul className="mt-2 list-disc space-y-1 pl-5 text-xs text-muted">
                             {!cfg && <li>Set the worker variables PAYPAL_CLIENT_ID, PAYPAL_SECRET and PAYPAL_ENV (see docs/IMPLEMENTATION.md).</li>}
                             {cfg && sdkUrls.length === 0 && <li>PAYPAL_CLIENT_ID looks malformed — check for quotes or stray spaces.</li>}
-                            {cfg && sdkUrls.length > 0 && !token && <li>Open this page from the payment link you received after checkout.</li>}
                         </ul>
                     </div>
                 )}

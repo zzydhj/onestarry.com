@@ -1,5 +1,5 @@
 import { and, eq, inArray, sql } from "drizzle-orm";
-import { inventory, markets, productTranslations, productVariants, variantMarketPrices } from "../schema";
+import { inventory, markets, productTranslations, productVariants, products, variantMarketPrices } from "../schema";
 import type { Db, Tx } from "../client";
 
 export interface CartLine {
@@ -11,9 +11,11 @@ export interface CartLine {
     allInCents: number; // 全包单价
     available: number;
     blocked: boolean;
+    /** 商品上下架状态（审查 M-7）：非 active 的行照旧返回但带出此字段，由上层标“不再可售”，不静默丢行。 */
+    productStatus: "draft" | "active" | "archived";
 }
 
-/** 按变体 id 批量取购物车行（含价格缓存/库存/文案）；市场不可用或无价则该行缺失。 */
+/** 按变体 id 批量取购物车行（含价格缓存/库存/文案/商品状态）；市场不可用或无价则该行缺失。 */
 export async function getCartLines(
     db: Db | Tx,
     variantIds: string[],
@@ -39,8 +41,10 @@ export async function getCartLines(
             allInCents: variantMarketPrices.allInCents,
             available: inventory.available,
             blocked: variantMarketPrices.blocked,
+            productStatus: products.status,
         })
         .from(productVariants)
+        .innerJoin(products, eq(products.id, productVariants.productId))
         .innerJoin(productTranslations, and(eq(productTranslations.productId, productVariants.productId), eq(productTranslations.locale, locale)))
         .innerJoin(variantMarketPrices, and(eq(variantMarketPrices.variantId, productVariants.id), eq(variantMarketPrices.marketId, sql`(${marketId})`)))
         .leftJoin(inventory, eq(inventory.variantId, productVariants.id))

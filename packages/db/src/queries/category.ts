@@ -70,7 +70,7 @@ export async function renameCategory(db: Db | Tx, input: { id: string; name: str
 
 /**
  * 更新类目名 + slug。slug 为空则视为不改（保留当前），非空则经 setEntitySlug 处理
- * （与当前不同才动，旧 slug 降历史 → resolveSlug 自动 301）。返回最终 slug。
+ * （与当前不同才动，旧 slug 降历史 → resolveSlug → 前台永久重定向 308）。返回最终 slug。
  */
 export async function updateCategory(
     db: Db | Tx,

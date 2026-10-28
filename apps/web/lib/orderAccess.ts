@@ -1,5 +1,5 @@
 import { getCloudflareContext } from "@opennextjs/cloudflare";
-import { isOrderAccessToken, isOrderNumberShape } from "@onestarry/core";
+import { isOrderAccessToken, isOrderNumberShape, secretsMatch } from "@onestarry/core";
 import { createDb, getOrderByNumber } from "@onestarry/db";
 import { readCustomerSession } from "./session";
 
@@ -44,7 +44,9 @@ export async function resolveOrderAccess(orderNumber: string, token: string | nu
     // 会话命中但归属是别人的单 → 连存在都不确认（与确认页同口径，不给枚举者反馈）。
     if (session?.userId && res.order.customerId && !isOwner) return { ok: false, status: 404, reason: "NOT_FOUND" };
 
-    const tokenOk = !!token && isOrderAccessToken(token) && token === res.order.publicToken;
+    // 凭证比对走同仓统一的常量时间 secretsMatch（审查 L-6）：128-bit token 跨网络时序实际不可爆破，
+    // 但既然仓库已有现成的安全比对就不该用 ===（与集成鉴权/webhook 同口径，免得日后被人复制成四种写法）。
+    const tokenOk = !!token && isOrderAccessToken(token) && secretsMatch(token, res.order.publicToken);
     const canSeeFull = isOwner || tokenOk;
 
     // 已付或已取消的单不许再发起扣款：钱只该被收一次，重复扣款要靠人工退款擦屁股。

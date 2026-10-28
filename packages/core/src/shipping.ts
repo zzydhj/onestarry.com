@@ -8,6 +8,13 @@
  * 返回的 shippingCents 由调用方作为 shippingCents 传入 computeLandedPrice（运费进 VAT 税基）。
  */
 
+/**
+ * MVP 占位运费（分）：`computeShipping` 与 `shipping_rates` 尚未接进结账（D03/N3）前的固定值。
+ * 单一真源：购物车展示、结账页展示、`createOrder` 落账三处都读这一个常量——保证“看到的运费 == 实收的运费”，
+ * 不会因为各自写死 500 而漂移。接上真实 `computeShipping` 后删掉本常量，三处改调用同一个算得的 shippingCents。
+ */
+export const PLACEHOLDER_SHIPPING_CENTS = 500;
+
 export type ShippingMode = "weight_tier" | "per_kg" | "flat";
 
 export interface ShippingTier {

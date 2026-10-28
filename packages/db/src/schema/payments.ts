@@ -29,6 +29,9 @@ export const payments = pgTable(
     (t) => [
         uniqueIndex("pay_provider_ref_uq").on(t.provider, t.providerRef),
         index("pay_order_idx").on(t.orderId),
+        // 一张单至多一笔“成功收款”（审查 P1，与发货 ship_order_uq 同构）：换 event_id 的并发成功回调除应用层
+        // FOR UPDATE + 条件更新外，再靠这条部分唯一索引在 DB 层兜底（只约束 succeeded，pending/failed/refunded 不受限）。
+        uniqueIndex("pay_order_succeeded_uq").on(t.orderId).where(sql`${t.status} = 'succeeded'`),
         // 支付额不得为负（退款走 refunds 表，不靠写一笔负支付表达）。DB 层只保底线：
         // “金额必须等于订单应付”这种跨表规则留在 recordPaymentSucceeded，那里才能读两边。
         check("payment_amount_nonneg", sql`${t.amountCents} >= 0`),
@@ -49,7 +52,17 @@ export const refunds = pgTable(
         reason: text("reason"),
         status: text("status").notNull().default("pending"), // pending | succeeded | failed
     },
-    (t) => [index("refund_payment_idx").on(t.paymentId), index("refund_order_idx").on(t.orderId)],
+    (t) => [
+        index("refund_payment_idx").on(t.paymentId),
+        index("refund_order_idx").on(t.orderId),
+        // 同笔退款并发去重（审查 M5）：recordPaymentReversal 靠「先 SELECT provider_ref 后 INSERT」判重放，
+        // 但 webhook 至少一次投递下，两个带同一 refundRef（换过 event_id）的并发事务能双双越过 SELECT →
+        // 双记退款 + 双开红字凭证。把去重交给数据库：(payment_id, provider_ref) 部分唯一（NULL 不参与），
+        // 第二个 INSERT 撞约束 → 事务回滚 → PSP 重投 → 下次 SELECT 命中 → 消化成「重复」。与代码的查询键一致。
+        uniqueIndex("refund_payment_ref_uq")
+            .on(t.paymentId, t.providerRef)
+            .where(sql`${t.providerRef} IS NOT NULL`),
+    ],
 );
 
 export const payouts = pgTable(

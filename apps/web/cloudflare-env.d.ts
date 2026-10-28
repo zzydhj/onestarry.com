@@ -15,11 +15,18 @@ interface CloudflareEnv {
     BETTER_AUTH_SECRET: string;
     /** 与 admin 共享的失效密钥（Workers secret）。可缺：缺了 /api/internal/invalidate 一律 401，前台退回 60s 定时器兜底。 */
     INVALIDATE_SECRET?: string;
+    /**
+     * /integration/* 的共享密钥（Workers secret，审查 C1）：外部程序请求带 `X-Integration-Key`。
+     * Cloudflare Access 头只是第一道闸（可伪造、且依赖 Zero Trust 的外部配置），密钥才是代码侧的兜底。
+     * 缺 = 集成未启用：一律 503（fail-closed，不给"漏配"留成公开端点的缝）；密钥不匹配 → 401。
+     */
+    INTEGRATION_SECRET?: string;
     /** ISR 成品页桶（wrangler.jsonc 已绑）：/api/health 只读里面的 _ops/ 健康报告。 */
     NEXT_INC_CACHE_R2_BUCKET: R2Bucket;
     /**
-     * 显式开关：= "1" 时 /api/webhooks/[provider] 才接受 FakePaymentProvider 的假回调（本地/dev 冒烟用）。
-     * 缺省即关闭：真 PSP 未接入前，默认值必须是「不收」而不是「信假消息」（2026-10-23 审查 P1-4）。
+     * 显式开关：= "1" **且 provider 段为专属 "fake"（`/api/webhooks/fake`）** 才接受 FakePaymentProvider 的假回调（本地/dev 冒烟用）。
+     * 缺省即关闭：真 PSP 未接入前，默认值必须是「不收」而不是「信假消息」（2026-10-23 审查 P1-4）；
+     * 收窄到专属 slug 是为了即使生产误开此开关，Fake 也无法冒充 `/webhooks/paypal` 等真实通道（审查 L-5）。
      */
     FAKE_PAYMENTS_ENABLED?: string;
     /**

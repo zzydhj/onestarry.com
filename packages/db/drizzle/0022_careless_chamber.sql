@@ -1,0 +1,3 @@
+DROP INDEX "ld_type_locale_market_ver_uq";--> statement-breakpoint
+CREATE UNIQUE INDEX "ld_current_uq" ON "legal_documents" USING btree ("type","locale",coalesce("market_id", '00000000-0000-0000-0000-000000000000'::uuid)) WHERE "legal_documents"."is_current";--> statement-breakpoint
+CREATE UNIQUE INDEX "ld_type_locale_market_ver_uq" ON "legal_documents" USING btree ("type","locale","version",coalesce("market_id", '00000000-0000-0000-0000-000000000000'::uuid));

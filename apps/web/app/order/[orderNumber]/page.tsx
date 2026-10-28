@@ -40,7 +40,10 @@ export default async function OrderPage({
     const { orderNumber } = await params;
     const { t: token } = await searchParams;
 
-    const access = await resolveOrderAccess(decodeURIComponent(orderNumber), token);
+    // 审查 L-2：Next 已对路由段做过 percent 解码，这里再 `decodeURIComponent` 一是多余、
+    // 二是对非法 % 序列（如已解码成 "SO-%zz"）抛 URIError → 500。`resolveOrderAccess` 内部已用
+    // `^[A-Za-z0-9_-]+$` 校验，含任何 % 直接判为本不存→ null → 404。
+    const access = await resolveOrderAccess(orderNumber, token);
     if (!access.ok) notFound();
     const { order, items, canSeeFull, payable } = access;
 

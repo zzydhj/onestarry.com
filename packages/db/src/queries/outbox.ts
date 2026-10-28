@@ -1,6 +1,9 @@
-import { eq, inArray, sql } from "drizzle-orm";
+import { and, eq, inArray, or, sql } from "drizzle-orm";
 import { transactionalOutbox } from "../schema";
 import type { Db, Tx } from "../client";
+
+/** 重试上限：attempts 达此值后 markFailed 将事件置 dead（不再回队）。 */
+export const OUTBOX_MAX_ATTEMPTS = 5;
 
 export interface OutboxEventInput {
     aggregateType: string;
@@ -22,12 +25,22 @@ export async function emitEvent(db: Db | Tx, e: OutboxEventInput): Promise<void>
     });
 }
 
-/** relay 拉取待派发事件（按发生时间先进先出）。 */
-export async function fetchPendingEvents(db: Db | Tx, limit = 50) {
+/**
+ * relay 拉取待派发事件（按发生时间先进先出）。
+ * 含 pending + 未超阈的 failed（审查 H1）：旧实现只拉 pending，failed 永不回队——
+ * relay 只要失败一次（Neon 抖动、连接被掉），price.recompute 就永久停在 failed，
+ * 前台旧价、下单旧价却显示“改价成功”。把 failed(attempts<N) 一并纳入才能自愈。
+ */
+export async function fetchPendingEvents(db: Db | Tx, limit = 50, maxAttempts = OUTBOX_MAX_ATTEMPTS) {
     return db
         .select()
         .from(transactionalOutbox)
-        .where(eq(transactionalOutbox.status, "pending"))
+        .where(
+            or(
+                eq(transactionalOutbox.status, "pending"),
+                and(eq(transactionalOutbox.status, "failed"), sql`${transactionalOutbox.attempts} < ${maxAttempts}`),
+            ),
+        )
         .orderBy(transactionalOutbox.occurredAt)
         .limit(limit);
 }
@@ -41,11 +54,26 @@ export async function markDispatched(db: Db | Tx, ids: string[]): Promise<void> 
         .where(inArray(transactionalOutbox.id, ids));
 }
 
-/** 派发失败 → 记 attempts+1 与错误；超过阈值由 relay 置 dead。 */
-export async function markFailed(db: Db | Tx, id: string, error: string): Promise<void> {
+/**
+ * 派发失败 → attempts+1；未超阈置 failed（下次重拉），超阈置 dead（审查 H1）。
+ * 旧注释说“超阈置 dead”但并未实现，dead 永远不产生。用 case when 一次完成。
+ */
+export async function markFailed(db: Db | Tx, id: string, error: string, maxAttempts = OUTBOX_MAX_ATTEMPTS): Promise<void> {
     await db
         .update(transactionalOutbox)
-        .set({ status: "failed", lastError: error, attempts: sql`${transactionalOutbox.attempts} + 1` })
+        .set({
+            status: sql`case when ${transactionalOutbox.attempts} + 1 >= ${maxAttempts} then 'dead' else 'failed' end`,
+            lastError: error,
+            attempts: sql`${transactionalOutbox.attempts} + 1`,
+        })
+        .where(eq(transactionalOutbox.id, id));
+}
+
+/** 直接置 dead（relay 遇未注册 handler 的未知事件时用，避免静默 ack 掉队）。 */
+export async function markDead(db: Db | Tx, id: string, error: string): Promise<void> {
+    await db
+        .update(transactionalOutbox)
+        .set({ status: "dead", lastError: error, attempts: sql`${transactionalOutbox.attempts} + 1` })
         .where(eq(transactionalOutbox.id, id));
 }
 

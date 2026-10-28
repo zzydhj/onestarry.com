@@ -1,4 +1,4 @@
-import { and, eq, sql } from "drizzle-orm";
+import { and, eq, inArray, ne, sql } from "drizzle-orm";
 import {
     inventory,
     ledgerEntries,
@@ -12,6 +12,7 @@ import {
 } from "../schema";
 import { emitEvent } from "./outbox";
 import { requireAccountId } from "./ledger";
+import { releaseReservation } from "./inventory";
 import type { Db, Tx } from "../client";
 
 export interface RecordShipmentInput {
@@ -35,7 +36,10 @@ export interface RecordShipmentResult {
  * 税/关税已在支付段确认为负债，发货段不再动（§3.6）。
  */
 export async function recordShipment(db: Db | Tx, input: RecordShipmentInput): Promise<RecordShipmentResult> {
-    const order = (await db.select().from(orders).where(eq(orders.id, input.orderId)).limit(1))[0];
+    // 并发双击「标记发货」（或 action 因网络重试被重放）会重复确认收入 + 重复扣库存 + 生成两张运单（审查 C-1）。
+    // READ COMMITTED 下无锁读两个事务都能过下面的 fulfilled 检查 → 必须 FOR UPDATE 锁住订单行串行化（调用方已在事务内包）；
+    // 下面还有条件更新守卫 + shipments(order_id) 部分唯一索引作双兜底（与退款去重同类）。
+    const order = (await db.select().from(orders).where(eq(orders.id, input.orderId)).limit(1).for("update"))[0];
     if (!order) throw new Error("ORDER_NOT_FOUND");
     if (order.paymentStatus !== "paid") throw new Error("ORDER_NOT_PAID");
     if (order.fulfillmentStatus === "fulfilled") throw new Error("ALREADY_FULFILLED");
@@ -49,11 +53,23 @@ export async function recordShipment(db: Db | Tx, input: RecordShipmentInput): P
 
     const items = await db.select().from(orderItems).where(eq(orderItems.orderId, order.id));
 
-    // COGS（近似：参考成本 × 数量）
+    // COGS（MVP 近似：参考成本 × 数量；移动平均留后续）。一次 inArray 批量取成本（旧写法逐行查 = N+1）。
+    // 审查 M-3：costCents 为 NULL（未设参考成本）与 0（真免费）必须区分——旧写法 `?? 0` 把未知当 0，
+    // 于是下面 `.filter(e => e.amount !== 0)` 会把 cogs/inventory_asset 两条整个吞掉 → 确认了收入却
+    // 没确认任何成本、利润虚增且无痕。未定价的单不该能“静默发货”：抛错让运营先补成本。
+    const costRows = items.length
+        ? await db
+            .select({ id: productVariants.id, costCents: productVariants.costCents })
+            .from(productVariants)
+            .where(inArray(productVariants.id, items.map((it) => it.variantId)))
+        : [];
+    const costById = new Map(costRows.map((c) => [c.id, c.costCents]));
     let cogsCents = 0;
     for (const it of items) {
-        const variant = (await db.select({ costCents: productVariants.costCents }).from(productVariants).where(eq(productVariants.id, it.variantId)).limit(1))[0];
-        cogsCents += (variant?.costCents ?? 0) * it.quantity;
+        if (!costById.has(it.variantId)) throw new Error(`COGS_VARIANT_MISSING:${it.variantId}`);
+        const cost = costById.get(it.variantId);
+        if (cost == null) throw new Error(`COGS_COST_UNKNOWN:${it.variantId}`);
+        cogsCents += cost * it.quantity;
     }
 
     const [accDep, accRev, accShipRev, accCogs, accInv] = await Promise.all([
@@ -131,7 +147,18 @@ export async function recordShipment(db: Db | Tx, input: RecordShipmentInput): P
         });
     }
 
-    await db.update(orders).set({ fulfillmentStatus: "fulfilled" }).where(eq(orders.id, order.id));
+    // H-2：发货消耗——goods 已从 on_hand 递减（上面循环），这里把这张单下单时占的 reserved 精确回退。
+    // 与 recordShipment 顶部的 FOR UPDATE 同属一个事务，释放幂等（快照置 null 后重复调为空转）。
+    await releaseReservation(db, order.id);
+
+    // 二次兜底：带上 `<> 'fulfilled'` 条件更新，用 .returning() 判断是否真的命中。FOR UPDATE 已串行化，
+    // 这里再防止未来有人拿非事务的 Db 直接调（那时 FOR UPDATE 无效），避免静默覆盖同值。
+    const moved = await db
+        .update(orders)
+        .set({ fulfillmentStatus: "fulfilled" })
+        .where(and(eq(orders.id, order.id), ne(orders.fulfillmentStatus, "fulfilled")))
+        .returning({ id: orders.id });
+    if (!moved[0]) throw new Error("ALREADY_FULFILLED");
 
     await emitEvent(db, {
         aggregateType: "order",

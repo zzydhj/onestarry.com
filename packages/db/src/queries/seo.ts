@@ -66,30 +66,25 @@ function allEmpty(f: SeoFields): boolean {
 }
 
 /**
- * upsert 语言级 SEO 覆盖（marketId=NULL）。唯一索引含可空 marketId，ON CONFLICT 对 NULL 不可靠，
- * 故用"查在则改、不在则插"。若所有覆盖字段皆空 → 删除该行（前台回退自动生成）。
+ * upsert 语言级 SEO 覆盖（marketId=NULL）。若所有覆盖字段皆空 → 删除该行（前台回退自动生成）。
+ *
+ * 审查 M-10：旧写法“先查后插”靠唯一索引，但 market_id 可空使 NULL 不唯一 → 并发保存两个都查不到 → 各插一行。
+ * 现依 schema 的 COALESCE 表达式唯一索引强制单行；并发里后到的一方会撞 23505 → 重试为按 scope 更新（重放冲突重查）。
+ * 唯一调用方（admin SEO 面板）是 Db 自提交、不包事务 → 23505 不会 abort 外部事务，重查安全。
  */
 export async function upsertSeoMeta(
     db: Db | Tx,
     input: { entityType: string; entityId: string; locale: string } & SeoFields,
 ): Promise<void> {
-    const existing = (
-        await db
-            .select({ id: seoMeta.id })
-            .from(seoMeta)
-            .where(
-                and(
-                    eq(seoMeta.entityType, input.entityType),
-                    eq(seoMeta.entityId, input.entityId),
-                    eq(seoMeta.locale, input.locale),
-                    isNull(seoMeta.marketId),
-                ),
-            )
-            .limit(1)
-    )[0];
+    const scope = and(
+        eq(seoMeta.entityType, input.entityType),
+        eq(seoMeta.entityId, input.entityId),
+        eq(seoMeta.locale, input.locale),
+        isNull(seoMeta.marketId),
+    );
 
     if (allEmpty(input)) {
-        if (existing) await db.delete(seoMeta).where(eq(seoMeta.id, existing.id));
+        await db.delete(seoMeta).where(scope);
         return;
     }
 
@@ -101,15 +96,22 @@ export async function upsertSeoMeta(
         og: input.og ?? null,
     };
 
+    const set = { ...fields, updatedAt: new Date() };
+    const existing = (await db.select({ id: seoMeta.id }).from(seoMeta).where(scope).limit(1))[0];
     if (existing) {
-        await db.update(seoMeta).set({ ...fields, updatedAt: new Date() }).where(eq(seoMeta.id, existing.id));
-    } else {
-        await db.insert(seoMeta).values({
-            entityType: input.entityType,
-            entityId: input.entityId,
-            locale: input.locale,
-            marketId: null,
-            ...fields,
-        });
+        await db.update(seoMeta).set(set).where(eq(seoMeta.id, existing.id));
+        return;
+    }
+    try {
+        await db.insert(seoMeta).values({ entityType: input.entityType, entityId: input.entityId, locale: input.locale, marketId: null, ...fields });
+    } catch (e) {
+        // 并发对手刚插了同 scope 的 NULL 行（现由 COALESCE 表达式唯一索引拒绝）→ 退化成更新，不报错也不留双行。
+        const anyErr = e as { code?: string; cause?: { code?: string } };
+        const code = anyErr.code ?? anyErr.cause?.code;
+        if (code === "23505") {
+            await db.update(seoMeta).set(set).where(scope);
+            return;
+        }
+        throw e;
     }
 }

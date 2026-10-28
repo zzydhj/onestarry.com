@@ -126,6 +126,13 @@ export const orders = pgTable(
         dutyCents: bigint("duty_cents", { mode: "number" }).notNull().default(0),
         totalCents: bigint("total_cents", { mode: "number" }).notNull().default(0),
         refundedCents: bigint("refunded_cents", { mode: "number" }).notNull().default(0),
+        /**
+         * 在途库存预留快照（审查 H-2）：`{ variantId: qty }`，仅对下单那一刻 `in_stock_only` 的变体占位。
+         * null = 无活动预留。占位在 createOrder 的单条 CTE 里原子完成（`inventory.reserved += qty`）；
+         * 发货/退款/未付过期三条路径都按这份快照精确回退 `reserved`，用 `WHERE reservation IS NOT NULL` 保证只放一次。
+         * 存快照而非“释放时重算政策”：避免下单与发货之间 availability_policy 变动导致回退量与占位量不一致。
+         */
+        reservation: jsonb("reservation"),
         placedAt: timestamp("placed_at", { withTimezone: true, mode: "date" }),
         notes: text("notes"),
     },
@@ -134,6 +141,8 @@ export const orders = pgTable(
         uniqueIndex("order_public_token_uq").on(t.publicToken),
         index("order_customer_idx").on(t.customerId),
         index("order_status_placed_idx").on(t.status, t.placedAt),
+        // H-2 过期回收扫描走这条部分索引：只覆盖“仍持有在途预留”的行（极少数），不被 orders 增长拖成全表扫。
+        index("order_open_reservation_idx").on(t.createdAt).where(sql`${t.reservation} IS NOT NULL`),
         // 金额底线（2026-10-23 审查 P0-3 的最后一层）：应用层已校数量与金额，但
         // createOrder 之外还有导入/集成/脚本等写入口，负数单一入库就是账本与发票垃圾。
         check("order_total_nonneg", sql`${t.totalCents} >= 0`),

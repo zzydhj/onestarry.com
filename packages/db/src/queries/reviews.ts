@@ -2,6 +2,9 @@ import { and, desc, eq, inArray, sql } from "drizzle-orm";
 import { orderItems, orders, productTranslations, productVariants, reviews } from "../schema";
 import type { Db, Tx } from "../client";
 
+// 审查 L-3：与 receive 路由同一约定，在入口夹 UUID 形状。
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 export type ReviewStatus = "pending" | "approved" | "rejected" | "flagged";
 
 export interface ReviewItem {
@@ -63,6 +66,9 @@ export async function createReview(
     // 先判整数再判区间：旧写法 `rating < 1 || rating > 5` 对 NaN **两个都是 false**，
     // 于是 NaN 一路走到整数列插入才报错 → 整个请求 500（2026-10-23 审查 P2-13）。
     if (!Number.isInteger(input.rating) || input.rating < 1 || input.rating > 5) return { error: "INVALID_RATING" };
+    // 审查 L-3：productId 直接进 uuid 列，形状不符会撞 PG 22P02 → 整个请求 500。
+    // 数据层入口先夹形状（返回 {error}，前台 M-6 通道会退回带标记）。
+    if (!UUID_RE.test(input.productId)) return { error: "INVALID_PRODUCT_ID" };
     // 长度封顶：评价会公开渲染在商品页，不封顶就等于允许客户往库里塞几 MB 文本。
     const title = typeof input.title === "string" && input.title ? input.title.slice(0, REVIEW_TITLE_MAX) : null;
     const body = typeof input.body === "string" && input.body ? input.body.slice(0, REVIEW_BODY_MAX) : null;

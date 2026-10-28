@@ -23,8 +23,8 @@
 | # | 事项 | 真相 |
 |---|---|---|
 | D01 | 税/关税/运费/汇率 | `taxRate:0 / dutyRate:0 / shippingCents:0 / fxRate:1` **硬编码占位**（`queries/pricing.ts` L152-159）→ 现在"全包价 = 基价原样" |
-| D02 | `computeSellability` | 函数+单测都在，但**没有任何读取路径调用它**；`product_market_availability` 表零引用。可售性实际只看 `variant_market_prices.blocked` + `products.status` |
-| D03 | 结账 | 运费**硬编码 500 分**、市场**硬编码 `us`**、`idempotencyKey = crypto.randomUUID()` 每次新建 → **幂等键不防重复提交**；无库存预留 |
+| D02 | `computeSellability` | ✅ **已接进 createOrder**（上次 H-2）：黑名单 `product_market_availability.mode='deny'` + `products.status` + 库存（in_stock_only）均过它；`smoke:sellability` 实测。**残余**：`shipsTo` 写死 true 未查 `shipping_zones`（M-11）、白名单 allowlist 有意不启用（防断收入） |
+| D03 | 结账 | 运费**硬编码 500 分**、市场**硬编码 `us`**；~~无库存预留~~ **已实现下单原子占位（审查 H-2）**：`reserved` 生命周期 + 未付过期回收 cron（详 §3.5）；`idempotencyKey` 已由结账页渲染时生成并回带（不再每次现取） |
 | D04 | 权限点强制 | ✅ **已于 2026-10-21 收口**（原先：34 个后台写动作中仅 12 个校权限点）。现**全 34 个动作 = `requirePermission(...)`**，13 个页面同步升级，AdminNav 按权限过滤（详 §4） |
 | D05 | 底座配置表 | **12 张表有表无代码**（shippingZones/shippingRates/carriers/dutyRules/taxRatesConfig/taxRegistrations/deMinimisRules/marketComplianceProfiles/paymentProviderAccounts/locales/marketCountries/marketLocales + promotions/customerProfiles/consents 部分）→ §14"加国家=纯配置"目前**只在 markets 表列层面成立** |
 | D06 | 步骤 13 邮件/退款/争议/PDF | `Resend`、`refunds`、`disputes`、`payouts`、发票 PDF → R2 **全部无实现**；退款权限点 `refund:write` 定义了但没有退款动作 |
@@ -124,9 +124,9 @@ onestarry.com/
 ### 3.4 目录（商品/类目/品牌/属性/媒体/slug/译文）
 | 能力 | 位置 | 状态 |
 |---|---|---|
-| 浏览列表单一真源 | `queries/product.ts` → `browseProducts`（active ⨝ 主变体 ⨝ 该市场 vmp ⨝ 译文 ⨝ current slug + 批量附首图）/ `getProductById` / `getCategoryById` / `getBrandById` / `getCategorySubtreeIds`（BFS，**未用 ltree**） | ✅ |
+| 浏览列表单一真源 | `queries/product.ts` → `browseProducts`（active ⨝ 主变体 ⨝ 该市场 vmp ⨝ 译文 ⨝ current slug + 批量附首图）/ `getProductById`（**也筛 `status='active'`，审查 H-3**——PDP/评价页不再经直链渲染草稿/归档商品；后台预览走 `loadAdminProductDetail` 不受限）/ `getCategoryById` / `getBrandById` / `getCategorySubtreeIds`（BFS，**未用 ltree**） | ✅ |
 | 站内搜索 | `queries/product.ts` → `searchProducts`：`productTranslations.searchVector`（generated tsvector）`@@ websearch_to_tsquery('english', $q)` + `ts_rank`；GIN `pt_search_gin`（§15.1‑5） | ✅ 参数绑定免注入；Typesense 未接（规模路径） |
-| slug 单一真源 | `queries/slug.ts` → `slugify` / `getEntitySlug` / `setEntitySlug`（旧行降为历史 + 插新当前行 → 自动 301）/ `resolveSlug`（`current` \| `redirect`）/ `listCurrentSlugs`；同类型内占用冲突自动 `-2/-3` | ✅ PDP/类目/品牌/评论/CMS 五处走它 |
+| slug 单一真源 | `queries/slug.ts` → `slugify` / `getEntitySlug` / `setEntitySlug`（旧行降为历史 + 插新当前行 → 前台 `permanentRedirect` **308**，审查 M-1 与 PDP 同口径）/ `resolveSlug`（`current` \| `redirect`）/ `listCurrentSlugs`；同类型内占用冲突自动 `-2/-3` | ✅ PDP/类目/品牌/评论/CMS 五处走它（历史 slug 重定向统一 308） |
 | 商品管理写侧 | `queries/catalogAdmin.ts` → `createProductWithVariant`（product+主变体+库存+slug+译文+发全市场算价事件）/ `setProductCatalog` / `setProductRichBody` / `upsertProductFromRow`（CSV/URL 用） | ✅ |
 | 类目/品牌/属性 | `queries/category.ts` `brand.ts` `attributeAdmin.ts`（属性定义 CRUD + `setCategoryAttribute`/`removeCategoryAttribute`；值存 JSONB `attrs`） | ✅ 后台可用；属性模板引擎/facet 下发 ❌（Phase B） |
 | 媒体 | `queries/media.ts` → `attachProductImage`（写 media_assets + product_images，position 自增）/ `listProductImages` / `deleteProductImage`（回 r2Key 供上层删对象）/ `moveProductImage`；URL 拼装 `core/media.ts` → `mediaUrl(r2Key)` = `MEDIA_PUBLIC_BASE + key` | ✅ |
@@ -135,9 +135,9 @@ onestarry.com/
 ### 3.5 库存
 | 能力 | 位置 | 状态 |
 |---|---|---|
-| 水位读写 | `queries/inventory.ts` → `getStock` / `setVariantOnHand`（后台改库存） | ✅ |
-| 扣减 | `shipments.ts` 内 upsert `inventory.onHand -= qty` + 写 `stockMovements.sale` | ✅ 发货时才扣 |
-| **预留/秒杀** | — | ❌ 无 `inventory_reservations` 表、无 15 分钟预留、无 Redis Lua（架构文档 §6.2） |
+| 水位读写 | `queries/inventory.ts` → `getStock` / `setVariantOnHand`（后台改库存） | ✅ `setVariantOnHand` 整段置于事务内 + `SELECT ... FOR UPDATE`（审查 M-4）——否则并发同 SKU set 会各自从旧值算 delta、把 adjustment 流水重复计入（审计虚增） |
+| 扣减 | `shipments.ts` 内 upsert `inventory.onHand -= qty` + 写 `stockMovements.sale` | ✅ 发货时才扣。**DB 符号 CHECK `sm_qty_sign`（迁移 0023，审查第三轮 schema 漂移）**：`quantity` 是对 on_hand 的带符号增量，符号须与 type 一致（sale/damage 负、receive/return 正、adjustment 非零），防“发货把扣库误写成 +”这类符号写反；不给 `on_hand_after` 加 `>=0`（`on_hand` 本身无此约束、超卖负快照合法）。⚠ drizzle 会把 `check(sql\`${t.quantity}\`)` 渲染成表限定名 `"stock_movements"."quantity"`，PG 的 CHECK 无 FROM 上下文→`42P01`；**CHECK 表达式必须写裸列名** `"quantity"` |
+| **预留/超卖防护** | `queries/orders.ts` `createOrder`（事务内建单后原子 `UPDATE inventory SET reserved+=qty WHERE on_hand-reserved>=qty`，不足即抛 `NOT_SELLABLE:insufficient_stock` 回滚）+ `queries/inventory.ts` `releaseReservation`/`releaseExpiredReservations` | ✅ **审查 H-2**：`available=on_hand-reserved` 此前 reserved 从不递增→并发结账必超卖。现仅 `in_stock_only` 行占位（backorder/preorder/made_to_order 不占，不误伤无货下单）；快照存 `orders.reservation`，发货消耗、整笔退款释放、未付过期 cron 回收（`releaseReservation` 靠 `FOR UPDATE`+置 null 幂等，只放一次）。⚠ 占位与建单必须同事务（单条 CTE 里 `exists(ins_key)` 门控 reserve + 跨 CTE 计数对 Postgres 求值顺序敏感、会误伤有货单）→ 代价：结账多 BEGIN/COMMIT 两趟。**残余**：无 `inventory_reservations` 独立表/秒杀热行无 Redis Lua（架构 §6.2）；TTL 默认 60 分（`RESERVATION_TTL_MINUTES`） |
 
 ### 3.6 定价与可售性
 | 能力 | 位置 | 状态 |
@@ -145,15 +145,15 @@ onestarry.com/
 | 落地价纯函数 | `core/pricing.ts` → `computeLandedPrice({goodsValue, shipping, taxRate, dutyRate, pricingMode, dutyPresentation, thresholdCents, overThresholdPolicy})` → `{taxCents, dutyCents, displayedPriceCents, allInCents, blocked}` | ✅ 6 个单测覆盖阈值分支 |
 | 物化缓存 | `queries/pricing.ts` → `recomputeVariantMarketPrice`（`inputsHash` 命中即跳过；list 价变则写 `priceHistory`，reason ∈ manual/promotion/duty_recalc/fx_recalc） | ✅ |
 | 事件发射 | `emitPriceRecomputeForAllMarkets`（遍历全部 markets 发 `price.recompute`）+ `updateVariantBasePrice` | ✅ **但 payload 里 taxRate/dutyRate/shippingCents=0、fxRate=1**（D01） |
-| 可售性 | `core/sellability.ts` → `computeSellability` + 单测 | ⛔ **未被任何调用方使用**（D02） |
+| 可售性 | `core/sellability.ts` → `computeSellability` + 单测 | ✅ 被 `createOrder` 调用（D02）；shipsTo 第 6 条暫写 true 未接 zones → M-11 |
 | 运费 | `core/shipping.ts` → `computeShipping(rateCard, weightG, dimsCm?, goodsValueCents)` + `core/shippingProvider.ts` Fake | 🟡 函数与单测就绪，**结账未接线**（D03） |
 
 ### 3.7 订单 / 结账
 | 能力 | 位置 | 状态 |
 |---|---|---|
-| 购物车 | `apps/web/lib/cart.ts`（httpOnly cookie `cart` = `{variantId: qty}`，7 天）+ `queries/cart.ts` `getCartLines`（按 DB 重新取价/库存） | ✅ 无 Redis、无 carts 表。读车经 `core/cartMap.sanitizeCartMap` 净化（整数 1..999、UUID key、行数上限）—— httpOnly 只挡脚本不挡用户改值 |
-| 下单 | `queries/orders.ts` → `createOrder`（幂等占位 → 地址 → 批量取 vmp → 汇总 subtotal/tax/duty/shipping/discount → orders + order_items(snapshot) + order_lines → 发 `order.created`）；单号 `SO-<base36 时间>-<8 位 CSPRNG>`（`core/orderNumber`，旧 3 位存量仍可读） | ✅ 连库冒烟 + e2e；数量/行数/总额均有硬校验，库侧另有 CHECK 约束 |
-| 结账入口 | `apps/web/app/checkout/{page,actions}.tsx`（读 cookie → 事务内 `createOrder` → 清车 → 跳 `/order/[orderNumber]`） | 🟡 硬编码 market `us` / currency USD / locale en / 运费 500；字段已封顶+邮箱/国码校形，失败原因进 `console.error`（给用户仍是笼统提示） |
+| 购物车 | `apps/web/lib/cart.ts`（httpOnly cookie `cart` = `{variantId: qty}`，7 天）+ `queries/cart.ts` `getCartLines`（按 DB 重新取价/库存） | ✅ 无 Redis、无 carts 表。读车经 `core/cartMap.sanitizeCartMap` 净化（整数 1..999、UUID key、行数上限）；**写侧 `addToCart`/`setQty` 先 `clampCartQty` 封顶再写（审查 H-2）**——否则输入 1000 会被读侧整条丢→商品静默消失；输入框带 `max`。**`getCartLines` 带出 `productStatus`（审查 M-7）**：车页/结账页把非 active/被禁行标红且拦住结账（不静默丢行），`checkoutAction` 将 `NOT_SELLABLE` 归为专用 `?error=unavailable`。**运费展示与落账已共用单点 `PLACEHOLDER_SHIPPING_CENTS`（审查 M-1，不会再漂移）**；展示不含税/关与落账口径的分叉属“接了真税率才爆”的潜伏问题，随 N2（真 Tax/Duty）一起用 `computeLandedPrice` 喂两侧，不现在造假税 | 
+| 下单 | `queries/orders.ts` → `createOrder`（幂等占位 → 地址 → 批量取 vmp → 汇总 subtotal/tax/duty/shipping/discount → orders + order_items(snapshot) + order_lines → 发 `order.created`；**末了事务内原子占位 `reserved+=qty`（审查 H-2，不足回滚整单）**）；单号 `SO-<base36 时间>-<8 位 CSPRNG>`（`core/orderNumber`，旧 3 位存量仍可读） | ✅ 连库冒烟 + e2e；数量/行数/总额均有硬校验，库侧另有 CHECK 约束；预留见 §3.5 |
+| 结账入口 | `apps/web/app/checkout/{page,actions}.tsx`（读 cookie → `createOrder` → 清车 → 跳 `/pay/[orderNumber]?t=`） | 🟡 硬编码 market `us` / currency USD / locale en / 运费 500；字段已封顶+邮箱/国码校形，失败原因进 `console.error`（给用户仍是笼统提示）。**审查 C-1（Critical）已修**：`redirect()` 靠抛 `NEXT_REDIRECT` 生效，旧写法把它和 `writeCart` 写在 `try` 内 → 被通用 `catch` 当“下单失败”吞掉→每笔成功单也被踢回 `?error=failed`（订单已入库+车已清+用户永远进不了 `/pay/*`）；现 `try` 只留 `createOrder`，清车+跳转移出 `try`（清车失败单独 catch 记日志不挡跳转）。另：`/account/orders`（force-dynamic + `redirect("/signin")`）删掉 `loading.tsx`（审查 H-1，铁律 5：骨架会把未登录 `redirect` 变 200 软响应；部署后 `curl -I` 应见 307） |
 | 订单确认页 | `apps/web/app/order/[orderNumber]/page.tsx` | ✅ 登录态判归属（不同归属 notFound）+ 非归属掩码邮箱 + `robots index:false`；`robots.ts` 已屏蔽 `/order`。**本路由故意不配 loading.tsx**：`force-dynamic` + loading.tsx 会先冲流式外壳把状态行定成 200，之后 `notFound()` 只能塞 404 内容进去 → 线上实测就是「404 页面 + HTTP 200」的软 404（ISR 页如 PDP 不受影响，实测给的是真 404）。仍无游客 magic link（下一行） |
 | 订单查询 | `queries/orders.ts` `getOrderByNumber`；`adminOrders.ts` `listRecentOrders`/`listOrdersByCustomer`/`getOrderDetail` | ✅ |
 | 游客查单 magic link / 购物车合并认领 | — | ❌ 未实现 |
@@ -164,13 +164,13 @@ onestarry.com/
 | Provider 接缝 | `core/payments.ts` → `PaymentProvider`(createCheckout/verifyWebhook/refund) + `FakePaymentProvider`；事件归一到 `PaymentOutcome = paid\|revoked\|refunded\|ignored`（单靠一个 `succeeded` 布尔判不出“钱被撤回”）+ `captureRef`（退款事件的 resource 是退款体，靠它回溯原收款） | ✅ |
 | PayPal 纯逻辑 | `core/paypal.ts`：金额字符串（0 位小数币种）、SDK URL、建单体、capture/refs 解析、`cert_url` 判域、验签体、事件分类 `paypalEventOutcome`、沙箱闸 `paypalSandboxBlocked` | ✅ 14+8 单测钉住（事件名逐字照官方 event-names，错一个字母就静默归 ignored） |
 | PayPal IO | `apps/web/lib/paypal.ts`：OAuth（per-isolate token 缓存 + 401 重试一次）/ create / capture / show / webhook 验签；不引官方 SDK（Workers 上 fetch 四端点更好审） | 🟡 代码就位、**未跑过真 API**（待凭据） |
-| 支付页与路由 | `/pay/[orderNumber]`（凭证页）+ `PayPalPayButton` + `POST /api/paypal/orders`（金额只取库、`PayPal-Request-Id` 幂等、复用存过的 `paypal_order_id`）+ `POST /api/paypal/capture`（**三道闸**：必须是我们为这张单建过的那张 / `custom_id` 等于我方单号 / 金额等于应付） | ✅ typecheck+冒烟；支付动作在服务端发生，不信前端递的 orderID |
-| webhook 接收 | `apps/web/app/api/webhooks/[provider]/route.ts`：**fail-closed** —— 默认无 provider 直接 501；`paypal` 且凭据齐 → 真验签（五条头 + 订阅 id + 整个 `webhook_event`）；`FAKE_PAYMENTS_ENABLED=1` 才接受假回调；按 `outcome` 分派落账/冲账/只存（`ignored` 写事件表标 ignored，方便后台筛“还要人工看的”）；体上限 256KB；`(provider, provider_event_id)` 幂等 | ✅ 幂等已验证；真回调待凭据配好 |
-| 支付段落账 | `queries/payments.ts` → `recordPaymentSucceeded`：建 payments + `ledger_transactions` + 借 psp_clearing / 贷 customer_deposits+tax_payable+duty_collected，**组内借贷 SUM≠0 整笔回滚**；同单重复落账抛 `PAYMENT_ALREADY_RECORDED`（webhook 当幂等重放回 200）、金额≠应付抛 `PAYMENT_AMOUNT_MISMATCH`；辖区由 market→legalEntity 带出；`nextDocumentNumber`（行锁 upsert 自增）+ 建 invoices；订单转 paid；发 `payment.succeeded` | ✅ 冒烟通过。MVP 假设本位币=订单币种（fxRate "1"） |
-| **支付反向落账** | `recordPaymentReversal`：钱被收回（DENIED/REVERSED）或退掉（REFUNDED）时的**红冲** —— 只追加分录不改原分录（`ledger_entries` 已 REVOKE UPDATE/DELETE）；金额走 `core/payments.splitReversal` 按原占比摊且**和恒等于本次额**；出 `CN-` 独立序列的红字凭证；refunded 写 `refunds` 台账行、revoked **不写**（不是退款，写进去污染报表）；`payment_status` 走 unpaid/refunded/partially_refunded 但**不回退 `orders.status`**（发货进度不由支付事件抹掉）；重复退款号→`PAYMENT_ALREADY_REVERSED`（去重必须排在金额校验前，否则重放被报成“超退”→ PayPal 永远重投） | ✅ 冒烟 `smoke:payments-reversal` 实测连库：分摊、借贷平、连号、不双计 |
+| 支付页与路由 | `/pay/[orderNumber]`（凭证页；按钮凭证取 `?t=`，登录本人从「我的订单」进来无 `?t=` 时回落 `order.publicToken`，与 `/api/paypal/orders` 同口径认会话——审查 M3 修“本人点去支付是死路”）+ `PayPalPayButton` + `POST /api/paypal/orders`（金额只取库、`PayPal-Request-Id` 幂等、复用存过的 `paypal_order_id`）+ `POST /api/paypal/capture`（**三道闸**：必须是我们为这张单建过的那张 / `custom_id` 等于我方单号 / 金额等于应付） | ✅ typecheck+冒烟；支付动作在服务端发生，不信前端递的 orderID。订单访问判定 `lib/orderAccess.ts` 的凭证比对改用同仓常量时间 `secretsMatch`（审查 L-6，替掉明文 `===`；128-bit token 本不可时序爆破，此为口径统一）；**`/pay/*` 与 `/order/*` 页去掉对已解码路由段的二次 `decodeURIComponent`（审查 L-2：非法 % 序列会抛 URIError→500，`resolveOrderAccess` 内部已用 `^[A-Za-z0-9_-]+$` 校验，含任何 % 直接 404）** |
+| webhook 接收 | `apps/web/app/api/webhooks/[provider]/route.ts`：**fail-closed** —— 默认无 provider 直接 501；`paypal` 且凭据齐 → 真验签（五条头 + 订阅 id + 整个 `webhook_event`）；`FAKE_PAYMENTS_ENABLED=1` **且走专属 slug `/webhooks/fake`** 才接受假回调（审查 L-5：Fake 不验签，不能冒充真实 provider 路径；旧写法 `FAKE=1` 时任意 name 包括未配凭据的 paypal 都会收未签名假回调）；**事件状态由“钱是否真的落了账”决定（审查 H-1）**：paid 未定到单 → `failed`+`error='ORDER_UNRESOLVED'`（不再误标 processed），无法关联原收款 → `ignored`+`error`（接通了 `webhook_events.error` 写通道）；体上限 256KB；`(provider, provider_event_id)` 幂等 | ✅ 幂等已验证；真回调待凭据配好 |
+| 支付段落账 | `queries/payments.ts` → `recordPaymentSucceeded`：建 payments + `ledger_transactions` + 借 psp_clearing / 贷 customer_deposits+tax_payable+duty_collected，**组内借贷 SUM≠0 整笔回滚**；同单重复落账抛 `PAYMENT_ALREADY_RECORDED`（webhook 当幂等重放回 200）、金额≠应付抛 `PAYMENT_AMOUNT_MISMATCH`；辖区由 market→legalEntity 带出；`nextDocumentNumber`（行锁 upsert 自增）+ 建 invoices；订单转 paid；发 `payment.succeeded` | ✅ 冒烟通过。MVP 假设本位币=订单币种（fxRate "1"）。**并发/换 event_id 重放孪生于发货 C-1（审查 P1）**：取单 `SELECT ... FOR UPDATE` + 转 paid 带 `paymentStatus <> 'paid'` 条件更新与 `.returning()` 命中判定 + DB 部分唯一索引 `payments(order_id) WHERE status='succeeded'`（`pay_order_succeeded_uq`，迁移 0020）三层兜底；`smoke:payments-posting` 实测二次落账抛 `PAYMENT_ALREADY_RECORDED`、第二笔 succeeded 被 23505 拒 |
+| **支付反向落账** | `recordPaymentReversal`：钱被收回（DENIED/REVERSED）或退掉（REFUNDED）时的**红冲** —— 只追加分录不改原分录（`ledger_entries` 已 REVOKE UPDATE/DELETE）；金额走 `core/payments.splitReversal` 按原占比摊且**和恒等于本次额**；出 `CN-` 独立序列的红字凭证；refunded 写 `refunds` 台账行、revoked **不写**（不是退款，写进去污染报表）；`payment_status` 走 unpaid/refunded/partially_refunded 但**不回退 `orders.status`**（发货进度不由支付事件抹掉）；重复退款号→`PAYMENT_ALREADY_REVERSED`（去重必须排在金额校验前，否则重放被报成“超退”→ PayPal 永远重投）；并发双记由 `refunds(payment_id, provider_ref)` **部分唯一索引（`refund_payment_ref_uq`，迁移 0018）**在数据库层兜底（23505）；**并发部分退款超额（审查 H-1）**：取 `payments` 行时 `SELECT ... FOR UPDATE`，使 `sum(refunds)`→`remaining`→`amount > remaining` 判断全在锁内串行化（`refund_payment_ref_uq` 只挡同一 provider_ref 重放，不同 ref 的双退靠此锁拦截） | ✅ 冒烟 `smoke:payments-reversal`（分摊/借贷平/连号/不双计）+ `smoke:refund-dedup`（重复 ref 被 23505 拒、不同 ref 放行，审查 M5）实测连库 |
 | 沙箱凭据闸 | `paypalWriteBlocked`：`PAYPAL_ENV=sandbox` 时未经 `PAYPAL_ALLOW_SANDBOX=1` 不得建单/扣款/落账（本地 `.dev.vars` 默认给，线上默认无） | ✅ 单测钉住 |
 | 发票号唯一约束 | `invoices`/`credit_notes` 的唯一索引范围 = **(法人, 号)** 而不是全表（旧定义全表唯一，多法人必撞 `US-00000001`）；迁移 0017 | ✅ 已应用 |
-| 发货段确认 | `queries/shipments.ts` → `recordShipment`：借 customer_deposits / 贷 revenue+shipping_revenue；借 cogs / 贷 inventory_asset（**COGS 用 `variant.costCents` 近似**，移动平均未做）+ 扣 onHand + sale 流水 + `fulfilled` + 发 `order.shipped` | ✅ 冒烟通过 |
+| 发货段确认 | `queries/shipments.ts` → `recordShipment`：借 customer_deposits / 贷 revenue+shipping_revenue；借 cogs / 贷 inventory_asset（**COGS 用 `variant.costCents` 近似**，移动平均未做）+ 扣 onHand + sale 流水 + `fulfilled` + 发 `order.shipped` | ✅ 冒烟通过。**并发双击/重放防护（审查 C-1）**：事内 `SELECT ... FOR UPDATE` 锁单行 + `update orders ... WHERE fulfillmentStatus <> 'fulfilled'` 条件更新带 `.returning()` 命中判定 + DB 部分唯一索引 `shipments(order_id) WHERE status <> 'returned'`（`ship_order_uq`，迁移 0019）三层兜底；`smoke:shipment` 实测二次发货抛 `ALREADY_FULFILLED` 且第二张未退回运单被 23505 拒。**COGS 取数（审查 M-3）**：`inArray` 批量取成本（消 N+1），区分 NULL（未设参考成本）与 0（真免费）——**NULL 抛 `COGS_COST_UNKNOWN`**，不再 `?? 0` 静默记 0 后连同 inventory_asset 被 `filter(amount!==0)` 整对吞掉致利润虚增无痕；`markShippedAction` 失败原因进 `console.error`（不再黑盒）|
 | 科目种子 | `queries/ledger.ts` → `STANDARD_LEDGER_ACCOUNTS` / `seedLedgerAccounts` / `requireAccountId` | ✅ |
 | 主动退款 / 争议 / payouts / 发票 PDF / 关税对账 | 表在；`refunds` 已可由 webhook 事件填充，但**商户侧发起退款的 API 与后台动作未做**（`PaypalPaymentProvider.refund()` 显式抛 `PAYPAL_REFUND_NOT_IMPLEMENTED`）；`disputes`/`payouts` 无写入方 | ❌ |
 
@@ -191,22 +191,22 @@ onestarry.com/
 ### 3.9 outbox / relay / cron / 保留
 | 能力 | 位置 | 状态 |
 |---|---|---|
-| 事件表读写 | `queries/outbox.ts` → `emitEvent` / `fetchPendingEvents` / `markDispatched` / `markFailed`（attempts 累加，超阈值 dead） | ✅ |
-| relay 引擎 | `packages/jobs/src/relay.ts` → `runRelayBatch(db, handlers, {limit})`：按 `eventType` 查注册表；**未知类型直接 ack**（防堵队） | ✅ |
-| handler 注册表 | `packages/jobs/src/handlers.ts` → 目前**只有 `price.recompute`** 一条（`order.created`/`payment.succeeded`/`order.shipped` 会被 ack 丢弃 = 无下游动作） | 🟡 |
-| Cron Worker | `apps/jobs/index.ts`：`scheduled` 每分钟跑 relay（`RELAY_BATCH_LIMIT` 默认 500）；`event.cron === "20 4 * * *"` 分流跑 `runDataRetention`；`fetch /health` 回 outbox pending 数 | ✅ 已部署 |
+| 事件表读写 | `queries/outbox.ts` → `emitEvent` / `fetchPendingEvents`（**含 pending + 未超阈 failed**，审查 H1）/ `markDispatched` / `markFailed`（attempts+1，`case when >= OUTBOX_MAX_ATTEMPTS 则 dead 否则 failed`）/ `markDead` | ✅ |
+| relay 引擎 | `packages/jobs/src/relay.ts` → `runRelayBatch(db, handlers, {limit})`：按 `eventType` 查注册表；**未注册 handler 的未知类型 → `markDead`（不 ack）**，使 dead 计数在 `/health`与运维面板显形（审查 H1）。`handlers.ts` 把 order.*/payment.* 显式注册为 no-op（已知无下游、诚实 ack），dead 通道专留给真正未知类型 | ✅ |
+| handler 注册表 | `packages/jobs/src/handlers.ts` → 真实处理只有 `price.recompute` 一条；`order.created`/`order.shipped`/`payment.succeeded`/`payment.refunded`/`payment.revoked` 显式注册为 **no-op**（已知无下游、有意确认；接上邮件/索引时换成真实现即可） | 🟡 |
+| Cron Worker | `apps/jobs/index.ts`：`scheduled` 每分钟跑 relay（`RELAY_BATCH_LIMIT` 默认 500）；`event.cron === "20 4 * * *"` 分流跑 `runDataRetention`；`fetch /health` 回 `getOutboxHealth` 的 pending/failed/dead（`ok = dead===0`，审查 H1） | ✅ 已部署。**审查 L-4 评估＝有意保留（非缺陷）：`/health` 回 outbox 计数是 H1 决策（部署核验 + 单报 pending 会漏掉 failed/dead 断链），报的是无 PII/凭据的低敏运维计数，与公开 web `/api/health`（同报配置布尔 + ISR verdict）同口径，不加鉴权（会打断部署核验的 ping）** |
 | 写时自派发 | `apps/admin/app/products/[id]/actions.ts` + `products/import/actions.ts` 提交后 `ctx.waitUntil(runRelayBatch(...))` | ✅ 秒级生效，Cron 兜底 |
 | 数据保留 | `queries/retention.ts` → `runDataRetention`（idempotency_keys 过期 / outbox dispatched>90d / webhook>90d，各 `.returning({id})` 计数；不碰账本/库存/会话） | ✅ 冒烟 + tsc |
 
 ### 3.10 SEO 前台
 | 能力 | 位置 | 状态 |
 |---|---|---|
-| seo_meta 稀疏覆盖 | `queries/seo.ts`（回退链 `(locale,market)` → `(locale, NULL)`；**全空即删行**；因唯一索引含可空 marketId 故用"查在则改"代替 ON CONFLICT）+ `apps/web/lib/seo.ts` `applySeoMeta` | ✅ |
+| seo_meta 稀疏覆盖 | `queries/seo.ts`（回退链 `(locale,market)` → `(locale, NULL)`；**全空即删行**）+ `apps/web/lib/seo.ts` `applySeoMeta` | ✅ 审查 M-10：旧可空列唯一索引对 NULL 不约束 → 并发双插双行、`getSeoMeta limit(1)` 随机取（改了没生效）。现改 `COALESCE(market_id, 零值uuid)` 表达式唯一索引（迁移 0021）+ upsert 靠 catch 23505 转更新；`smoke:seo` 实测两次 upsert 收敛 1 行、直插第二行被拒 |
 | JSON-LD（4 处） | 首页 `app/page.tsx`（`WebSite` + `Organization`）· PDP `products/[slug]`（`Product` + `Offer`，availability 按库存）· 类目页 / 品牌页（`BreadcrumbList`）。**`layout.tsx` 不含 JSON-LD**；PDP 自身无面包屑结构化数据 | ✅ 类目/品牌有面包屑；PDP 面包屑 schema ❌ |
 | sitemap | `apps/web/app/sitemap.ts`（Next 原生、`force-dynamic`：首页 + /products + 全 active PDP + 类目 + 品牌） | 🟡 **不含 /blog 与 page/landing 内容页**（CMS 上线后未回补）；未做 R2 分片（文档 §10.1 规模路径） |
 | robots | `apps/web/app/robots.ts`（disallow `/account` `/cart` `/checkout` `/api` + sitemap 挂载） | ✅ |
 | 面包屑/404/错误边界 | `not-found.tsx` / `error.tsx` / `global-error.tsx` | ✅ |
-| 安全响应头 | `apps/web/next.config.ts`（nosniff/X-Frame-Options/Referrer-Policy/Permissions-Policy/HSTS；`images.unoptimized`，**CSP 未加**需 nonce） | 🟡 |
+| 安全响应头 | `scripts/security-headers.mjs`（单一真源）供 web/admin 共用：nosniff / X-Frame-Options / Referrer-Policy / Permissions-Policy / HSTS（`images.unoptimized`，**CSP 未加**需 nonce）。web `SAMEORIGIN`；**admin 取 `DENY`（审查 H-2，此前 admin 零头→/signin 可被任意站点 iframe 点击劫持、无 HSTS）** | ✅ |
 | Cookie 同意 | `apps/web/components/CookieConsent.tsx` + `CookieSettings.tsx` + `lib/consent.ts`（第一方 cookie 存 `cookie_consent`，180 天，version 化，可撤回；未同意不加载非必需脚本） | ✅ 登录用户同意入 `consents` 表 ❌ 未接 |
 | hreflang / 多币种 / RTL / Merchant feed | — | ❌（架构文档 §10，属"待多语言启用"） |
 
@@ -230,7 +230,7 @@ onestarry.com/
 ### 3.13 评论
 | 项 | 位置 | 状态 |
 |---|---|---|
-| 查询 | `queries/reviews.ts`：`listApprovedReviews`（平均+计数+脱敏 author）/`createReview`（**verifiedPurchase = 该客户是否有含此商品的 paid/completed 订单**；rating 越界拒）/`listReviewsForModeration`/`setReviewStatus` | ✅ |
+| 查询 | `queries/reviews.ts`：`listApprovedReviews`（平均+计数+脱敏 author）/`createReview`（**verifiedPurchase = 该客户是否有含此商品的 paid/completed 订单**；rating 越界拒；**productId 夹 UUID 形状，畸形→`{error:INVALID_PRODUCT_ID}`（审查 L-3：否则非 UUID 落 uuid 列撞 PG 22P02→500）**）/`listReviewsForModeration`/`setReviewStatus` | ✅ createReview 返回 `{id}|{error}`；前台 `submitReviewAction` 不再丢弃错误（审查 M-6）——出错退回评价页带 `?error=` 并显一行提示（当前表单 rating 恒 1–5、此路几乎不触发，属防御性收口） |
 | 前台 | `/products/[slug]/review`（page+actions，登录用户提交 → pending） | ✅ |
 | 后台 | `/reviews` 审核页（`requirePermission(productWrite)`） | ✅ |
 | 聚合评分物化到商品 / 投票 / 问答 / 反刷 | — | ❌ 未做 |
@@ -246,9 +246,9 @@ onestarry.com/
 ### 3.15 对外集成 API（步骤 14）
 | 项 | 位置 | 状态 |
 |---|---|---|
-| 访问校验 | `apps/web/app/integration/_lib/access.ts` → `checkAccess`：看 `cf-access-authenticated-user-email` / `cf-access-jwt-assertion` 头，缺 → 401 | 🟡 **骨架级**：JWKS 严格验签未做（生产前必补） |
-| 读 | `GET /integration/demand`（`queries/integration.ts` `getDemandFeed`：已付 + 未发/部分发订单，按 variant 聚合 sku/hsCode/countryOfOrigin/quantity，**无 PII**）；`GET /integration/inventory`（`getInventoryLevels`，`coalesce(available,0)`） | ✅ |
-| 写 | `POST /integration/stock/receive` → `receiveStock`：upsert onHand + `stockMovements.receive`（带 unitCostCents/currency/supplierRef/externalPoRef 到 note）+ damaged 另写 `damage` 流水；`Idempotency-Key` + scope `integration.receive` 命中即 deduplicated | ✅ 本地 dev 端到端 401/201/幂等/回写验证 |
+| 访问校验 | `apps/web/app/integration/_lib/access.ts` → `checkAccess`：**两道独立闸**——① Access 认证头存在（缺→401）；② `X-Integration-Key` 与 secret `INTEGRATION_SECRET` 常量时间相等（不匹配→401；密钥未配→503，写接口亦然） | ✅ **代码侧 fail-closed**（审查 C1）：不再仅凭头存在放行；JWKS 严格验签为可选加强（N13） |
+| 读 | `GET /integration/demand`（`queries/integration.ts` `getDemandFeed`：已付 + 未发/部分发订单，按 variant 聚合 sku/hsCode/countryOfOrigin/quantity，**无 PII**；**入口夹 `sinceDays` 为整数 1..365（审查 L-1：旧 `Number(x)||30` 只挡 NaN，-1→未来截点恒空、1e9/Infinity→无时间过滤全表扫都穿过）**）；`GET /integration/inventory`（`getInventoryLevels`，`coalesce(available,0)`） | ✅ |
+| 写 | `POST /integration/stock/receive` → `receiveStock`：`on_hand = on_hand + net` **原子增量**+RETURNING取真值（审查 M1）+ `stockMovements.receive`（带 unitCostCents/currency/supplierRef/externalPoRef 到 note）+ damaged 另写 `damage` 流水；`Idempotency-Key` 与库存写入**同一事务**、`onConflictDoNothing().returning()` 作并发闸（审查 H3）；variantId UUID 校验、`0<=qtyDamaged<=qtyReceived` | ✅ |
 | 账本分录（借 inventory_asset / 贷 external_ap_clearing） | `receiveStock` 内 TODO(§13) | ⛔ |
 | OpenAPI + zod 契约进 `packages/shared` | — | ❌ |
 | "销售速度"派生指标（`daily_sales_stats` rollup） | — | ❌ 表都没建 |
@@ -270,7 +270,7 @@ onestarry.com/
 > 导航已换成 ERP 式左侧分栏 `components/AdminSideNav.tsx`（分组 + 可折叠存 localStorage + 移动端抽屉），**一律 `prefetch={false}`**（后台是 force-dynamic，预取会把 11 个入口全真渲染一遍，实测一次加载打出 36–45 个请求）。它按传入权限集过滤入口；**隐藏只是体验，硬强制在页面/动作的 `requirePermission`**（两者已逐项对应）。
 
 ### 3.17 前台页面清单
-`/`（首页 Hero/分类入口/精选/信任条）· `/products` `/products/[slug]` · `/products/[slug]/review`（发表评价，force-dynamic）· `/search` · `/categories` `/categories/[slug]` · `/brands` `/brands/[slug]` · `/blog` `/blog/[slug]` · `/[slug]`（page/landing）· `/cart` · `/checkout` · `/order/[orderNumber]` · `/pay/[orderNumber]`（带访问凭证的支付页）· `/account/orders` · `/signin` · `/legal/[type]`（terms/privacy/returns/withdrawal）· `/api/{health,db-check,auth/[...all],webhooks/[provider],internal/invalidate}` · `/api/paypal/{orders,capture}` · `/integration/*`
+`/`（首页 Hero/分类入口/精选/信任条）· `/products` `/products/[slug]` · `/products/[slug]/review`（发表评价，force-dynamic）· `/search` · `/categories` `/categories/[slug]` · `/brands` `/brands/[slug]` · `/blog` `/blog/[slug]` · `/[slug]`（page/landing）· `/cart` · `/checkout` · `/order/[orderNumber]` · `/pay/[orderNumber]`（带访问凭证的支付页）· `/account/orders` · `/signin` · `/legal/[type]`（terms/privacy/returns/withdrawal）· `/api/{health,auth/[...all],webhooks/[provider],internal/invalidate}` · `/api/paypal/{orders,capture}` · `/integration/*`
 
 > 逐路由的**缓存窗口/渲染策略/失效方式**不再写在这里 —— 单一真源是 `packages/core/src/site-status.ts`，后台 `/status` 页与漂移守卫单测共用它。
 缺：收藏/心愿单、退货 RMA、订单取消、地址簿、多语言路径。
@@ -302,7 +302,7 @@ onestarry.com/
 | CSV / URL 导入 | `app/products/import/actions.ts`（2） | ✅ `product:write` |
 | 类目增改 / 类目↔属性挂载（4）/ 品牌增改（2） | `app/categories/**` `app/brands` | ✅ `category:write` |
 | 属性定义增删改 | `app/attributes/actions.ts`（3） | ✅ `config:write`（**由“运营可用”收紧为 super_admin 专属**，对齐 §7：定义目录 schema = 配置权） |
-| 法律文档保存 | `app/legal/actions.ts` | ✅ `seo:write` |
+| 法律文档保存 | `app/legal/actions.ts` + `queries/legal.ts` `upsertLegalDoc`/`getLegalDoc` | ✅ `seo:write`。**审查 M-2**：旧可空 `market_id` 进唯一索引对 NULL 不约束、“只一个 current”无约束 → 并发双保存出双 isCurrent、`getLegalDoc limit(1)` 无排序随机展。现 `ld_current_uq` 部分唯一 (type,locale,coalesce(market)) WHERE is_current + 版本索引 coalesce（迁移 0022）、`getLegalDoc` 加 `orderBy desc(version)`、upsert catch 23505 转更新；`smoke:legal` 实测 |
 | 内容 CRUD/发布 | `app/content/actions.ts`（5） | ✅ `seo:write` |
 | 评论审核 | `app/reviews/actions.ts` | ✅ `product:write` |
 | 市场创建 | `app/markets/actions.ts` | ✅ `market:write` |
@@ -343,7 +343,7 @@ onestarry.com/
 | `admin/scripts/seed-admin.ts` | `pnpm --filter @onestarry/admin seed:admin` | 超管（密码读环境变量） |
 | 便捷入口 | `pnpm seed:all`（ledger→catalog→demo→admin）· `pnpm db:partition` · `pnpm db:studio` · **`pnpm scan:dead`** | `scan:dead` = `scripts/dead-scan.mjs` 图遍历式死代码体检（认 barrel 再导出 / Next 约定入口 / wrangler `main` / 构建期 `.mjs`）；退出码可挂 CI。⚠ “无调用方”不等于无用，未接能力看 §9 |
 | 构建指纹 | `scripts/build-stamp.mjs`（由两个 `next.config.ts` 在构建期引入）注入 `APP_GIT_SHA`/`APP_BUILD_TIME` → `/api/health` **顶层** `gitSha` 暴露。**判定“新构建是否已上线”只能比它**（Workers Builds 会静默漏 push） |
-| smoke（11 个，`db/src/smoke-*.ts`） | `smoke` / `smoke:catalog` / `smoke:inventory` / `smoke:pricing` / `smoke:outbox` / `smoke:orders` / `smoke:create-order` / `smoke:payments` / `smoke:payments-posting` / `smoke:shipment`（另有 `jobs/src/relay.smoke.ts`、`jobs/smoke-admin-pricing.ts`） | 连真实 Neon 冒烟，人工触发 |
+| smoke（13 个，`db/src/smoke-*.ts`） | `smoke` / `smoke:catalog` / `smoke:inventory`（含 `receiveStock` 原子写路径）/ `smoke:pricing` / `smoke:outbox` / `smoke:orders` / `smoke:create-order` / `smoke:sellability`（归档/缺货/不足/禁售四类各被挡 + 正常放行，验 H2）/ `smoke:payments` / `smoke:payments-posting` / `smoke:payments-reversal` / `smoke:refund-dedup`（同笔退款被部分唯一索引拒，验 M5）/ `smoke:shipment`（另有 `jobs/src/relay.smoke.ts`、`jobs/src/relay.retry.smoke.ts`（failed 回队重试→超阈 dead、未知置 dead，验 H1）、`jobs/smoke-admin-pricing.ts`） | 连真实 Neon 冒烟，人工触发 |
 | 连接 | 根 `.env.local`（`DATABASE_URL` 池化 / `DATABASE_URL_UNPOOLED` 直连），seed 用 `dotenv config({path:"../../.env.local"})` | ⚠️ 从不同 cwd 跑脚本时路径解析会失效 |
 
 **本地开发**：`pnpm dev`（turbo 并行起 web + admin，各自 `next dev` 默认 3000，冲突时后者自动进位到 3001；jobs 用 `wrangler dev`）。`apps/web/lib/db.ts` `getDb()` 在无 `getCloudflareContext()` 时回退 `process.env.DATABASE_URL`，所以前台页面可直接 `next dev` 渲染真实数据（**日常验证首选，秒级**）。
@@ -372,10 +372,10 @@ onestarry.com/
 | 5 账本+发票序列 | ✅ | 两段式分录+连号取号+借贷平衡校验 |
 | 6 认证与 RBAC | ✅（本轮补） | 双实例+三档+权限点表 ✅；**§4 守卫已全量收口**（34 动作 + 13 页 + 导航过滤 + HTTP 注册封）；仍缺 2FA/step-up/审计/退款限额 |
 | 7 商品目录 | ✅ | 含属性定义/slug 单一真源/媒体/译文；变体矩阵 `productOptions/optionValues` ⛔ 未用 |
-| 8 库存 | 🟡 | 水位+流水+发货扣减 ✅；预留/原子扣减/秒杀 ❌ |
+| 8 库存 | 🟡 | 水位+流水+发货扣减 ✅；**下单原子占位+超卖防护+未付过期回收 ✅（H-2，`smoke:reservation`）**；秒杀热行 Redis Lua / `inventory_reservations` 独立表 ❌ |
 | 9 定价与可售性 | 🟡 | 物化管道+inputsHash+price_history ✅；四个 provider 占位（D01）、`computeSellability` 未接（D02） |
 | 10 搜索与 outbox | ✅/🟡 | outbox+relay+cron+写时自派发 ✅；搜索用 Postgres FTS（Typesense 为规模路径），handler 只有 1 条 |
-| 11 结账与订单 | 🟡 | 主链通 ✅；幂等/运费/市场硬编码 + 无预留 + 无 magic link（D03） |
+| 11 结账与订单 | 🟡 | 主链通 ✅；**下单占位防超卖 ✅（H-2）**；运费/市场硬编码 + 无 magic link（D03） |
 | 12 支付与税务关税 | 🟡 | PayPal Orders v2 全链路代码就位（建单/扣款/验签/**反向红冲**）但**未跑过真 API**（待凭据）；Fake PSP 全链路通；Stripe/Tax/LandedCost ❌；disputes/payouts 落库 ❌ |
 | 13 履约·发票·邮件 | 🟡 | `recordShipment` + 后台标记发货 ✅；物流商 API/PSP 运单同步/发票 PDF/Resend 邮件/退货 ❌ |
 | 14 对外集成 API | ✅ | 三端点 + 幂等 + Access 骨架（JWKS 严格验签待补） |
@@ -392,7 +392,7 @@ onestarry.com/
 |---|---|---|
 | N1 | Stripe Provider 实现 | `core/payments.ts` 加 `StripeProvider implements PaymentProvider` → `webhooks/[provider]/route.ts` 的 `pickProvider` TODO(12b-2·B) |
 | N2 | 税/关费率 | `queries/pricing.ts` `emitPriceRecomputeForAllMarkets` 里 4 个占位字段 → 改为读 `dutyRules`/`taxRatesConfig`/`deMinimisRules`（表已存在）或 Stripe Tax 响应 |
-| N3 | 运费进结账 | `core/shipping.ts` `computeShipping` + `shipping_rates.rate_table` 已在；调用点在 `web/app/cart/page.tsx` 与 `checkout/actions.ts` 的 `SHIPPING_CENTS = 500` 处替换 |
+| N3 | 运费进结账 | `core/shipping.ts` `computeShipping` + `shipping_rates.rate_table` 已在；占位值已收敛为**单一真源 `core/shipping.ts` 的 `PLACEHOLDER_SHIPPING_CENTS`**（cart/checkout 展示与 `createOrder` 落账三处同读一个，不再各自写死 500）；接真时把这三处改成调用 `computeShipping` 算得的 shippingCents 并删常量 |
 | N4 | 可售性接线 | `core/sellability.ts` → `browseProducts`/`getProductById`/`getCartLines` 三处读取路径 + `product_market_availability` 表启用 |
 | N5 | 真实幂等键 | `checkout/actions.ts`：由客户端提交前生成并复用（同一表单一次提交一个 key），命中 `IDEMPOTENT_REPLAY` 时返回原单号 |
 | N6 | ~~权限守卫统一~~ ✅ **已完成 2026-10-21** | 34 动作全 `requirePermission` + 13 页升级 + `readAdminSession` 单一读取点 + AdminNav 按权限过滤 + 后台 HTTP 封公开注册（详 §4） |
@@ -402,7 +402,7 @@ onestarry.com/
 | N10 | 发票 PDF → 私有桶 | 建 `onestarry-files` 桶 + `FILES` 绑定 + `invoices.pdfKey`（列已在 foundation/invoices？若无则字段级迁移） |
 | N11 | 入库成本分录 | `queries/integration.ts` `receiveStock` 内 `TODO(§13)` |
 | N12 | pg_dump 定时冷备 | Worker 不能 exec → 需一条 GitHub Actions schedule（本仓当前无 `.github/`） |
-| N13 | 集成 API 严格验签 | `integration/_lib/access.ts` 补 JWKS 校验 + scope + IP allowlist |
+| N13 | 集成 API 严格验签（可选加强） | 共享密钥闸已上（审查 C1：`INTEGRATION_SECRET` + `X-Integration-Key`，未配→503）；剩 JWKS 验 `cf-access-jwt-assertion` + scope + IP allowlist |
 | N14 | CMS 阶段2/3 | `ContentEditor` 加 Image 扩展 + 上传 action（R2 key `content/{contentId}/`）；content 的 seo_meta 面板复用 `upsertSeoMeta` |
 | N15 | 测试进流水线 | `turbo.json` 加 `test` 任务；（可选）把 `tsx --test` 换 Vitest 以对齐文档，或改文档 §12 |
 | N16 | ~~Next 15 支持窗已过 → CI 构建失败~~ | ✅ **已解 2026-10-21**：升到 Next 16.4.2 + wrangler 4.151.3，`cf:build` 的过桥 flag 已摘（详 §12.4 T18）。保留的教训（写进§12.6）：**CI 直调 `exec opennextjs-cloudflare build`、不走 npm 脚本** —— 构建期参数写在 `package.json` 里对 CI 无效，要么改 Dashboard、要么把构建收进 `cf:build` 并改指一次 |

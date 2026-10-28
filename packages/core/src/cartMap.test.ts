@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { CART_MAX_LINES, CART_MAX_QTY, parseCartCookie, sanitizeCartMap } from "./cartMap";
+import { CART_MAX_LINES, CART_MAX_QTY, clampCartQty, parseCartCookie, sanitizeCartMap } from "./cartMap";
 
 /**
  * 购物车净化的契约：cookie 是**用户可手改**的（httpOnly 只挡脚本），
@@ -49,4 +49,24 @@ test("parseCartCookie 走的是同一套规则（读车与下单必须同口径�
     const r = parseCartCookie(JSON.stringify({ [V]: -1 }));
     assert.deepEqual(r.items, []);
     assert.equal(r.dropped, 1);
+});
+
+test("clampCartQty：把写侧的越界/脏输入折回 0..CART_MAX_QTY 整数", () => {
+    assert.equal(clampCartQty(1000), CART_MAX_QTY);
+    assert.equal(clampCartQty(1e15), CART_MAX_QTY);
+    assert.equal(clampCartQty(CART_MAX_QTY), CART_MAX_QTY);
+    assert.equal(clampCartQty(1.5), 1); // 小数向下取整，不再被读侧整条丢
+    assert.equal(clampCartQty(-3), 0);
+    assert.equal(clampCartQty(0), 0);
+    assert.equal(clampCartQty(NaN), 0);
+    assert.equal(clampCartQty(Infinity), 0);
+});
+
+test("写侧 clamp → 读侧不丢：证明 H-2 修好了「输入 1000 整行静默消失」", () => {
+    // 旧行为：写 1000 进 cookie → sanitize 判 >999 → 整条丢 → 商品消失。
+    // 新行为：写侧先 clampCartQty(1000)=999，这个值必须能被读侧原样接受。
+    const written = clampCartQty(1000);
+    const r = sanitizeCartMap({ [V]: written });
+    assert.equal(r.dropped, 0, "clamp 后的值不该被读侧丢弃");
+    assert.deepEqual(r.items, [{ variantId: V, quantity: CART_MAX_QTY }]);
 });

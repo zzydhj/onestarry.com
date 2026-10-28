@@ -1,4 +1,4 @@
-import { and, asc, eq, isNull } from "drizzle-orm";
+import { and, asc, desc, eq, isNull } from "drizzle-orm";
 import { legalDocuments } from "../schema";
 import type { Db, Tx } from "../client";
 
@@ -37,6 +37,8 @@ export async function getLegalDoc(
                     isNull(legalDocuments.marketId),
                 ),
             )
+            // 审查 M-2：limit(1) 必须带确定排序；现虽有 ld_current_uq 部分唯一保证单行，排序仍作为两道防线。
+            .orderBy(desc(legalDocuments.version))
             .limit(1)
     )[0];
     return row ?? null;
@@ -45,6 +47,9 @@ export async function getLegalDoc(
 /**
  * 保存法律文档：有当前版则就地改正文；无则插 v1。
  * MVP 简化：不做"改一次生一版"的历史链（表已留 version/isCurrent 供将来扩展）；正文存纯文本，非 HTML。
+ *
+ * 审查 M-2：并发双保存旧写法都查不到→各插一行双 isCurrent。现靠 ld_current_uq 部分唯一索引强制单行；
+ * 后到一方撞 23505 → 退化为按 scope 更新（同 M-10，调用方为 Db 自提交）。
  */
 export async function upsertLegalDoc(
     db: Db | Tx,
@@ -58,12 +63,33 @@ export async function upsertLegalDoc(
             .where(eq(legalDocuments.id, existing.id));
         return;
     }
-    await db.insert(legalDocuments).values({
-        type: input.type,
-        locale: input.locale,
-        marketId: null,
-        version: 1,
-        body: input.body,
-        isCurrent: true,
-    });
+    try {
+        await db.insert(legalDocuments).values({
+            type: input.type,
+            locale: input.locale,
+            marketId: null,
+            version: 1,
+            body: input.body,
+            isCurrent: true,
+        });
+    } catch (e) {
+        // 并发对手刚插了同 scope 的 current 行（现由 ld_current_uq 拒）→ 退化为更新它。
+        const anyErr = e as { code?: string; cause?: { code?: string } };
+        const code = anyErr.code ?? anyErr.cause?.code;
+        if (code === "23505") {
+            await db
+                .update(legalDocuments)
+                .set({ body: input.body, updatedAt: new Date() })
+                .where(
+                    and(
+                        eq(legalDocuments.type, input.type),
+                        eq(legalDocuments.locale, input.locale),
+                        eq(legalDocuments.isCurrent, true),
+                        isNull(legalDocuments.marketId),
+                    ),
+                );
+            return;
+        }
+        throw e;
+    }
 }

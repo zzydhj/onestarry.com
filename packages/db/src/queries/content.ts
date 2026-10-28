@@ -86,7 +86,7 @@ export async function getContentForEdit(db: Db | Tx, id: string, locale = "en"):
 
 /**
  * 建/改内容（幂等 upsert）：无 id 则新建 content 行；写/更新 content_translations（按 locale 唯一）；
- * slug 经 setEntitySlug（与当前不同才动、旧 slug 降历史 → 前台自动 301）。返回 content id。
+ * slug 经 setEntitySlug（与当前不同才动、旧 slug 降历史 → 前台永久重定向 308）。返回 content id。
  */
 export async function upsertContent(
     db: Db | Tx,
@@ -145,7 +145,7 @@ export async function setContentStatus(db: Db | Tx, id: string, status: ContentS
     await db.update(content).set(patch).where(eq(content.id, id));
 }
 
-/** 删除内容：连带清掉其 slugs 行（内容已删、历史 301 无意义），避免同名新内容被顶成 -2；content_translations 级联删。 */
+/** 删除内容：连带清掉其 slugs 行（内容已删、历史重定向无意义），避免同名新内容被顶成 -2；content_translations 级联删。 */
 export async function deleteContent(db: Db | Tx, id: string): Promise<void> {
     await db.delete(slugs).where(and(eq(slugs.entityType, "content"), eq(slugs.entityId, id)));
     await db.delete(content).where(eq(content.id, id));

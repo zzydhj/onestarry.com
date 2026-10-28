@@ -3,7 +3,8 @@
  * 自有仓直发：发货在本系统建 shipment + 报关；承运商（中国专线）经 ShippingProvider 接口可插拔。
  * duty_quoted（向客户收，进 duty_collected）/ duty_actual（承运商实付）/ 差额走 duty_variance（§6.3 代收代付）。
  */
-import { pgTable, uuid, text, bigint, jsonb, timestamp, index } from "drizzle-orm/pg-core";
+import { pgTable, uuid, text, bigint, jsonb, timestamp, index, uniqueIndex } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
 import { id, timestamps } from "./columns";
 import { carriers } from "./foundation";
 import { orders } from "./orders";
@@ -25,5 +26,12 @@ export const shipments = pgTable(
         dutyInvoiceRef: text("duty_invoice_ref"),
         customsDeclaration: jsonb("customs_declaration"), // HS/原产国/申报价值/incoterm/IOSS 号
     },
-    (t) => [index("ship_order_idx").on(t.orderId), index("ship_tracking_idx").on(t.trackingNumber)],
+    (t) => [
+        index("ship_order_idx").on(t.orderId),
+        index("ship_tracking_idx").on(t.trackingNumber),
+        // 审查 C-1：正向流程“一张单只能有一张未退回的运单”下推到数据库。并发双发货除应用层 FOR UPDATE +
+        // 条件更新外，再靠这条部分唯一索引兜底（与 refunds 的 refund_payment_ref_uq 同构）。
+        // WHERE status <> 'returned'：退回旧运单后允许重新发货（多条中只允许非 returned 的唯一）。
+        uniqueIndex("ship_order_uq").on(t.orderId).where(sql`${t.status} <> 'returned'`),
+    ],
 );

@@ -1,6 +1,7 @@
 "use client";
 
 import { useOptimistic, useTransition } from "react";
+import { CART_MAX_QTY } from "@onestarry/core";
 import { Button, Input } from "@onestarry/ui";
 import { removeItemAction, setQtyAction } from "./actions";
 
@@ -13,6 +14,7 @@ export interface CartLineView {
     unitCents: number;
     available: number;
     blocked: boolean;
+    productStatus: "draft" | "active" | "archived";
 }
 
 type QtyMap = Record<string, number>;
@@ -69,8 +71,10 @@ export function CartLines({ lines, qty, shippingCents }: { lines: CartLineView[]
                             <div className="min-w-0">
                                 <div className="truncate font-medium">{l.title}</div>
                                 <div className="font-mono text-xs text-muted">{l.sku}</div>
-                                {l.blocked || l.available < q ? (
-                                    <div className="text-xs text-red-600">{l.blocked ? "Not available" : `Only ${l.available} left`}</div>
+                                {(l.blocked || l.productStatus !== "active") ? (
+                                    <div className="text-xs text-red-600">No longer available</div>
+                                ) : l.available < q ? (
+                                    <div className="text-xs text-red-600">Only {l.available} left</div>
                                 ) : null}
                             </div>
                             <div className="flex items-center gap-2">
@@ -78,6 +82,8 @@ export function CartLines({ lines, qty, shippingCents }: { lines: CartLineView[]
                                     aria-label={`Quantity of ${l.title}`}
                                     type="number"
                                     min={0}
+                                    max={CART_MAX_QTY}
+                                    step={1}
                                     defaultValue={q}
                                     onBlur={(e) => {
                                         const v = Number(e.currentTarget.value) || 0;

@@ -86,6 +86,35 @@ async function main() {
             assert.ok(evs.length >= 1, "应发 payment.succeeded 事件");
 
             console.log(`✅ 支付落账：借贷平衡(${debit}=${credit})、发票 ${res.invoiceNumber}、订单转 paid、已发事件`);
+
+            // —— P1：并发/重复收款防护的负向验证（与 C-1 发货同构） ——
+            // 1) 应用层守卫：对已 paid 的单再落一次 → 必须 PAYMENT_ALREADY_RECORDED。
+            let guardMsg = "";
+            try {
+                await recordPaymentSucceeded(tx, { orderId: order!.id, provider: "stripe", providerRef: `pi2_${suffix}`, jurisdiction: "US" });
+            } catch (e) {
+                guardMsg = e instanceof Error ? e.message : String(e);
+            }
+            assert.match(guardMsg, /PAYMENT_ALREADY_RECORDED/, `二次落账应被守卫拒（实际：${guardMsg || "没报错——守卫失效"}）`);
+
+            // 2) 对照：同单插一笔非 succeeded（failed）应放行 → 证明下面索引只锁 succeeded，非整单唯一。
+            await tx.insert(payments).values({ orderId: order!.id, provider: "stripe", providerRef: `fail_${suffix}`, amountCents: 100, currency: "USD", status: "failed" });
+
+            // 3) 数据库层兜底：直插第二张 succeeded（模拟越过应用层检查的并发）→ 必须被 pay_order_succeeded_uq 拒。
+            //    23505 会 abort 事务，之后不能再跑 SQL，故这是本事务最后一步断言。
+            let violated = false;
+            let info = "";
+            try {
+                await tx.insert(payments).values({ orderId: order!.id, provider: "stripe", providerRef: `dup_${suffix}`, amountCents: 26680, currency: "USD", status: "succeeded" });
+            } catch (e) {
+                violated = true;
+                const anyErr = e as { code?: string; constraint?: string; cause?: { code?: string; constraint?: string } };
+                info = `code=${anyErr.code ?? anyErr.cause?.code ?? ""} constraint=${anyErr.constraint ?? anyErr.cause?.constraint ?? ""}`;
+            }
+            assert.ok(violated, `同单第二笔 succeeded 必须被唯一索引拒掉（否则 P1 未生效）：${info}`);
+            assert.ok(info.includes("23505") || /pay_order_succeeded_uq/i.test(info), `应因 pay_order_succeeded_uq 拒掉，实际：${info}`);
+            console.log("✅ P1：二次落账被 PAYMENT_ALREADY_RECORDED 挡；failed 放行、第二笔 succeeded 被 pay_order_succeeded_uq 拒");
+
             throw ROLLBACK;
         });
     } catch (e) {

@@ -23,7 +23,7 @@ import {
     uniqueIndex,
     primaryKey,
 } from "drizzle-orm/pg-core";
-import { relations } from "drizzle-orm";
+import { relations, sql } from "drizzle-orm";
 import { id, timestamps } from "./columns";
 
 /* ------------------------------- 枚举 ------------------------------- */
@@ -252,7 +252,24 @@ export const legalDocuments = pgTable(
         body: text("body").notNull(),
         isCurrent: boolean("is_current").notNull().default(true),
     },
-    (t) => [uniqueIndex("ld_type_locale_market_ver_uq").on(t.type, t.locale, t.marketId, t.version)],
+    (t) => [
+        // 审查 M-2（与 M-10 同源）：旧索引含可空 market_id → NULL 不唯一，全球/语言级文档（marketId=NULL）靠它约不住。
+        // 版本唯一：用 COALESCE 把 NULL 归零值哨兵，使 (type, locale, market, version) 真正唯一。
+        uniqueIndex("ld_type_locale_market_ver_uq").on(
+            t.type,
+            t.locale,
+            t.version,
+            sql`coalesce(${t.marketId}, '00000000-0000-0000-0000-000000000000'::uuid)`,
+        ),
+        // 审查 M-2：“同一 scope 只应有一个 current 版”此前完全没约束（getLegalDoc limit(1) 无排序 → 并发双 isCurrent 时前台随机展示）。
+        uniqueIndex("ld_current_uq").
+            on(
+                t.type,
+                t.locale,
+                sql`coalesce(${t.marketId}, '00000000-0000-0000-0000-000000000000'::uuid)`,
+            )
+            .where(sql`${t.isCurrent}`),
+    ],
 );
 
 export const consents = pgTable(

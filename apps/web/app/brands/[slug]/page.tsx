@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { cache } from "react";
-import { notFound, redirect } from "next/navigation";
+import { notFound, permanentRedirect } from "next/navigation";
 import { jsonLdScript, SITE_ORIGIN } from "@onestarry/core";
 import { browseProducts, loadBrandPageMeta, listCurrentSlugs } from "@onestarry/db";
 import { getDb } from "@/lib/db";
@@ -55,7 +55,8 @@ export default async function BrandPage({ params }: { params: Promise<{ slug: st
     const { slug } = await params;
     const d = await loadBrand(slug);
     if (d.status === "notfound") notFound();
-    if (d.status === "redirect") redirect(`/brands/${d.toSlug}`);
+    // 历史 slug → 永久重定向 308（审查 M-1，与 PDP/类目同口径）。
+    if (d.status === "redirect") permanentRedirect(`/brands/${d.toSlug}`);
 
     const breadcrumb = {
         "@context": "https://schema.org",

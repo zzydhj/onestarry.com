@@ -53,7 +53,7 @@ export async function createBrand(
 
 /**
  * 更新品牌名 + slug。slug 为空则只改名（保留当前 slug）；非空则经 setEntitySlug
- * （与当前不同才动，旧 slug 降历史 → resolveSlug 自动 301），并同步 brands.slug 列。返回最终 slug 或 null。
+ * （与当前不同才动，旧 slug 降历史 → resolveSlug → 前台永久重定向 308），并同步 brands.slug 列。返回最终 slug 或 null。
  */
 export async function updateBrand(
     db: Db | Tx,

@@ -1,0 +1,1 @@
+CREATE UNIQUE INDEX "ship_order_uq" ON "shipments" USING btree ("order_id") WHERE "shipments"."status" <> 'returned';

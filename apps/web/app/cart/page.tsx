@@ -2,6 +2,7 @@ import Link from "next/link";
 import type { Metadata } from "next";
 import { getCloudflareContext } from "@opennextjs/cloudflare";
 import { createDb, getCartLines } from "@onestarry/db";
+import { PLACEHOLDER_SHIPPING_CENTS } from "@onestarry/core";
 import { buttonVariants } from "@onestarry/ui";
 import { readCart } from "@/lib/cart";
 import { CartLines } from "./CartLines";
@@ -9,8 +10,6 @@ import { CartLines } from "./CartLines";
 export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = { title: "Cart", robots: { index: false, follow: false } };
-
-const SHIPPING_CENTS = 500; // MVP 占位运费（真实 computeShipping 待接）
 
 function money(cents: number, cur: string): string {
     return new Intl.NumberFormat("en-US", { style: "currency", currency: cur }).format(cents / 100);
@@ -27,7 +26,10 @@ export default async function CartPage() {
     let subtotal = 0;
     for (const l of lines) subtotal += l.unitCents * (cart[l.variantId] ?? 0);
     const currency = lines[0]?.currency ?? "USD";
-    const total = subtotal + (lines.length ? SHIPPING_CENTS : 0);
+    const total = subtotal + (lines.length ? PLACEHOLDER_SHIPPING_CENTS : 0);
+    // 审查 M-7：下架/被禁售的行不静默丢（那会造成“输入 1000 整行消失”同类的静默问题），而是标红并拦住结账，
+    // 让用户用行旁的 ✕ 移除；否则一路点到结账才被 createOrder 统一拒成笼统错误。
+    const hasUnavailable = lines.some((l) => l.blocked || l.productStatus !== "active");
 
     return (
         <div className="mx-auto max-w-2xl px-4 py-8">
@@ -38,12 +40,18 @@ export default async function CartPage() {
                 <p className="mt-6 text-muted">Your cart is empty.</p>
             ) : (
                 <>
-                    <CartLines lines={lines} qty={cart} shippingCents={SHIPPING_CENTS} />
-                    <div className="mt-6 text-right">
-                        <Link href="/checkout" className={buttonVariants()}>
-                            Checkout →
-                        </Link>
-                    </div>
+                    <CartLines lines={lines} qty={cart} shippingCents={PLACEHOLDER_SHIPPING_CENTS} />
+                    {hasUnavailable ? (
+                        <p className="mt-6 text-right text-sm text-red-600">
+                            Some items are no longer available — remove them (✕) to continue.
+                        </p>
+                    ) : (
+                        <div className="mt-6 text-right">
+                            <Link href="/checkout" className={buttonVariants()}>
+                                Checkout →
+                            </Link>
+                        </div>
+                    )}
                     <p className="mt-2 text-right text-xs text-muted">
                         {money(total, currency)} due at checkout
                     </p>

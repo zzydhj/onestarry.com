@@ -1,6 +1,6 @@
 import { and, eq, inArray, sql, type SQL } from "drizzle-orm";
-import { CART_MAX_LINES, CART_MAX_QTY, genOrderAccessToken, genOrderNumber } from "@onestarry/core";
-import { orders, variantMarketPrices } from "../schema";
+import { CART_MAX_LINES, CART_MAX_QTY, computeSellability, genOrderAccessToken, genOrderNumber } from "@onestarry/core";
+import { inventory, orders, productVariants, products, variantMarketPrices } from "../schema";
 import { uuidv7 } from "../uuid7";
 import type { Db, Tx } from "../client";
 
@@ -98,29 +98,74 @@ export async function createOrder(db: Db | Tx, input: CreateOrderInput): Promise
     let tax = 0;
     let duty = 0;
     const built: { id: string; lineId: string; variantId: string; quantity: number; unitPriceCents: number; snapshot: Record<string, unknown> }[] = [];
+    // H-2 预留快照：variantId → 本次占位量（仅 in_stock_only 行），随单写入 orders.reservation 供后续精确回退。
+    const reservations: Record<string, number> = {};
 
-    // 读价：批量一次取回（代替逐变体的 N 次跨洋往返）。不可售/缺价在此拦住，不进入写入。
+    // 读价 + 可售事实：批量一次取回（代替逐变体的 N 次跨洋往返）。不可售/缺价在此拦住，不进入写入。
+    // 顺手 join products.status / inventory / availability_policy / 市场禁售（黑名名单），不额外加往返（审查 H2）。
+    // ❗ 只实现“黑名单”（denied）：“白名单模式”会让没有 allow 行的存量商品全判不可售 → 直接断收入，
+    //   进 MVP 不安全，故 hasAllowlist 固定为 false（见 computeSellability 注释）。
     const variantIds = input.items.map((i) => i.variantId);
+    const deniedSql = sql<boolean>`exists (
+        select 1 from product_market_availability pma
+        where pma.market_id = ${input.marketId}::uuid and pma.mode = 'deny'
+          and (pma.variant_id = ${variantMarketPrices.variantId} or pma.product_id = ${productVariants.productId})
+    )`;
     const prices = await db
-        .select()
+        .select({
+            variantId: variantMarketPrices.variantId,
+            goodsCents: variantMarketPrices.goodsCents,
+            taxCents: variantMarketPrices.taxCents,
+            dutyCents: variantMarketPrices.dutyCents,
+            currency: variantMarketPrices.currency,
+            listPriceCents: variantMarketPrices.listPriceCents,
+            allInCents: variantMarketPrices.allInCents,
+            blocked: variantMarketPrices.blocked,
+            productStatus: products.status,
+            availabilityPolicy: productVariants.availabilityPolicy,
+            available: sql<number>`coalesce(${inventory.available}, 0)::int`,
+            denied: deniedSql,
+        })
         .from(variantMarketPrices)
+        .innerJoin(productVariants, eq(productVariants.id, variantMarketPrices.variantId))
+        .innerJoin(products, eq(products.id, productVariants.productId))
+        .leftJoin(inventory, eq(inventory.variantId, variantMarketPrices.variantId))
         .where(and(inArray(variantMarketPrices.variantId, variantIds), eq(variantMarketPrices.marketId, input.marketId)));
     const priceMap = new Map(prices.map((p) => [p.variantId, p]));
 
     for (const it of input.items) {
         assertQuantity(it.variantId, it.quantity);
         const price = priceMap.get(it.variantId);
-        if (!price || price.blocked) throw new Error(`NOT_SELLABLE:${it.variantId}`);
-        subtotal += price.goodsCents * it.quantity;
-        tax += price.taxCents * it.quantity;
-        duty += price.dutyCents * it.quantity;
+        // 单一真源：把六条事实交给 computeSellability。blocked 折成 denied（市场级封锁=该市场不可售）。
+        const verdict = computeSellability({
+            productStatus: price?.productStatus ?? "draft", // 无价行→当作 draft，下面 reasons 带 no_price
+            marketActive: true,
+            availability: { hasAllowlist: false, allowed: true, denied: price ? price.blocked || price.denied : true },
+            prohibited: false,
+            hasPrice: !!price,
+            shipsTo: true,
+            availabilityPolicy: price?.availabilityPolicy ?? "in_stock_only",
+            availableQty: price?.available ?? 0,
+        });
+        // 库存充足性：in_stock_only 要求可售库存 >= 下单数量（computeSellability 只判 <=0 的缺货）。
+        const inStockOnly = (price?.availabilityPolicy ?? "in_stock_only") === "in_stock_only";
+        const shortStock = inStockOnly && (price?.available ?? 0) < it.quantity;
+        if (!verdict.sellable || shortStock) {
+            const reasons = shortStock ? [...verdict.reasons, "insufficient_stock" as const] : verdict.reasons;
+            throw new Error(`NOT_SELLABLE:${it.variantId}:${reasons.join("|")}`);
+        }
+        // JS 预检（读快照）拦掉常见缺货；真正的并发安全靠下面单条 CTE 里的原子占位。
+        if (inStockOnly) reservations[it.variantId] = (reservations[it.variantId] ?? 0) + it.quantity;
+        subtotal += price!.goodsCents * it.quantity;
+        tax += price!.taxCents * it.quantity;
+        duty += price!.dutyCents * it.quantity;
         built.push({
             id: uuidv7(),
             lineId: uuidv7(),
             variantId: it.variantId,
             quantity: it.quantity,
-            unitPriceCents: price.goodsCents,
-            snapshot: { currency: price.currency, listPriceCents: price.listPriceCents, allInCents: price.allInCents },
+            unitPriceCents: price!.goodsCents,
+            snapshot: { currency: price!.currency, listPriceCents: price!.listPriceCents, allInCents: price!.allInCents },
         });
     }
 
@@ -145,7 +190,15 @@ export async function createOrder(db: Db | Tx, input: CreateOrderInput): Promise
     );
     const itemLineTuples = sql.join(built.map((b) => sql`(${pUuid(b.lineId)}, ${pUuid(b.id)})`), sql`, `);
 
-    const [res] = await db.execute<{ created: boolean; order_id: string | null }>(sql`
+    // H-2 预留：仅 in_stock_only 行参与，占位量记在 reservations（JS 预检已保证可见性，DB 层再原子兜底）。
+    const reserveNeeded = Object.keys(reservations).length;
+    const reserveTuples = sql.join(Object.entries(reservations).map(([vid, q]) => sql`(${pUuid(vid)}, ${pInt(q)})`), sql`, `);
+
+    // 建单 + 原子占位必须在同一事务：占位不足要能把已建的单/幂等键一起回滚（否则留悬挂单或漏占位）。
+    // 传入已是 Tx 时走 savepoint；Db 时开真事务（多 BEGIN/COMMIT 两趟，是资金正确性的必要代价——
+    // 单条 CTE 里用 `exists(ins_key)` 门控 reserve + 跨 CTE 引用其计数，实测对 Postgres 的 CTE 求值顺序敏感、会误伤有货单）。
+    return db.transaction(async (tx) => {
+        const [res] = await tx.execute<{ created: boolean; order_id: string | null }>(sql`
         with ins_key as (
             insert into idempotency_keys (id, "key", scope, response_hash, expires_at)
             values (${pUuid(keyId)}, ${pTxt(input.idempotencyKey)}, ${pTxt("checkout.create")}, ${pTxt(orderId)}, ${pTs(new Date(Date.now() + 60 * 60 * 1000))})
@@ -206,28 +259,39 @@ export async function createOrder(db: Db | Tx, input: CreateOrderInput): Promise
                ) as order_id
     `);
 
-    // 一行没写 = 幂等键已存在（铁律②）。
-    if (!res?.created) {
-        // 旧行为是直接抛 IDEMPOTENT_REPLAY：于「双击提交」会显示成下单失败，
-        // 而单子其实已经建好了 —— 用户再点一次或重新填表，那才是重复下单的起点。
-        // 现在把原单读回来返回，调用方照旧跳支付页，重放对用户无感。
-        const existingId = res?.order_id ?? null;
-        if (existingId) {
-            const [existing] = await db.select(orderCols).from(orders).where(eq(orders.id, existingId)).limit(1);
-            if (existing) {
-                return {
-                    orderId: existing.id,
-                    orderNumber: existing.orderNumber,
-                    totalCents: existing.totalCents,
-                    publicToken: existing.publicToken,
-                    replayed: true,
-                };
+        // 一行没写 = 幂等键已存在（铁律②）：读回原单返回，不重复占位（占位由首提那一次负责）。
+        if (!res?.created) {
+            const existingId = res?.order_id ?? null;
+            if (existingId) {
+                const [existing] = await tx.select(orderCols).from(orders).where(eq(orders.id, existingId)).limit(1);
+                if (existing) {
+                    return {
+                        orderId: existing.id,
+                        orderNumber: existing.orderNumber,
+                        totalCents: existing.totalCents,
+                        publicToken: existing.publicToken,
+                        replayed: true,
+                    };
+                }
             }
+            throw new Error("IDEMPOTENT_REPLAY");
         }
-        throw new Error("IDEMPOTENT_REPLAY");
-    }
 
-    return { orderId, orderNumber, totalCents: total, publicToken, replayed: false };
+        // 新单：原子占位。UPDATE...WHERE 在行锁下重算可售（`on_hand - reserved >= qty`）；
+        // 并发抢输（最后一件被别人占了）则更新行数 < 需要数 → 抛错，整个事务回滚（连同刚建的单与幂等键），不留悬挂。
+        if (reserveNeeded > 0) {
+            const got = await tx.execute<{ variant_id: string }>(sql`
+                update inventory i set reserved = i.reserved + v.qty, updated_at = now()
+                from (values ${reserveTuples}) as v(variant_id, qty)
+                where i.variant_id = v.variant_id and i.on_hand - i.reserved >= v.qty
+                returning i.variant_id
+            `);
+            if (got.length < reserveNeeded) throw new Error("NOT_SELLABLE:insufficient_stock");
+            await tx.update(orders).set({ reservation: reservations }).where(eq(orders.id, orderId));
+        }
+
+        return { orderId, orderNumber, totalCents: total, publicToken, replayed: false };
+    });
 }
 
 /** 记下 PayPal 侧订单 id（幂等复用与对账用）。传 null 表示作废重建。 */

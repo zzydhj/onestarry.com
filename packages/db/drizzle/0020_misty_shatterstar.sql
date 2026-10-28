@@ -1,0 +1,1 @@
+CREATE UNIQUE INDEX "pay_order_succeeded_uq" ON "payments" USING btree ("order_id") WHERE "payments"."status" = 'succeeded';

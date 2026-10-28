@@ -1,6 +1,5 @@
-import { and, eq, sql } from "drizzle-orm";
 import { SITE_ORIGIN, ADMIN_ORIGIN, readIsrHealthReport } from "@onestarry/core";
-import { createDb, listActiveProductSlugs, runDataRetention, transactionalOutbox } from "@onestarry/db";
+import { createDb, getOutboxHealth, listActiveProductSlugs, releaseExpiredReservations, runDataRetention } from "@onestarry/db";
 import { pruneStaleIsrCache, relayHandlers, runIsrProbe, runRelayBatch } from "@onestarry/jobs";
 
 /** 每日数据保留清理的 cron 表达式（须与 wrangler.jsonc crons 中那条一致）。 */
@@ -13,6 +12,8 @@ export interface Env {
     /** 前台 ISR 成品页桶（探针报告写这里 + 清理历史构建遗留条目）。 */
     ISR_CACHE: R2Bucket;
     RELAY_BATCH_LIMIT?: string;
+    /** 未付订单在途预留的回收 TTL（分钟）：下单占位后超此时仍未付即释放。默认 60（需大于真实支付窗口）。 */
+    RESERVATION_TTL_MINUTES?: string;
     /** 探针额外采样几个商品详情页（除 / 与 /products 外）。默认 3。 */
     ISR_PROBE_SLUGS?: string;
 }
@@ -78,7 +79,8 @@ async function keepWarmAdmin(): Promise<void> {
  * Cloudflare Cron Trigger Worker：
  * - scheduled：每分钟消费 outbox 待办事件；每日一条 cron 跑数据保留清理 + 陈旧 ISR 条目清理；
  *   每 5 分钟一条 cron 跑 ISR 健康探针（按 event.cron 分流），顺带保活后台 Worker。
- * - fetch：只读健康端点，回 outbox 待办计数 + 最近一次 ISR 探针结论，用于验证连通性与放量判别。
+ * - fetch：只读健康端点，回 outbox 各状态计数（pending/failed/dead）+ 最近一次 ISR 探针结论，用于验证连通性与放量判别。
+ *   （审查 H1：改价卡在 failed/dead 时不会体现为 pending，单报 pending 会漏掉断链，所以三个都得回。）
  */
 export default {
     async scheduled(event: ScheduledController, env: Env, ctx: ExecutionContext): Promise<void> {
@@ -100,21 +102,30 @@ export default {
         const limit = Number(env.RELAY_BATCH_LIMIT ?? "500");
         const summary = await runRelayBatch(db, relayHandlers, { limit });
         console.log(`[relay] processed=${summary.processed} ok=${summary.succeeded} fail=${summary.failed}`);
+
+        // H-2：回收超时未付订单的在途预留（下单占位但用户放弃付款），否则库存会被悬挂预留锁死。
+        const ttl = Number(env.RESERVATION_TTL_MINUTES ?? "60");
+        const released = await releaseExpiredReservations(db, { ttlMinutes: ttl, limit: 200 });
+        if (released > 0) console.log(`[reservation] releasedExpired=${released}`);
     },
 
     async fetch(req: Request, env: Env): Promise<Response> {
         const url = new URL(req.url);
         if (url.pathname !== "/health") return new Response("not found", { status: 404 });
         const db = createDb(env.HYPERDRIVE.connectionString);
-        const rows = await db
-            .select({ pending: sql<number>`count(*)::int` })
-            .from(transactionalOutbox)
-            .where(and(eq(transactionalOutbox.status, "pending")));
+        // 一条聚合查询拿齐 pending/failed/dead + 时间线（getOutboxHealth 用 FILTER 一次算完，不拉行）。
+        const health = await getOutboxHealth(db);
         const isr = await readIsrHealthReport((key) => env.ISR_CACHE.get(key));
         return Response.json({
-            ok: true,
+            ok: health.dead === 0,
             service: "onestarry-jobs",
-            pending: rows[0]?.pending ?? 0,
+            outbox: {
+                pending: health.pending,
+                failed: health.failed,
+                dead: health.dead,
+                oldestPendingAt: health.oldestPendingAt,
+                lastDispatchedAt: health.lastDispatchedAt,
+            },
             // 探针没跑过时为 null：监控上要把「没数据」和「健康」区分开
             isr: isr ? { verdict: isr.verdict, badStreak: isr.badStreak, checkedAt: isr.checkedAt } : null,
         });

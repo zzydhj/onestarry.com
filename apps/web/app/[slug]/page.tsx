@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { notFound, redirect } from "next/navigation";
+import { notFound, permanentRedirect } from "next/navigation";
 import { getPublishedContentBySlug, listPublishedContent } from "@onestarry/db";
 import { getDb } from "@/lib/db";
 import { RichBody } from "@/components/RichBody";
@@ -39,9 +39,10 @@ export default async function ContentPage({ params }: { params: Promise<{ slug: 
     const { slug } = await params;
     const r = await getPublishedContentBySlug(getDb(), slug);
     if (!r) notFound();
-    if ("redirect" in r) redirect(`/${r.redirect}`);
+    // 别名/历史 slug 与博客前缀归一都是永久跳转（审查 M-1）：用 308 才合并权重。
+    if ("redirect" in r) permanentRedirect(`/${r.redirect}`);
     const item = r.data;
-    if (item.type === "blog") redirect(`/blog/${item.slug}`); // 博客统一走 /blog 前缀，避免根路径重复可达
+    if (item.type === "blog") permanentRedirect(`/blog/${item.slug}`); // 博客统一走 /blog 前缀，避免根路径重复可达
 
     return (
         <article className="mx-auto max-w-2xl px-4 py-10">

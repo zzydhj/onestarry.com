@@ -1,0 +1,2 @@
+DROP INDEX "seo_entity_locale_market_uq";--> statement-breakpoint
+CREATE UNIQUE INDEX "seo_entity_locale_market_uq" ON "seo_meta" USING btree ("entity_type","entity_id","locale",coalesce("market_id", '00000000-0000-0000-0000-000000000000'::uuid));

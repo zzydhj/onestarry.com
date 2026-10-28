@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { notFound, redirect } from "next/navigation";
+import { notFound, permanentRedirect } from "next/navigation";
 import { getPublishedContentBySlug, listPublishedContent } from "@onestarry/db";
 import { getDb } from "@/lib/db";
 import { RichBody } from "@/components/RichBody";
@@ -32,7 +32,7 @@ export default async function BlogPost({ params }: { params: Promise<{ slug: str
     const { slug } = await params;
     const r = await getPublishedContentBySlug(getDb(), slug);
     if (!r) notFound();
-    if ("redirect" in r) redirect(`/blog/${r.redirect}`);
+    if ("redirect" in r) permanentRedirect(`/blog/${r.redirect}`); // 历史/别名 slug → 永久 308（审查 M-1）
     const post = r.data;
 
     return (

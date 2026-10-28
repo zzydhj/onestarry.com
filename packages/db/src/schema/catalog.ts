@@ -204,7 +204,7 @@ export const slugs = pgTable(
         entityId: uuid("entity_id").notNull(),
         locale: text("locale").notNull(),
         slug: text("slug").notNull(),
-        isCurrent: boolean("is_current").notNull().default(true), // 历史 slug 保留 → 自动 301
+        isCurrent: boolean("is_current").notNull().default(true), // 历史 slug 保留 → 前台永久重定向 308
     },
     (t) => [uniqueIndex("slug_locale_value_uq").on(t.entityType, t.locale, t.slug), index("slug_entity_idx").on(t.entityType, t.entityId)],
 );
@@ -347,7 +347,17 @@ export const seoMeta = pgTable(
         aiGenerated: boolean("ai_generated").notNull().default(false),
         manualOverride: boolean("manual_override").notNull().default(false),
     },
-    (t) => [uniqueIndex("seo_entity_locale_market_uq").on(t.entityType, t.entityId, t.locale, t.marketId)],
+    (t) => [
+        // 审查 M-10：旧写法 `.on(..., t.marketId)`——market_id 可空，PG 中 NULL 彼此视为不同 →
+        // 语言级回退行（marketId=NULL）的唯一性根本不生效，ON CONFLICT 永不触发 → 并发保存插出双行。
+        // 用 COALESCE 把 NULL 归到全零 uuid 哨兵，使同一 scope 归于唯一（与 upsertSeoMeta 的 ON CONFLICT 目标一致）。
+        uniqueIndex("seo_entity_locale_market_uq").on(
+            t.entityType,
+            t.entityId,
+            t.locale,
+            sql`coalesce(${t.marketId}, '00000000-0000-0000-0000-000000000000'::uuid)`,
+        ),
+    ],
 );
 
 /* ------------------------------ 评论 ------------------------------ */

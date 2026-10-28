@@ -3,6 +3,7 @@ import {
     fetchPendingEvents,
     markDispatched,
     markFailed,
+    markDead,
     type Db,
     type Tx,
 } from "@onestarry/db";
@@ -20,7 +21,9 @@ export interface RelaySummary {
 
 /**
  * 消费一批 outbox 待办：按 eventType 找处理器执行，成功批量标记 dispatched，
- * 失败逐条 markFailed（attempts+1，留待下次重试或超阈值置 dead）。
+ * 失败逐条 markFailed（attempts+1，下次重拉；超阈由 markFailed 置 dead）。
+ * 未注册 handler 的未知事件 → markDead（审查 H1）：旧写法直接 ack 会把它当“已处理”抹掉，
+ * 使 order.created / order.shipped 等“发了事件但无人消费”的配置缺口永远看不见。
  * 由 Cloudflare Cron（每分钟）和/或写时自派发调用；与触发方式解耦。
  */
 export async function runRelayBatch(
@@ -36,7 +39,9 @@ export async function runRelayBatch(
     for (const ev of events) {
         const handler = handlers[ev.eventType];
         if (!handler) {
-            ackIds.push(ev.id); // 未知类型：确认丢弃，避免堵队（事件类型由我们自控）
+            // 未知类型：置 dead 而非 ack，让 dead 计数在 /health 与后台运维卡上显形。
+            await markDead(db, ev.id, "no_handler");
+            failed++;
             continue;
         }
         try {

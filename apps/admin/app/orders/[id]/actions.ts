@@ -24,8 +24,10 @@ export async function markShippedAction(formData: FormData): Promise<{ ok: boole
         await db.transaction(async (tx) => {
             await recordShipment(tx, { orderId, carrier, trackingNumber });
         });
-    } catch {
-        // 未支付 / 已发货 / 账本不平 等：不刷新也不报错，由调用方回滚乐观态
+    } catch (e) {
+        // 未支付 / 已发货 / 账本不平 / **缺参考成本 COGS_COST_UNKNOWN（审查 M-3）** 等：不刷新也不报错，由调用方回滚乐观态。
+        // 但原因必须进日志（同 checkout）：否则运营看到“发货失败”却查不到是哪件商品没定价，成黑盒。错误码含 variantId，只进服务端不外泄。
+        console.error(`[admin] 标记发货失败 order=${orderId}：`, e instanceof Error ? e.message : e);
         return { ok: false };
     }
     revalidatePath(`/orders/${orderId}`);

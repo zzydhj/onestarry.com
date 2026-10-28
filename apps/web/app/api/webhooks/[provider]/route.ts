@@ -30,12 +30,15 @@ function pickProvider(env: CloudflareEnv, name: string): PaymentProvider | null 
     //
     // ⚠ 默认值必须是「不收」。旧实现无条件返回 FakePaymentProvider，而 Fake 的
     // verifyWebhook **根本不看签名** —— 那等于在公网上开了一个「把任意订单标成已付 + 生成发票 + 记账本」
-    // 的入口。现在：paypal 且配齐凭据 → 真验签；显式开 FAKE_PAYMENTS_ENABLED=1 → 才接受假回调；否则 null。
+    // 的入口。现在：paypal 且配齐凭据 → 真验签；显式开 FAKE_PAYMENTS_ENABLED=1 且 name 为专属 "fake" → 才接受假回调；否则 null。
     if (name === "paypal") {
         const cfg = readPaypalConfig(env);
         return cfg ? new PaypalPaymentProvider(cfg) : null;
     }
-    if (env.FAKE_PAYMENTS_ENABLED === "1") return new FakePaymentProvider();
+    // 审查 L-5：Fake 不验签，只能活在专属 slug `/webhooks/fake` 上，绝不让它冒充真实 provider 的路径。
+    // 旧写法 `FAKE=1` 时**任意** name 都返回 Fake，包括未配凭据的 `/webhooks/paypal` 也会收未签名假回调
+    //（危险组合：生产误开 FAKE + 有人打真实通道）。收窄后未配凭据的 paypal 一律 null→501（真实语义：paypal 未接入）。
+    if (name === "fake" && env.FAKE_PAYMENTS_ENABLED === "1") return new FakePaymentProvider();
     return null;
 }
 
@@ -75,9 +78,6 @@ export async function POST(req: Request, ctx: { params: Promise<{ provider: stri
         }
     }
 
-    // 只存不动账的事件一律标 ignored，后台看事件表时能直接分出“哪些还得人工看”。
-    const nextStatus = normalized.outcome === "ignored" ? "ignored" : "processed";
-
     try {
         await db.transaction(async (tx) => {
             const ins = await tx
@@ -93,6 +93,13 @@ export async function POST(req: Request, ctx: { params: Promise<{ provider: stri
             const inserted = ins[0];
             if (!inserted) return; // 重复回调，幂等跳过
 
+            // 状态由“钱是否真的落了账”决定，而非 outcome 静态映射（审查 H-1）。
+            // 旧写法把非 ignored 一律预置成 processed，于是“paid 但定不到单”这条分支——
+            // 注释亲手写了“宁可不标已付”——却把事件标成已处理：订单没错（没落账），
+            // 但 webhook_events 显示 processed、无 error、无重投，后台据此以为处理完了。
+            let status: "processed" | "ignored" | "failed" = normalized.outcome === "ignored" ? "ignored" : "processed";
+            let error: string | null = null;
+
             // 先把“这张单是我们哪一笔”定下来：PSP 给的形式不一样，所以三条路都试。
             let orderId = normalized.orderId;
             if (!orderId && normalized.orderNumber) {
@@ -103,6 +110,8 @@ export async function POST(req: Request, ctx: { params: Promise<{ provider: stri
 
             if (normalized.outcome === "paid") {
                 // 没定到单就只存事件不落账（宁可不标已付，也不猜是哪张单）。
+                // 但必须标 failed + error：这才是一次没跑成、需人工看的事件，而不是“已处理”。
+                // 回 200（不再重投：单不存在重投也不会好），靠 status=failed 进运维视野。
                 if (orderId) {
                     await recordPaymentSucceeded(tx, {
                         orderId,
@@ -110,35 +119,37 @@ export async function POST(req: Request, ctx: { params: Promise<{ provider: stri
                         providerRef: normalized.providerRef ?? undefined,
                         amountCents: normalized.amountCents ?? undefined,
                     });
+                } else {
+                    status = "failed";
+                    error = "ORDER_UNRESOLVED";
                 }
             } else if (normalized.outcome === "revoked" || normalized.outcome === "refunded") {
                 // 退款类事件的 resource 是**退款体**，常常不带 custom_id：
                 // 只能拿 captureRef 去回溯我们存过的那笔收款，两个都递进去让查侧自己定。
                 if (!orderId && !normalized.captureRef) {
+                    // 无法关联原收款：既不冲账也不当已处理，标 ignored 留人工（钱的事实待核）。
                     console.warn(`[webhook:${providerName}] ${normalized.type} 无法关联到原收款，只存事件`);
-                    await tx
-                        .update(webhookEvents)
-                        .set({ status: "ignored", processedAt: new Date() })
-                        .where(eq(webhookEvents.id, inserted.id));
-                    return;
-                }
-                const res = await recordPaymentReversal(tx, {
-                    provider: providerName,
-                    orderId,
-                    captureRef: normalized.captureRef,
-                    kind: normalized.outcome,
-                    amountCents: normalized.outcome === "refunded" ? normalized.amountCents : null,
-                    refundRef: normalized.outcome === "refunded" ? normalized.providerRef : null,
-                    reason: normalized.type,
-                });
-                // 没生过发票的单冲不出红字凭证：不阻断落账（钱的事实重要），但必须留痕。
-                if (!res.creditNoteNumber) {
-                    console.warn(`[webhook:${providerName}] ${normalized.type} 已冲账但无发票可冲：order=${res.orderId} amount=${res.amountCents}`);
+                    status = "ignored";
+                    error = "UNASSOCIATED";
+                } else {
+                    const res = await recordPaymentReversal(tx, {
+                        provider: providerName,
+                        orderId,
+                        captureRef: normalized.captureRef,
+                        kind: normalized.outcome,
+                        amountCents: normalized.outcome === "refunded" ? normalized.amountCents : null,
+                        refundRef: normalized.outcome === "refunded" ? normalized.providerRef : null,
+                        reason: normalized.type,
+                    });
+                    // 没生过发票的单冲不出红字凭证：不阻断落账（钱的事实重要），但必须留痕。
+                    if (!res.creditNoteNumber) {
+                        console.warn(`[webhook:${providerName}] ${normalized.type} 已冲账但无发票可冲：order=${res.orderId} amount=${res.amountCents}`);
+                    }
                 }
             }
             await tx
                 .update(webhookEvents)
-                .set({ status: nextStatus, processedAt: new Date() })
+                .set({ status, error, processedAt: new Date() })
                 .where(eq(webhookEvents.id, inserted.id));
         });
     } catch (e) {

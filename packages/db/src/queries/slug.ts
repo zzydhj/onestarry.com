@@ -48,7 +48,7 @@ async function uniqueSlug(db: Db | Tx, entityType: string, locale: string, base:
 
 /**
  * 设实体 slug（单一真源）。与当前相同则不动；否则把当前行降为历史(isCurrent=false)、插入新当前行
- * （旧 slug 保留 → resolveSlug 自动 301）。返回最终 slug。
+ * （旧 slug 保留 → resolveSlug 判 redirect，由前台页 permanentRedirect 发 308）。返回最终 slug。
  */
 export async function setEntitySlug(
     db: Db | Tx,
@@ -84,7 +84,7 @@ export interface SlugQuery {
 
 export type SlugResolution =
     | { status: "current"; entityType: string; entityId: string; slug: string }
-    /** 命中的是历史 slug → 返回当前 slug 供调用方 301。 */
+    /** 命中的是历史 slug → 返回当前 slug 供调用方永久重定向（前台发 308，非 301）。 */
     | { status: "redirect"; entityType: string; entityId: string; toSlug: string };
 
 /**

@@ -1,0 +1,1 @@
+CREATE INDEX "order_open_reservation_idx" ON "orders" USING btree ("created_at") WHERE "orders"."reservation" IS NOT NULL;

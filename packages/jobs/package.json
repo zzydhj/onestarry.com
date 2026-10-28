@@ -10,6 +10,7 @@
         "lint": "eslint .",
         "typecheck": "tsc --noEmit",
         "smoke": "tsx src/relay.smoke.ts",
+        "smoke:retry": "tsx src/relay.retry.smoke.ts",
         "smoke:pricing": "tsx src/smoke-admin-pricing.ts"
     },
     "dependencies": {

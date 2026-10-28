@@ -4,10 +4,9 @@ import { eq } from "drizzle-orm";
 import { redirect } from "next/navigation";
 import { getCloudflareContext } from "@opennextjs/cloudflare";
 import { createDb, createOrder, markets } from "@onestarry/db";
+import { PLACEHOLDER_SHIPPING_CENTS } from "@onestarry/core";
 import { readCart, writeCart } from "@/lib/cart";
 import { readCustomerSession } from "@/lib/session";
-
-const SHIPPING_CENTS = 500; // MVP 占位运费（真实 computeShipping 待接）
 
 /**
  * 字段长度封顶 + 邮箱格式。旧实现只做了 `trim()`，而地址列都是 `text`（无长度上限），
@@ -58,10 +57,13 @@ export async function checkoutAction(formData: FormData): Promise<void> {
     const submittedKey = clean(formData.get("idempotencyKey"), 64);
     const idempotencyKey = /^[0-9a-fA-F-]{16,64}$/.test(submittedKey) ? submittedKey : crypto.randomUUID();
 
+    // 只把 createOrder 放进 try：Next 的 redirect() 靠抛 NEXT_REDIRECT 生效，若写在同一个 try 内
+    // 会被下面的 catch 当“下单失败”吞掉 → 每笔成功单也被踢回 ?error=failed（审查 C-1，直接吃掉营收）。
+    let result: Awaited<ReturnType<typeof createOrder>>;
     try {
-        // 不再包 db.transaction：createOrder 现在是**一条 data-modifying CTE**，单语句天然原子，
-        // 而 BEGIN/COMMIT 在 max:1 的连接上是**两次额外的跨洋往返**。幂等仍由 createOrder 内部保证。
-        const result = await createOrder(db, {
+        // createOrder 内部自管事务：建单（一条 data-modifying CTE）+ 原子占位（审查 H-2）必须同事务，
+        // 占位不足才能把刚建的单/幂等键一起回滚。幂等与预留均由 createOrder 保证，调用方不再包 transaction。
+        result = await createOrder(db, {
             idempotencyKey,
             email,
             customerId,
@@ -70,16 +72,24 @@ export async function checkoutAction(formData: FormData): Promise<void> {
             locale: "en",
             shippingAddress: { recipient, phone, country, region, city, line1, line2, postalCode },
             items,
-            shippingCents: SHIPPING_CENTS,
+            shippingCents: PLACEHOLDER_SHIPPING_CENTS,
         });
-        await writeCart({}); // 下单成功清空
-        // 先去支付页：钱没到之前不把用户丢到「订单已下」的庆功页（旧流程就是这么默认“已付”的）。
-        // `t=` 是这张单的访问凭证，后面支付页与两个 API 路由都只认它。
-        redirect(`/pay/${result.orderNumber}?t=${encodeURIComponent(result.publicToken)}`);
     } catch (e) {
-        // 给用户看的仍是笼统提示（错误码里带 variantId，不该泄到前台），
-        // 但原因必须进日志：旧实现空 catch 让"为什么没下单"变成客服查不出的黑盒。
-        console.error("[checkout] 下单失败：", e instanceof Error ? e.message : e);
+        // 给用户看的仍是人话提示（错误码里带 variantId，不该泄到前台），但原因必须进日志。
+        const msg = e instanceof Error ? e.message : String(e);
+        console.error("[checkout] 下单失败：", msg);
+        // createOrder 对不可售行抛 NOT_SELLABLE → 回专用码，结账页据此提示“移除不可售项”（审查 M-7）。
+        if (msg.startsWith("NOT_SELLABLE")) redirect("/checkout?error=unavailable");
         redirect("/checkout?error=failed");
     }
+
+    // 成功路径在 try 之外：清车失败绝不能挡住跳支付页（订单已入库），单独 catch 记日志即可。
+    try {
+        await writeCart({}); // 下单成功清空
+    } catch (e) {
+        console.error("[checkout] 下单成功但清空购物车失败：", e instanceof Error ? e.message : String(e));
+    }
+    // 先去支付页：钱没到之前不把用户丢到「订单已下」的庆功页（旧流程就是这么默认“已付”的）。
+    // `t=` 是这张单的访问凭证，后面支付页与两个 API 路由都只认它。
+    redirect(`/pay/${result.orderNumber}?t=${encodeURIComponent(result.publicToken)}`);
 }

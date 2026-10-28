@@ -5,7 +5,7 @@ import postgres from "postgres";
 import { drizzle } from "drizzle-orm/postgres-js";
 import { sql, desc, eq } from "drizzle-orm";
 import * as schema from "./schema/index";
-import { legalEntities, markets, orderItems, orderLines, orders, products, productVariants, shipments } from "./schema";
+import { inventory, legalEntities, markets, orderItems, orderLines, orders, products, productVariants, shipments } from "./schema";
 import { createOrder, recomputeVariantMarketPrice, type RecomputeInput } from "./queries";
 
 /**
@@ -180,6 +180,8 @@ async function main() {
                     const [mk] = await tx.insert(markets).values({ code: `pb_${suffix}`, name: "PB Mkt", currency: "USD", legalEntityId: le!.id }).returning();
                     const [prod] = await tx.insert(products).values({ status: "active" }).returning();
                     const [variant] = await tx.insert(productVariants).values({ productId: prod!.id, sku: `PB-${suffix}`, basePriceCents: 10000, baseCurrency: "USD" }).returning();
+                    // createOrder 现在校库存（in_stock_only 需可售库存≥数量）→ 补一行库存，否则下单被挡、探针取不到基线。
+                    await tx.insert(inventory).values({ variantId: variant!.id, onHand: 100, reserved: 0 });
                     const priceInput: RecomputeInput = {
                         variantId: variant!.id, marketId: mk!.id, basePriceCents: 10000, baseCurrency: "USD",
                         fxRate: 1, marketCurrency: "USD", shippingCents: 0, taxRate: 0.19, dutyRate: 0.1,

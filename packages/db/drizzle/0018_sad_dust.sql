@@ -1,0 +1,1 @@
+CREATE UNIQUE INDEX "refund_payment_ref_uq" ON "refunds" USING btree ("payment_id","provider_ref") WHERE "refunds"."provider_ref" IS NOT NULL;

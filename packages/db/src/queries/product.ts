@@ -195,7 +195,12 @@ export interface ProductDetail {
     available: number;
 }
 
-/** 取某商品在指定市场的详情（含可售库存）。找不到返回 null。market 内联→只一次往返。 */
+/**
+ * 取某商品在指定市场的详情（含可售库存）。找不到返回 null。market 内联→只一次往返。
+ * ⚠ 必须筛 `status = 'active'`（审查 H-3）：列表/搜索都过这一关，PDP 这条旧写法漏了 →
+ *   归档/草稿商品经直链仍可公网渲染、可加购、照发 OG/canonical，直到结账才被 computeSellability 拒（只给笼统 error=failed）。
+ *   本函数只服务前台 PDP/评价页；后台预览草稿走 loadAdminProductDetail，不受此约束影响。
+ */
 export async function getProductById(db: Db | Tx, productId: string, marketCode: string, locale = "en"): Promise<ProductDetail | null> {
     const marketId = marketIdOf(db, marketCode);
 
@@ -218,7 +223,7 @@ export async function getProductById(db: Db | Tx, productId: string, marketCode:
             .innerJoin(variantMarketPrices, and(eq(variantMarketPrices.variantId, productVariants.id), eq(variantMarketPrices.marketId, sql`(${marketId})`)))
             .innerJoin(productTranslations, and(eq(productTranslations.productId, products.id), eq(productTranslations.locale, locale)))
             .leftJoin(inventory, eq(inventory.variantId, productVariants.id))
-            .where(eq(products.id, productId))
+            .where(and(eq(products.id, productId), eq(products.status, "active")))
             .limit(1)
     )[0];
     if (!row) return null;
