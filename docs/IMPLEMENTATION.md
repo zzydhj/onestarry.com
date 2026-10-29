@@ -67,8 +67,9 @@ onestarry.com/
 | 迁移 | 内容 |
 |---|---|
 | `0000_volatile_legion` ~ `0014_melodic_human_torch`（15 个 drizzle-kit 生成） | 全量建表 + 逐段加列/索引；`content`/`contentTranslations` **在 0001 就已建**（CMS 因此零新迁移）；0006/0011/0012/0013/0014 为空/微调（生成噪声） |
-| `drizzle/manual/0014_partition_append_only.sql` | `ledger_entries` + `stock_movements` 重建为 RANGE 月分区（幂等，经 `pnpm db:partition` 应用） |
-| `drizzle/manual/0015_app_role.sql` | `app_rw` 角色 + 只追加表 REVOKE UPDATE/DELETE（**已在 Neon 执行、Hyperdrive 已切换**） |
+| `drizzle/manual/0014_partition_append_only.sql` | `ledger_entries` + `stock_movements` 重建为 RANGE 月分区（幂等，经 `pnpm db:partition` 应用）。**已补（审查 M-9）**：末尾遍历 `pg_inherits` 给每个子分区补 `REVOKE UPDATE, DELETE`，并自带 `SET LOCAL lock_timeout='3s'` 保险丝 |
+| `drizzle/manual/0015_app_role.sql` | `app_rw` 角色 + 只追加表 REVOKE UPDATE/DELETE（**已在 Neon 执行、Hyperdrive 已切换**）。⚠ **审查 M-9 已核为真**：此处 `GRANT ... ON ALL TABLES` 会把 UPDATE/DELETE 授给**每张已存在的叶分区**，而 `REVOKE` **只撤两张父表**——PG 中 REVOKE 父表**不传导到分区**，实测 `has_table_privilege('app_rw', 叶, 'UPDATE')=true`（父=false）。因应用只点名父表，**主路径已被挡住**，故属 defense-in-depth 缺口；叶级补撤已固化进 0014，**尚未回填现网**（见下行 + §12） |
+| `drizzle/manual/0016_role_timeouts.sql` | **新增（2026-10-29）**：给 `app_rw`/`neondb_owner` 配 `idle_in_transaction_session_timeout` / `lock_timeout` / `statement_timeout` 三根保险丝。此前全仓**从未设过**任何超时（三个 GUC 均默认 0=永不超时），叠加“cron 保活使 compute 从不 suspend”，导致**卡住的会话不会自行回收、抢不到锁的 DDL 会无限排队并拖垮整库** → 手动 Restart compute 成为唯一逃生门。本文件把它变成自愈。**待执行**（只改角色默认值、不锁表、不碰数据；`ALTER ROLE` 只作用于新建会话，故宜在重启/连接回收后核验） |
 
 > ⚠️ `0014_partition_append_only.sql` 与生成的 `0014_melodic_human_torch.sql` **同序号不同来源**，新库按 `drizzle/migrations` journal 走 `db:migrate` 后再单独跑 `db:partition`；重建模板站时顺序不可颠倒。
 

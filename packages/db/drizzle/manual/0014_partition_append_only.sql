@@ -10,7 +10,14 @@ DECLARE
     d      date;
     end_d  date;
     k      "char";
+    r      record;
 BEGIN
+    -- 保险丝：本脚本会做 REVOKE（每表取 ACCESS EXCLUSIVE）。抢不到锁就必须**快速失败退让**——
+    -- 一个排队中的 ACCESS EXCLUSIVE 请求会挡住该表**后续所有读写（连 SELECT 也排它后面）**，
+    -- 在活库上会把整台 compute 拖到失联（2026-10-29 实际踩过，靠重启 compute 才解）。
+    -- 用 SET LOCAL 是为了**即便角色级（见 0016_role_timeouts.sql）没配也自带保护**；真要长等请在会话里显式放宽。
+    SET LOCAL lock_timeout = '3s';
+
     ------------------------------------------------------------------ ledger_entries
     SELECT c.relkind INTO k FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
      WHERE n.nspname='public' AND c.relname='ledger_entries';
@@ -71,4 +78,19 @@ BEGIN
         CREATE INDEX sm_ref_idx     ON stock_movements (reference_type, reference_id);
         RAISE NOTICE 'stock_movements 已分区';
     END IF;
+
+    ------------------------------------------------------------------ append-only 落到每个分区叶（审查 M-9）
+    -- 坑：0015_app_role.sql 用 `GRANT ... ON ALL TABLES IN SCHEMA public` 把 UPDATE/DELETE 也授给了
+    --       每张**已存在的叶分区**，而 `REVOKE ... ON ledger_entries, stock_movements` 只撤了两张**父表**；
+    --       又因 `ALTER DEFAULT PRIVILEGES`，以后由 neondb_owner 新建的每个分区也会自动拿到 UPDATE/DELETE。
+    -- 事实：PG 中 REVOKE 父表**不自动撤到分区**；直接点名叶分区做 DML 时按叶权限判定 → 只追加必须在叶上成文。
+    --       （应用正常写路径只点名父表、且靠父表 INSERT 权限路由进叶，故本段不改变任何应用行为，纯收紧。）
+    -- 幂等：位于两张表的跳过 IF 之外、外层 BEGIN 之内——每次重跑本脚本（含以后延长分区）都遍历当前所有子分区重申撤销。
+    FOR r IN
+        SELECT inhrelid::regclass AS child
+        FROM pg_inherits
+        WHERE inhparent IN ('ledger_entries'::regclass, 'stock_movements'::regclass)
+    LOOP
+        EXECUTE format('REVOKE UPDATE, DELETE ON %s FROM app_rw', r.child);
+    END LOOP;
 END $$;
