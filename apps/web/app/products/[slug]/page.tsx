@@ -181,7 +181,9 @@ export default async function ProductPage({ params }: { params: Promise<{ slug: 
             <section className="mt-10 border-t border-line pt-6">
                 <div className="flex items-center justify-between">
                     <h2 className="text-base font-semibold">Customer reviews</h2>
-                    <Link href={`/products/${slug}/review`} className="text-sm text-accent hover:underline">
+                    {/* 评价页在 `/review/[slug]` 而不是本子树的子段（审查 M2）：本子段有 `loading.tsx` 骨架，
+                        把需登录的页挂进来就会让它的未登录 `redirect` 被软成 HTTP 200（理由写在页文件头注）。*/}
+                    <Link href={`/review/${slug}`} className="text-sm text-accent hover:underline">
                         Write a review
                     </Link>
                 </div>

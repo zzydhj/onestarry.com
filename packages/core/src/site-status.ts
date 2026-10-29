@@ -254,15 +254,15 @@ export const SITE_ROUTES: SiteRoute[] = [
         note: "共享密钥 fail-closed（没配一律 401）+ 白名单 + ≤20 条",
     },
     {
-        path: "/products/[slug]/review",
-        file: "apps/web/app/products/[slug]/review/page.tsx",
+        path: "/review/[slug]",
+        file: "apps/web/app/review/[slug]/page.tsx",
         label: "发表评价页",
         kind: "private",
         revalidateSec: null,
         edgeCacheable: false,
         invalidation: "none",
         dynamicSegment: true,
-        note: "force-dynamic + 读客户会话：不能被缓存（缓存住就是把 A 的表单给了 B）",
+        note: "force-dynamic + 读客户会话：不能被缓存（缓存住就是把 A 的表单给了 B）。2026-10-29 审查 M2：旧路径 `/products/[slug]/review` 挂在 PDP 的 `loading.tsx` 骨架下，未登录的 `redirect(“/signin”)` 被流式外壳软成 HTTP 200（线上实测），所以整页搬出 `/products` 子树而不删骨架；守卫见 `core/streaming-boundary.test.ts`",
     },
     {
         path: "/integration/*",

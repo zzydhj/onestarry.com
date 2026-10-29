@@ -335,8 +335,15 @@ R2 键形如 `incremental-cache/<buildId>/<sha256>.cache`，**每次部署换新
 | 路由 | `Cache-Control`（实测） | 结果 |
 | --- | --- | --- |
 | `/`、`/products`、PDP、`/blog`、`/brands`、`/categories` | `s-maxage=剩余新鲜度, stale-while-revalidate=2592000` | 存 ≤60s |
-| `/cart`、`/checkout`、`/search`、`/order/*`、`/account/*`、`/products/<slug>/review`(307)、404 | `private, no-cache, no-store, max-age=0, must-revalidate` | BYPASS |
+| `/cart`、`/checkout`、`/search`、`/order/*`、`/account/*`、`/review/<slug>`(旧记 307，见下表注)、404 | `private, no-cache, no-store, max-age=0, must-revalidate` | BYPASS |
 | `/api/*`、`/integration/*` | **原本不带任何头** → 会走启发式新鲜度 | 已在 `next.config.ts` 显式补 `no-store` |
+
+> ⚠ **上表的 `(307)` 已作废一次（2026-10-29 复核）**：当时评价页在 `/products/<slug>/review`，
+> 未登录实测返 **200** 而不是 307 —— 因为 `products/loading.tsx` + `products/[slug]/loading.tsx` 这两层
+> 流式边界先把骨架冲了出去，状态行在 `redirect()` 报出之前就已定为 200（跳转动作只能活在 RSC payload 里）。
+> 拿 307 当结论那次是“凭旧记录写表”的错。修法是**把页搬出 `/products` 子树**（现为 `/review/[slug]`，
+> 父段无 loading.tsx）而不是删 PDP 骨架；部署后要用 `curl -i` 重新实测这条路径，量到了才允许把 307 写回来
+> （铁律：Workers Builds 会静默漏 push，未比过 `/api/health` 顶层 `gitSha` 前不要把“已修”当已上线）。
 
 三条让它比“区域规则”更难出事的性质：
 - 带 `Set-Cookie` 的响应、带 `Authorization` 的请求都**自动 BYPASS**（加购那一发不会污染别人）。

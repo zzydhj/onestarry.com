@@ -10,7 +10,17 @@ export const dynamic = "force-dynamic"; // 读客户会话，不缓存
 
 export const metadata: Metadata = { title: "Write a review", robots: { index: false, follow: false } };
 
-/** 发表评价页（需登录客户）：评分 + 标题 + 正文 → 提交进待审核队列。 */
+/**
+ * 发表评价页（需登录客户）：评分 + 标题 + 正文 → 提交进待审核队列。
+ *
+ * ⚠ 这条路由**故意不在 `/products` 子树里**（审查 M2，2026-10-29）：`/products/loading.tsx` 与
+ * `/products/[slug]/loading.tsx` 是 PDP 的骨架，而 `loading.tsx` 会把所在段变成流式边界 ——
+ * Next 先冲骨架，状态行在那一刻就定成 200，下面那句 `redirect("/signin")` 只能靠 RSC payload
+ * 在浏览器侧执行。挂在那棵树下时，未登录访客拿到的是「200 + 骨架」（线上 curl 实测），
+ * 无 JS 客户端/爬虫/HEAD 探活看见的就不是「要登录」，而是一个像成功页的空壳。
+ * 搬出来而不是删骨架：PDP 的骨架是转化率所需（见 docs/PERF.md），不该为一条私有页牺牲。
+ * 这条不变量已由 `packages/core/src/streaming-boundary.test.ts` 做成漂移守卫。
+ */
 export default async function ReviewFormPage({ params, searchParams }: { params: Promise<{ slug: string }>; searchParams: Promise<{ error?: string }> }) {
     const { slug } = await params;
     const { error } = await searchParams;

@@ -233,7 +233,7 @@ onestarry.com/
 | 项 | 位置 | 状态 |
 |---|---|---|
 | 查询 | `queries/reviews.ts`：`listApprovedReviews`（平均+计数+脱敏 author）/`createReview`（**verifiedPurchase = 该客户是否有含此商品的 paid/completed 订单**；rating 越界拒；**productId 夹 UUID 形状，畸形→`{error:INVALID_PRODUCT_ID}`（审查 L-3：否则非 UUID 落 uuid 列撞 PG 22P02→500）**）/`listReviewsForModeration`/`setReviewStatus` | ✅ createReview 返回 `{id}|{error}`；前台 `submitReviewAction` 不再丢弃错误（审查 M-6）——出错退回评价页带 `?error=` 并显一行提示（当前表单 rating 恒 1–5、此路几乎不触发，属防御性收口） |
-| 前台 | `/products/[slug]/review`（page+actions，登录用户提交 → pending） | ✅ |
+| 前台 | `/review/[slug]`（page+actions，登录用户提交 → pending） | ✅ **审查 M2 已修（2026-10-29）：路由从 `/products/[slug]/review` 搬出**。旧位置的两个祖先段各有一个 `loading.tsx`（PDP 骨架），而 `loading.tsx` 就是流式边界：Next 先冲骨架、状态行当时已定成 200，页里那句 `redirect("/signin")` 只能塞进 RSC payload 由浏览器执行 ⇒ 线上实测未登录拿到的是「200 + 骨架」（无 JS 客户端/爬虫/HEAD 探活看见的就不是“要登录”）。选择搬页而不是删骨架：PDP 骨架是转化率所需。**同批新增漂移守卫 `core/streaming-boundary.test.ts`**（force-dynamic 且页内直接写 `redirect()`/`notFound()` 的页，祖先段不得有 `loading.tsx`；含“合成用例必须抓出边界”的反空转断言）：旧树位置实测变红、搬迁后转绿。判据取“且会跳转”而非平铺禁骨架，理由写在测试头注（`/cart`、`/checkout` 带骨架但不跳转，删了就是拿转化率换一个今天不发作的风险；有人往这两页加跳转时守卫会立即变红）。另：`/review` 已加进 `robots.ts` 的 disallow（与 `/account`、`/checkout` 同口径） |
 | 后台 | `/reviews` 审核页（`requirePermission(productWrite)`） | ✅ |
 | 聚合评分物化到商品 / 投票 / 问答 / 反刷 | — | ❌ 未做 |
 
@@ -272,7 +272,7 @@ onestarry.com/
 > 导航已换成 ERP 式左侧分栏 `components/AdminSideNav.tsx`（分组 + 可折叠存 localStorage + 移动端抽屉），**一律 `prefetch={false}`**（后台是 force-dynamic，预取会把 11 个入口全真渲染一遍，实测一次加载打出 36–45 个请求）。它按传入权限集过滤入口；**隐藏只是体验，硬强制在页面/动作的 `requirePermission`**（两者已逐项对应）。⚠ 也正因为 layout 只**软取会话**（`readAdminSession()` 不跳转），**layout 不构成兜底**——“新增一页忘写守卫”会变成公网可直接读到后台数据、而动作仍拒的**静默泄露**；此不变量已由 `packages/core/src/admin-guard.test.ts` 做成漂移护栏（审查 L-8，含“为何不用 middleware”的否决理由）。
 
 ### 3.17 前台页面清单
-`/`（首页 Hero/分类入口/精选/信任条）· `/products` `/products/[slug]` · `/products/[slug]/review`（发表评价，force-dynamic）· `/search` · `/categories` `/categories/[slug]` · `/brands` `/brands/[slug]` · `/blog` `/blog/[slug]` · `/[slug]`（page/landing）· `/cart` · `/checkout` · `/order/[orderNumber]` · `/pay/[orderNumber]`（带访问凭证的支付页）· `/account/orders` · `/signin` · `/legal/[type]`（terms/privacy/returns/withdrawal）· `/api/{health,auth/[...all],webhooks/[provider],internal/invalidate}` · `/api/paypal/{orders,capture}` · `/integration/*`
+`/`（首页 Hero/分类入口/精选/信任条）· `/products` `/products/[slug]` · `/review/[slug]`（发表评价，force-dynamic；2026-10-29 审查 M2 从 `/products/[slug]/review` 搬出，理由见 §3.13）· `/search` · `/categories` `/categories/[slug]` · `/brands` `/brands/[slug]` · `/blog` `/blog/[slug]` · `/[slug]`（page/landing）· `/cart` · `/checkout` · `/order/[orderNumber]` · `/pay/[orderNumber]`（带访问凭证的支付页）· `/account/orders` · `/signin` · `/legal/[type]`（terms/privacy/returns/withdrawal）· `/api/{health,auth/[...all],webhooks/[provider],internal/invalidate}` · `/api/paypal/{orders,capture}` · `/integration/*`
 
 > 逐路由的**缓存窗口/渲染策略/失效方式**不再写在这里 —— 单一真源是 `packages/core/src/site-status.ts`，后台 `/status` 页与漂移守卫单测共用它。
 缺：收藏/心愿单、退货 RMA、订单取消、地址簿、多语言路径。

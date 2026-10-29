@@ -6,10 +6,13 @@ import { SITE_ORIGIN } from "@onestarry/core";
  *
  * ⚠ `/order` 与 `/pay` 必须在 disallow 里（2026-10-23 审查 P0-1）：订单确认页含客户邮箱与购物内容，
  * 支付页含金额与商品；两页都已加页级 `robots: {index:false}`，这里再挡一层爬取。
+ *
+ * `/review`（发表评价，2026-10-29 从 `/products/[slug]/review` 搬出）同样只给已登录客户：
+ * 搬前它藏在公开的 `/products` 子树下、靠页级 meta 拦，现在按私有流程同口径再挡一层。
  */
 export default function robots(): MetadataRoute.Robots {
     return {
-        rules: [{ userAgent: "*", allow: "/", disallow: ["/account", "/cart", "/checkout", "/order", "/pay", "/api"] }],
+        rules: [{ userAgent: "*", allow: "/", disallow: ["/account", "/cart", "/checkout", "/order", "/pay", "/review", "/api"] }],
         sitemap: `${SITE_ORIGIN}/sitemap.xml`,
     };
 }
