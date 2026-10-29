@@ -69,7 +69,7 @@ test("每个后台页面都必须显式调用鉴权守卫（漏一页 = 静默�
         naked,
         [],
         `这些后台页面没有任何 requirePermission/requireAdmin 调用，公网可直接读到后台数据：${naked.join(", ")}。` +
-            `正确写法：import { requirePermission } from "@/lib/auth"; 并在取数据前 await requirePermission(PERMISSIONS.xxx)。`,
+        `正确写法：import { requirePermission } from "@/lib/auth"; 并在取数据前 await requirePermission(PERMISSIONS.xxx)。`,
     );
 });
 
@@ -89,4 +89,22 @@ test("公开白名单不得悄悄长大：名单里的页必须真的是登录�
     for (const r of PUBLIC_ROUTES) {
         assert.ok(routes.includes(r), `白名单里的 ${r} 已不存在，请从 PUBLIC_ROUTES 删除`);
     }
+});
+
+test("后台入口表只有一个真源：导航与概览页都必须从 @/lib/nav 取（审查 L-1）", () => {
+    // 同一个“入口 + 所需权限”写两遍就会漂移：以前概览页自己抄了一份无 perm 的卡片表，
+    // 结果给 staff 画了「市场」「团队权限」，点进去就是 FORBIDDEN 错误页。
+    const ADMIN = `${REPO_ROOT}apps/admin`;
+    const sideNav = readFileSync(`${ADMIN}/components/AdminSideNav.tsx`, "utf8");
+    const overview = readFileSync(`${ADMIN}/app/page.tsx`, "utf8");
+
+    assert.match(sideNav, /from\s+"@\/lib\/nav"/, "左侧导航没从 @/lib/nav 取入口表（组件里又自持了一份？）");
+    assert.match(overview, /from\s+"@\/lib\/nav"/, "概览页没从 @/lib/nav 取入口卡片（页面里又抄了一份？）");
+
+    // 概览页不得自带入口清单：`{ href: "...", label:` 这种字面对象就是第二份表的形状。
+    assert.doesNotMatch(
+        overview,
+        /\{\s*href:\s*"\/[^"]*"\s*,\s*label:/,
+        "概览页里出现了硬编码的入口清单——入口与权限只能住在 apps/admin/lib/nav.ts，否则又会与导航漂移",
+    );
 });

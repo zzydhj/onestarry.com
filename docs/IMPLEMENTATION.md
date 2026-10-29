@@ -119,7 +119,7 @@ onestarry.com/
 | 权限点/角色单一真源 | `packages/core/src/rbac.ts`：`PERMISSIONS`(8 点) / `ROLES`(3) / `ROLE_PERMISSIONS`（staff = productWrite, orderWrite, categoryWrite, seoWrite）/ `roleHasPermission` | ✅ |
 | seed 与查询 | `packages/db/src/queries/authz.ts`：`seedRbac` `getPrincipalPermissions` `getPrincipalRoles` `assignRole` `revokeRole` `listAdminMembers` | ✅ 连库验证过 |
 | 守卫工具 | `apps/admin/lib/auth.ts`：`readAdminSession()`（**会话+权限集单一读取点**，未登录返回 null 不跳转）/ `requireAdmin()`（= 前者 + 未登录跳 /signin）/ `requirePermission(perm)`（不足抛 `FORBIDDEN:<perm>`） | ✅ |
-| 导航按权限过滤 | `apps/admin/app/layout.tsx`（异步软取会话 + `export const dynamic="force-dynamic"`）→ `<AdminSideNav permissions={[...]} />`；`components/AdminSideNav.tsx` 每个入口标 `perm` 并按分组过滤（ERP 式左侧分栏，2026-10-22 重做） | ✅ |
+| 入口表单一真源 + 导航按权限过滤 | **`apps/admin/lib/nav.ts`**（`NAV_GROUPS` + `navItemVisible` + `dashboardCards`）——「入口 + 所需权限点」只住在这里；`layout.tsx`（异步软取会话 + `dynamic="force-dynamic"`）→ `AdminSideNav` 按分组过滤，**「概览」页的快捷卡片也由同一张表供给**（标 `card: true` 的项）（ERP 式左侧分栏，2026-10-22 重做） | ✅ **审查 L-1 已修**：原先概览页 `app/page.tsx` 自己抄了一份**无 perm** 的 8 卡片表，与导航口径不一致 → staff（`product/order/category/seo:write`）看得到「市场」「团队权限」，点进去撞 `requirePermission` 抛的 `FORBIDDEN` 错误页。现收敛到单表；**负向实测**：`super_admin` 8 张（与修复前一致，无视觉回归）、`staff` **6 张**（/markets 与 /team 不再画）、`customer` 0 张。回退风险由 `admin-guard.test.ts` 的「入口表单一真源」断言看住（实测塞一份硬编码清单进去会报错） |
 | **覆盖矩阵** | 见 §4 | ✅ **已收口**（34/34 动作 + 13/13 页面） |
 
 ### 3.4 目录（商品/类目/品牌/属性/媒体/slug/译文）

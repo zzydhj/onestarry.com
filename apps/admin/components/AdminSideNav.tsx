@@ -6,75 +6,9 @@ import { makeAuthClient } from "@onestarry/auth/client";
 import { SITE_NAME } from "@onestarry/core";
 import type { MaintenanceAlert, PermissionKey } from "@onestarry/core";
 import { PrefetchLink } from "./PrefetchLink";
+import { NAV_GROUPS, navItemVisible } from "@/lib/nav";
 
 const authClient = makeAuthClient();
-
-/** 一个入口 + 它所需权限点（无 perm = 任意后台账号可见）。与页面/动作的 requirePermission 一一对应。 */
-interface NavItem {
-    href: string;
-    label: string;
-    perm?: PermissionKey;
-    /** 徽标文案（如"新"）——只放稳定信息，实时状态放页面里。 */
-    badge?: string;
-}
-
-/** 分组 = ERP 后台的二级结构。组的可见性由"组内是否还有可见项"决定，不单独配权限。 */
-interface NavGroup {
-    id: string;
-    label: string;
-    items: NavItem[];
-}
-
-const GROUPS: NavGroup[] = [
-    {
-        id: "home",
-        label: "总览",
-        items: [
-            { href: "/", label: "概览" },
-            { href: "/status", label: "站点状态", perm: "config:write", badge: "缓存 · 版本 · 定时" },
-        ],
-    },
-    {
-        id: "catalog",
-        label: "商品",
-        items: [
-            { href: "/products", label: "商品管理", perm: "product:write" },
-            { href: "/products/new", label: "新建商品", perm: "product:write" },
-            { href: "/products/import", label: "批量导入", perm: "product:write" },
-            { href: "/reviews", label: "评论审核", perm: "product:write" },
-        ],
-    },
-    {
-        id: "trade",
-        label: "交易",
-        items: [{ href: "/orders", label: "订单管理", perm: "order:write" }],
-    },
-    {
-        id: "taxonomy",
-        label: "目录结构",
-        items: [
-            { href: "/categories", label: "类目", perm: "category:write" },
-            { href: "/brands", label: "品牌", perm: "category:write" },
-            { href: "/attributes", label: "属性定义", perm: "config:write" },
-        ],
-    },
-    {
-        id: "content",
-        label: "内容与合规",
-        items: [
-            { href: "/content", label: "内容 CMS", perm: "seo:write" },
-            { href: "/legal", label: "法律文档", perm: "seo:write" },
-        ],
-    },
-    {
-        id: "system",
-        label: "配置与团队",
-        items: [
-            { href: "/markets", label: "市场", perm: "market:write" },
-            { href: "/team", label: "团队权限", perm: "role:manage" },
-        ],
-    },
-];
 
 /** 折叠状态存这儿；用「组 id」而不是 href 作键，改名不会让所有人的偏好失效。 */
 const STORE_KEY = "admin.nav.collapsed";
@@ -142,7 +76,7 @@ export function AdminSideNav({ permissions = [], alert = null }: { permissions?:
     }
 
     const allowed = useMemo(() => new Set<string>(permissions), [permissions]);
-    const groups = GROUPS.map((g) => ({ ...g, items: g.items.filter((i) => !i.perm || allowed.has(i.perm)) })).filter((g) => g.items.length > 0);
+    const groups = NAV_GROUPS.map((g) => ({ ...g, items: g.items.filter((i) => navItemVisible(i, allowed)) })).filter((g) => g.items.length > 0);
     // 参与“最长匹配”的只算**看得见**的入口：无权限的入口不该把高亮抢过去。
     const visibleHrefs = groups.flatMap((g) => g.items.map((i) => i.href));
 

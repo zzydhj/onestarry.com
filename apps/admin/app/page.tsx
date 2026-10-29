@@ -3,6 +3,7 @@ import { PERMISSIONS, computeMaintenanceWindow, readIsrHealthReport } from "@one
 import { getOutboxHealth } from "@onestarry/db";
 import { getRequestDb } from "@/lib/db";
 import { requireAdmin } from "@/lib/auth";
+import { dashboardCards } from "@/lib/nav";
 import { OpsPanel } from "@/components/OpsPanel";
 
 export const dynamic = "force-dynamic";
@@ -21,30 +22,26 @@ export default async function AdminHome() {
         : null;
     const ops = opsData ? { window: computeMaintenanceWindow(), outbox: opsData[0], isr: opsData[1] } : null;
 
+    // 入口卡片不在此处列清单（审查 L-1）：与左侧导航共用 lib/nav 那一张表，并按权限过滤。
+    // 以前这里抄了一份无 perm 的副本，导致 staff 看得到「市场」「团队权限」卡片，
+    // 点进去就撞 requirePermission 抛的 FORBIDDEN —— 同一条规则写两遍必然漂移。
+    const cards = dashboardCards(permissions);
+
     return (
         <div className="mx-auto max-w-5xl px-4 py-8">
             <h1 className="text-2xl font-semibold tracking-tight">管理后台</h1>
             <div className="mt-6 grid grid-cols-2 gap-4 sm:grid-cols-4">
-                {[
-                    { href: "/products", label: "商品管理" },
-                    { href: "/orders", label: "订单管理" },
-                    { href: "/categories", label: "类目管理" },
-                    { href: "/brands", label: "品牌管理" },
-                    { href: "/markets", label: "市场配置" },
-                    { href: "/legal", label: "法律文档" },
-                    { href: "/reviews", label: "评论审核" },
-                    { href: "/team", label: "团队管理" },
-                ].map((c) => (
+                {cards.map((c) => (
                     <Link
                         key={c.href}
                         href={c.href}
                         className="rounded-xl border border-line bg-white p-4 font-medium transition hover:border-accent hover:shadow-sm"
                     >
                         {c.label}
+                        {c.hint ? <span className="mt-1 block text-xs font-normal leading-snug text-muted">{c.hint}</span> : null}
                     </Link>
                 ))}
             </div>
-            <p className="mt-6 text-sm text-muted">改价 / 上下架 / 库存 / 新建 / 图片 / 图文详情 / 批量导入 均在「商品管理」内。</p>
             {ops && <OpsPanel window={ops.window} outbox={ops.outbox} isr={ops.isr} />}
         </div>
     );
