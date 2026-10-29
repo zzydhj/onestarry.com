@@ -34,6 +34,7 @@
         "smoke:legal": "tsx src/smoke-legal.ts",
         "smoke:reservation": "tsx src/smoke-reservation.ts",
         "smoke:shipment": "tsx src/smoke-shipment.ts",
+        "smoke:media": "tsx src/smoke-media.ts",
         "perf:probe": "tsx src/perf-probe.ts",
         "seed:demo": "tsx src/seed-demo.ts",
         "seed:catalog": "tsx src/seed-catalog.ts",

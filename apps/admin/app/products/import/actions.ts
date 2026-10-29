@@ -33,13 +33,14 @@ const MAX_CSV_BYTES = 2 * 1024 * 1024;
  */
 async function importImage(env: CloudflareEnv, productId: string, url: string): Promise<{ ok: boolean; error?: string }> {
     if (!isUuid(productId)) return { ok: false, error: "商品 id 形状不符" };
+    let key = ""; // 一旦上传成功就得记住，失败路径要能回查该不该删
     try {
         const res = await safeFetch(url);
         if (!res.ok) return { ok: false, error: `HTTP ${res.status}` };
         const img = acceptedImageType(res.headers.get("content-type"));
         if (!img) return { ok: false, error: "非白名单图片类型（svg 不接受）" };
         const bytes = await readCapped(res, MAX_IMAGE_BYTES);
-        const key = `products/${productId}/imported-${crypto.randomUUID().slice(0, 8)}.${img.ext}`;
+        key = `products/${productId}/imported-${crypto.randomUUID().slice(0, 8)}.${img.ext}`;
         await env.MEDIA.put(key, bytes, {
             httpMetadata: { contentType: img.contentType, cacheControl: "public, max-age=31536000, immutable" },
         });
@@ -51,6 +52,8 @@ async function importImage(env: CloudflareEnv, productId: string, url: string): 
         });
         return { ok: true };
     } catch (e) {
+        // 登记失败 ⇒ R2 里已经有一个对象，而批量导入会重试上千次：不清就是成批孤儿（审查 L-3）。
+        if (key) await env.MEDIA.delete(key).catch(() => {});
         return { ok: false, error: e instanceof Error ? e.message : "抓取失败" };
     }
 }

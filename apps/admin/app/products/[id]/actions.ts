@@ -97,7 +97,14 @@ export async function uploadProductImageAction(formData: FormData): Promise<void
     });
 
     const db = getRequestDb(env.HYPERDRIVE.connectionString);
-    await attachProductImage(db, { productId, r2Key: key, mimeType: img.contentType, sizeBytes: file.size });
+    // 登记失败（商品不存在 / 库错）就把刚传上去的对象删掉：attachProductImage 现在同事务回滚了 media 行，
+    // 但 R2 不受事务管 —— 不清就是桶里一个永久没人引用的对象（审查 L-3 的另一半）。
+    try {
+        await attachProductImage(db, { productId, r2Key: key, mimeType: img.contentType, sizeBytes: file.size });
+    } catch (e) {
+        await env.MEDIA.delete(key).catch(() => {});
+        throw e;
+    }
 
     queueProductInvalidation({ ctx, db, productId });
 }
