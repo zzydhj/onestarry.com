@@ -268,7 +268,7 @@ onestarry.com/
 | `/markets` | `requirePermission(marketWrite)`（staff 进不去，修正以前"能看不能提交"的不一致） | `createMarketAction` = `marketWrite` |
 | `/team` | `requirePermission(roleManage)` | 3 动作 = `roleManage` |
 | `/status`（站点状态，2026-10-22 新增） | `requirePermission(configWrite)`（只读页，无动作） | — |
-> 导航已换成 ERP 式左侧分栏 `components/AdminSideNav.tsx`（分组 + 可折叠存 localStorage + 移动端抽屉），**一律 `prefetch={false}`**（后台是 force-dynamic，预取会把 11 个入口全真渲染一遍，实测一次加载打出 36–45 个请求）。它按传入权限集过滤入口；**隐藏只是体验，硬强制在页面/动作的 `requirePermission`**（两者已逐项对应）。
+> 导航已换成 ERP 式左侧分栏 `components/AdminSideNav.tsx`（分组 + 可折叠存 localStorage + 移动端抽屉），**一律 `prefetch={false}`**（后台是 force-dynamic，预取会把 11 个入口全真渲染一遍，实测一次加载打出 36–45 个请求）。它按传入权限集过滤入口；**隐藏只是体验，硬强制在页面/动作的 `requirePermission`**（两者已逐项对应）。⚠ 也正因为 layout 只**软取会话**（`readAdminSession()` 不跳转），**layout 不构成兜底**——“新增一页忘写守卫”会变成公网可直接读到后台数据、而动作仍拒的**静默泄露**；此不变量已由 `packages/core/src/admin-guard.test.ts` 做成漂移护栏（审查 L-8，含“为何不用 middleware”的否决理由）。
 
 ### 3.17 前台页面清单
 `/`（首页 Hero/分类入口/精选/信任条）· `/products` `/products/[slug]` · `/products/[slug]/review`（发表评价，force-dynamic）· `/search` · `/categories` `/categories/[slug]` · `/brands` `/brands/[slug]` · `/blog` `/blog/[slug]` · `/[slug]`（page/landing）· `/cart` · `/checkout` · `/order/[orderNumber]` · `/pay/[orderNumber]`（带访问凭证的支付页）· `/account/orders` · `/signin` · `/legal/[type]`（terms/privacy/returns/withdrawal）· `/api/{health,auth/[...all],webhooks/[provider],internal/invalidate}` · `/api/paypal/{orders,capture}` · `/integration/*`
@@ -355,8 +355,8 @@ onestarry.com/
 
 | 层 | 真相 |
 |---|---|
-| 单测 | `packages/core/src/*.test.ts` **17 个**（pricing/sellability/shipping/shippingProvider/payments/**paypal**/csv/maintenance/health/isr/invalidate/**site-status**/cartMap/fetchGuard/legalBody/orderNumber/safeOutput），跑法 `tsx --test`（**node:test，不是 Vitest**）；根 `pnpm test` → turbo `test` task → **现 119/119 全过**（2026-10-27 实测）。内置**两道漂移护栏**：① `maintenance.test.ts` 读 `apps/web/package.json` 断言 Next 主版本与核心常量一致；② `site-status.test.ts` 扫 `apps/web/app` 源码，断言每个 `page.tsx` 都已登记、声明为整页 ISR 的动态段路由**必须有 `generateStaticParams`**、登记的 `revalidate` 与源码一致、cron 表与 `apps/jobs/wrangler.jsonc` 一致 —— 把「缓存坏法无声」变成就近失败（背书见架构方案 §22） |
-| turbo | ✅ 已加 `test` task 与根 `pnpm test`（现 **119/119**）；`pnpm typecheck` 现 **8/8 全绿**（shared 空壳已删，D14/N17 结案）。⚠️ `pnpm lint` 仍会红 —— 见 §12.2 T22 |
+| 单测 | `packages/core/src/*.test.ts` **18 个**（pricing/sellability/shipping/shippingProvider/payments/**paypal**/csv/maintenance/health/isr/invalidate/**site-status**/**admin-guard**/cartMap/fetchGuard/legalBody/orderNumber/safeOutput），跑法 `tsx --test`（**node:test，不是 Vitest**）；根 `pnpm test` → turbo `test` task → **现 125/125 全过**（2026-10-29 实测）。内置**三道漂移护栏**：① `maintenance.test.ts` 读 `apps/web/package.json` 断言 Next 主版本与核心常量一致；② `site-status.test.ts` 扫 `apps/web/app` 源码，断言每个 `page.tsx` 都已登记、声明为整页 ISR 的动态段路由**必须有 `generateStaticParams`**、登记的 `revalidate` 与源码一致、cron 表与 `apps/jobs/wrangler.jsonc` 一致 —— 把「缓存坏法无声」变成就近失败（背书见架构方案 §22）；③ **`admin-guard.test.ts`（审查 L-8，2026-10-29）**扫 `apps/admin/app` 所有 `page.tsx`，断言除显式白名单（仅 `/signin`）外**每页都必调用 `requirePermission`/`requireAdmin`、且必从 `@/lib/auth` 导入**，并反向盯白名单与页面数下限防测试本身空转。**已坐实现状：19 页全守、无敞着页面；此护栏防的是“以后漏一页就静默数据泄露”**（后台根 layout 故意软取会话不跳转，故 **layout 不构成兜底**）。**已评估并否决“加 middleware”方案**，理由写在该文件头注 |
+| turbo | ✅ 已加 `test` task 与根 `pnpm test`（现 **125/125**）；`pnpm typecheck` 现 **8/8 全绿**（shared 空壳已删，D14/N17 结案）。⚠️ `pnpm lint` 仍会红 —— 见 §12.2 T22 |
 | 集成 | 靠 11 个 smoke 脚本连真实 Neon（人工触发）；另有 `pnpm scan:dead` 做仓级死代码体检（见 §6） |
 | e2e / 压测 / a11y | Playwright ❌ k6 ❌ axe ❌（架构文档 §12 要求，未开工）；历史上用浏览器子代理手工点过结账（截图已 gitignore） |
 
