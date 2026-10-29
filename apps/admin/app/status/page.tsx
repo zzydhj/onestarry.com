@@ -1,7 +1,7 @@
 import { PERMISSIONS, SITE_WORKERS, computeMaintenanceWindow, readIsrHealthReport } from "@onestarry/core";
 import { requirePermission } from "@/lib/auth";
 import { SiteStatusPanel, type WorkerVersion } from "@/components/SiteStatusPanel";
-import Link from "next/link";
+import { PrefetchLink } from "@/components/PrefetchLink";
 
 export const dynamic = "force-dynamic";
 
@@ -69,9 +69,9 @@ export default async function SiteStatusPage() {
         <div className="mx-auto max-w-6xl px-4 py-8">
             <div className="flex flex-wrap items-baseline justify-between gap-2">
                 <h1 className="text-2xl font-semibold tracking-tight">站点状态</h1>
-                <Link href="/" className="text-sm text-muted transition hover:text-accent">
+                <PrefetchLink href="/" className="text-sm text-muted transition hover:text-accent">
                     ← 返回概览
-                </Link>
+                </PrefetchLink>
             </div>
             <p className="mt-1 text-sm text-muted">
                 缓存时间、渲染策略、定时任务、部署版本与运行时依赖。数据分「声明」与「实测」两类，页面底部写明哪列是哪类。

@@ -1,4 +1,4 @@
-import Link from "next/link";
+import { PrefetchLink } from "@/components/PrefetchLink";
 import { getLegalDoc, LEGAL_DOC_TYPES } from "@onestarry/db";
 import { getRequestDb } from "@/lib/db";
 import { PERMISSIONS } from "@onestarry/core";
@@ -25,9 +25,9 @@ export default async function LegalPage() {
 
     return (
         <main className="mx-auto max-w-4xl px-4 py-8">
-            <Link href="/" className="text-sm text-muted transition hover:text-accent">
+            <PrefetchLink href="/" className="text-sm text-muted transition hover:text-accent">
                 ← 返回概览
-            </Link>
+            </PrefetchLink>
             <h1 className="mt-2 text-xl font-semibold">法律文档</h1>
             <p className="mt-1 text-sm text-muted">
                 编辑前台 <code>/legal/&lt;type&gt;</code> 正文（纯文本）。约定只有三条：空行分段；行首 <code>## </code> / <code>### </code> 是小标题；

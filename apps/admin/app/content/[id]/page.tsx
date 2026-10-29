@@ -1,4 +1,4 @@
-import Link from "next/link";
+import { PrefetchLink } from "@/components/PrefetchLink";
 import { notFound } from "next/navigation";
 import { PERMISSIONS } from "@onestarry/core";
 import { getContentForEdit } from "@onestarry/db";
@@ -20,9 +20,9 @@ export default async function ContentEditPage({ params }: { params: Promise<{ id
 
     return (
         <main className="mx-auto max-w-3xl px-4 py-8">
-            <Link href="/content" className="text-sm text-muted transition hover:text-accent">
+            <PrefetchLink href="/content" className="text-sm text-muted transition hover:text-accent">
                 ← 返回内容列表
-            </Link>
+            </PrefetchLink>
             <h1 className="mt-2 text-xl font-semibold">编辑内容</h1>
 
             {/* 元数据 */}

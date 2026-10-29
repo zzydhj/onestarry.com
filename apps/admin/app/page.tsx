@@ -1,4 +1,4 @@
-import Link from "next/link";
+import { PrefetchLink } from "@/components/PrefetchLink";
 import { PERMISSIONS, computeMaintenanceWindow, readIsrHealthReport } from "@onestarry/core";
 import { getOutboxHealth } from "@onestarry/db";
 import { getRequestDb } from "@/lib/db";
@@ -32,14 +32,14 @@ export default async function AdminHome() {
             <h1 className="text-2xl font-semibold tracking-tight">管理后台</h1>
             <div className="mt-6 grid grid-cols-2 gap-4 sm:grid-cols-4">
                 {cards.map((c) => (
-                    <Link
+                    <PrefetchLink
                         key={c.href}
                         href={c.href}
                         className="rounded-xl border border-line bg-white p-4 font-medium transition hover:border-accent hover:shadow-sm"
                     >
                         {c.label}
                         {c.hint ? <span className="mt-1 block text-xs font-normal leading-snug text-muted">{c.hint}</span> : null}
-                    </Link>
+                    </PrefetchLink>
                 ))}
             </div>
             {ops && <OpsPanel window={ops.window} outbox={ops.outbox} isr={ops.isr} />}

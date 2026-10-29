@@ -1,4 +1,4 @@
-import Link from "next/link";
+import { PrefetchLink } from "@/components/PrefetchLink";
 import { PERMISSIONS } from "@onestarry/core";
 import { requirePermission } from "@/lib/auth";
 import { ImportForm } from "./ImportForm";
@@ -12,7 +12,7 @@ export default async function ImportPage() {
 
     return (
         <main className="mx-auto max-w-2xl px-4 py-8">
-            <Link href="/products" className="text-sm text-muted transition hover:text-accent">← 返回商品列表</Link>
+            <PrefetchLink href="/products" className="text-sm text-muted transition hover:text-accent">← 返回商品列表</PrefetchLink>
             <h1 className="mt-2 text-xl font-semibold">导入商品</h1>
             <section className="mt-4">
                 <h2 className="text-sm font-semibold">按产品链接导入（自动抓取）</h2>

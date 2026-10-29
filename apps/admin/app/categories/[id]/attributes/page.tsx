@@ -1,4 +1,4 @@
-import Link from "next/link";
+import { PrefetchLink } from "@/components/PrefetchLink";
 import { notFound } from "next/navigation";
 import { getCategoryAttributes, getCategoryById, listAttributeDefinitions } from "@onestarry/db";
 import { getRequestDb } from "@/lib/db";
@@ -23,7 +23,7 @@ export default async function CategoryAttributesPage({ params }: { params: Promi
 
     return (
         <main className="mx-auto max-w-3xl px-4 py-8">
-            <Link href="/categories" className="text-sm text-muted transition hover:text-accent">← 返回类目</Link>
+            <PrefetchLink href="/categories" className="text-sm text-muted transition hover:text-accent">← 返回类目</PrefetchLink>
             <h1 className="mt-2 text-xl font-semibold">{cat.name} · 属性 <span className="text-sm font-normal text-muted">（已挂 {attached.length}）</span></h1>
 
             <form action={attachCategoryAttributeAction} className="mt-5 flex flex-wrap items-center gap-2">

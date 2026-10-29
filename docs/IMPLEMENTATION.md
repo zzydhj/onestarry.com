@@ -271,6 +271,17 @@ onestarry.com/
 | `/status`（站点状态，2026-10-22 新增） | `requirePermission(configWrite)`（只读页，无动作） | — |
 > 导航已换成 ERP 式左侧分栏 `components/AdminSideNav.tsx`（分组 + 可折叠存 localStorage + 移动端抽屉），**一律 `prefetch={false}`**（后台是 force-dynamic，预取会把 11 个入口全真渲染一遍，实测一次加载打出 36–45 个请求）。它按传入权限集过滤入口；**隐藏只是体验，硬强制在页面/动作的 `requirePermission`**（两者已逐项对应）。⚠ 也正因为 layout 只**软取会话**（`readAdminSession()` 不跳转），**layout 不构成兜底**——“新增一页忘写守卫”会变成公网可直接读到后台数据、而动作仍拒的**静默泄露**；此不变量已由 `packages/core/src/admin-guard.test.ts` 做成漂移护栏（审查 L-8，含“为何不用 middleware”的否决理由）。
 
+> **审查 L3 已修（2026-10-29）：预取那道闸现在盖到正文**。上面那条“一律 `prefetch={false}`”当时只落在侧栏与列表页，
+> 正文里漏了 **11 处裸 `<Link>`**：八个“← 返回上一级”入口（类目属性 / 内容编辑 / 法律 /
+> 订单详情 / 商品详情 / 导入 / 新建 / 站点状态）、后台概览卡片、评论审核 tab，以及 `not-found` 的“回到概览”按钮
+> —— 它们一进视口就把目标页**真渲染一遍**（查会话 + 查权限 + 查数据），
+> 而这正是上面实测 36–45 个请求的那场风暴，只是规模小些。
+> 处理：10 处改用 `components/PrefetchLink`（悬停满 150ms 才取、只取鼠标停住那一个，顺带把 2.4–3.4s 的点击等待
+> 挪进那几百毫秒）；`app/not-found.tsx` 保留裸 `<Link>` 但补上 `prefetch={false}`，并在文件头写明为何不拉客户端边界。
+> 整条不变量由新守卫 `packages/core/src/admin-prefetch.test.ts` 钉住（扫 `apps/admin` 全部源文件，每个带 href 的
+> `<Link>` 必须显式写 prefetch）；它含两条反空转用例：“至少扫到足够多文件/链接”与“**标签必须整段取到**”
+> —— 属性里的箭头函数 `onClick={() => …}` 也带 `>`，简单“撞到第一个 > 就停”会把标签截成半句、让检查变成假绿。
+
 ### 3.17 前台页面清单
 `/`（首页 Hero/分类入口/精选/信任条）· `/products` `/products/[slug]` · `/review/[slug]`（发表评价，force-dynamic；2026-10-29 审查 M2 从 `/products/[slug]/review` 搬出，理由见 §3.13）· `/search` · `/categories` `/categories/[slug]` · `/brands` `/brands/[slug]` · `/blog` `/blog/[slug]` · `/[slug]`（page/landing）· `/cart` · `/checkout` · `/order/[orderNumber]` · `/pay/[orderNumber]`（带访问凭证的支付页）· `/account/orders` · `/signin` · `/legal/[type]`（terms/privacy/returns/withdrawal）· `/api/{health,auth/[...all],webhooks/[provider],internal/invalidate}` · `/api/paypal/{orders,capture}` · `/integration/*`
 

@@ -1,4 +1,4 @@
-import Link from "next/link";
+import { PrefetchLink } from "@/components/PrefetchLink";
 import { notFound } from "next/navigation";
 import { getOrderDetail } from "@onestarry/db";
 import { getRequestDb } from "@/lib/db";
@@ -28,7 +28,7 @@ export default async function AdminOrderDetail({ params }: { params: Promise<{ i
 
     return (
         <main className="mx-auto max-w-2xl px-4 py-8">
-            <Link href="/orders" className="text-sm text-muted transition hover:text-accent">← 返回订单列表</Link>
+            <PrefetchLink href="/orders" className="text-sm text-muted transition hover:text-accent">← 返回订单列表</PrefetchLink>
             <h1 className="mt-2 font-mono text-xl font-semibold">{order.orderNumber}</h1>
             <p className="mt-1 text-sm text-muted">
                 {order.email} · {order.createdAt?.toISOString?.().slice(0, 16).replace("T", " ")} · 支付 <strong className="text-fg">{order.paymentStatus}</strong> · 履约 <strong className="text-fg">{order.fulfillmentStatus}</strong>

@@ -1,4 +1,4 @@
-import Link from "next/link";
+import { PrefetchLink } from "@/components/PrefetchLink";
 import { notFound } from "next/navigation";
 import { mediaUrl, PERMISSIONS } from "@onestarry/core";
 import { loadAdminProductDetail } from "@onestarry/db";
@@ -31,7 +31,7 @@ export default async function AdminProductDetail({ params }: { params: Promise<{
 
     return (
         <main className="mx-auto max-w-4xl px-4 py-8">
-            <Link href="/products" className="text-sm text-muted transition hover:text-accent">← 返回商品列表</Link>
+            <PrefetchLink href="/products" className="text-sm text-muted transition hover:text-accent">← 返回商品列表</PrefetchLink>
             <h1 className="mt-2 text-xl font-semibold">{detail.title ?? "（无标题）"}</h1>
             <p className="mt-1 text-sm text-muted">状态：{product.status} · ID：{product.id}</p>
 

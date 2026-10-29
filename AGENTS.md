@@ -33,8 +33,8 @@
 | PSP 事件名**逐字**照官方；错一个字母的代价是静默归 `ignored`，不是报错 | `packages/core/src/paypal.ts` |
 | 一切外部入口默认值必须 **fail-closed**（没配 = 不收、不动账，而不是"信它"） | `apps/web/app/api/webhooks/[provider]/route.ts`、`lib/paypal.ts` 的沙箱闸 |
 | 任何快路/缓存都必须能退回权威；缓存异常一律吞掉并降级 | `apps/admin/lib/session-cache.ts` |
-| **不给 `force-dynamic` 页面加 `loading.tsx`**（会把 `redirect()`/`notFound()` 变成 HTTP 200 软响应） | `apps/web/app/pay/[orderNumber]/page.tsx` 头注 |
-| 后台导航一律 `prefetch={false}`，预取靠悬停（进视口预取会挤干连接池） | `apps/admin/components/AdminSideNav.tsx` |
+| **不给 `force-dynamic` 页面加 `loading.tsx`**（会把 `redirect()`/`notFound()` 变成 HTTP 200 软响应） | `apps/web/app/pay/[orderNumber]/page.tsx` 头注；守卫 `packages/core/src/streaming-boundary.test.ts`（闸只在“页内直接写跳转”时发作，判据为何窄于本口径见该文件头注） |
+| 后台导航一律 `prefetch={false}`，预取靠悬停（进视口预取会挤干连接池） | `apps/admin/components/AdminSideNav.tsx` + `PrefetchLink.tsx`；守卫 `packages/core/src/admin-prefetch.test.ts` |
 | 配置状态对外只报**布尔**，绝不外泄任何凭据值 | `apps/web/app/api/health/route.ts` |
 
 ## 3. 测量与查案工法（细节真源 `docs/PERF.md`）

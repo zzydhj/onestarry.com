@@ -1,4 +1,4 @@
-import Link from "next/link";
+import { PrefetchLink } from "@/components/PrefetchLink";
 import { PERMISSIONS } from "@onestarry/core";
 import { listReviewsForModeration, type ReviewStatus } from "@onestarry/db";
 import { getRequestDb } from "@/lib/db";
@@ -28,7 +28,7 @@ export default async function ReviewsPage({ searchParams }: { searchParams: Prom
 
             <div className="mt-4 flex gap-2 text-sm">
                 {TABS.map((t) => (
-                    <Link
+                    <PrefetchLink
                         key={t.key}
                         href={`/reviews?status=${t.key}`}
                         className={
@@ -38,7 +38,7 @@ export default async function ReviewsPage({ searchParams }: { searchParams: Prom
                         }
                     >
                         {t.label}
-                    </Link>
+                    </PrefetchLink>
                 ))}
             </div>
 

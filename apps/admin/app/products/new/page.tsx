@@ -1,4 +1,4 @@
-import Link from "next/link";
+import { PrefetchLink } from "@/components/PrefetchLink";
 import { PERMISSIONS } from "@onestarry/core";
 import { requirePermission } from "@/lib/auth";
 import { Button, Input, Label, Select, Textarea } from "@onestarry/ui";
@@ -13,7 +13,7 @@ export default async function NewProduct({ searchParams }: { searchParams: Promi
 
     return (
         <main className="mx-auto max-w-lg px-4 py-8">
-            <Link href="/products" className="text-sm text-muted transition hover:text-accent">← 返回商品列表</Link>
+            <PrefetchLink href="/products" className="text-sm text-muted transition hover:text-accent">← 返回商品列表</PrefetchLink>
             <h1 className="mt-2 text-xl font-semibold">新建商品</h1>
             {error === "duplicate" && <p className="mt-3 text-sm text-red-600">SKU 或 Slug 已存在，请换一个。</p>}
             {error === "invalid" && <p className="mt-3 text-sm text-red-600">请至少填写 SKU、标题、有效价格。</p>}
