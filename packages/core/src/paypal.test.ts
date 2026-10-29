@@ -80,7 +80,7 @@ test("SDK URL 带 client-id/currency/intent；client-id 形状不合直接抛", 
 
 test("建单体：custom_id 与 invoice_id 都带我方单号，地址走我方（NO_SHIPPING）", () => {
     const body = buildPaypalOrderBody({ orderNumber: "SO-MVKG-ABCD1234", amountCents: 26680, currency: "USD" });
-    const unit = (body.purchase_units as Record<string, any>[])[0]!;
+    const unit = (body.purchase_units as Record<string, unknown>[])[0]!;
     assert.equal(body.intent, "CAPTURE");
     assert.equal(unit.custom_id, "SO-MVKG-ABCD1234");
     assert.equal(unit.invoice_id, "SO-MVKG-ABCD1234");

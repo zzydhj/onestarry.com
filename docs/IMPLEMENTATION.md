@@ -204,7 +204,7 @@ onestarry.com/
 |---|---|---|
 | seo_meta 稀疏覆盖 | `queries/seo.ts`（回退链 `(locale,market)` → `(locale, NULL)`；**全空即删行**）+ `apps/web/lib/seo.ts` `applySeoMeta` | ✅ 审查 M-10：旧可空列唯一索引对 NULL 不约束 → 并发双插双行、`getSeoMeta limit(1)` 随机取（改了没生效）。现改 `COALESCE(market_id, 零值uuid)` 表达式唯一索引（迁移 0021）+ upsert 靠 catch 23505 转更新；`smoke:seo` 实测两次 upsert 收敛 1 行、直插第二行被拒 |
 | JSON-LD（4 处） | 首页 `app/page.tsx`（`WebSite` + `Organization`）· PDP `products/[slug]`（`Product` + `Offer`，availability 按库存）· 类目页 / 品牌页（`BreadcrumbList`）。**`layout.tsx` 不含 JSON-LD**；PDP 自身无面包屑结构化数据 | ✅ 类目/品牌有面包屑；PDP 面包屑 schema ❌ |
-| sitemap | `apps/web/app/sitemap.ts`（Next 原生、`force-dynamic`：首页 + /products + 全 active PDP + 类目 + 品牌） | 🟡 **不含 /blog 与 page/landing 内容页**（CMS 上线后未回补）；未做 R2 分片（文档 §10.1 规模路径） |
+| sitemap | `apps/web/app/sitemap.ts`（Next 原生、`force-dynamic`：首页 + /products + 全 active PDP + 类目 + 品牌） | 🟡 **不含 /blog 与 page/landing 内容页**（CMS 上线后未回补）；未做 R2 分片（文档 §10.1 规模路径）。**审查 L-7（动态 sitemap 每次进库）→ 评估后不改**：2026-10-29 实测生产 `/sitemap.xml` **1.27s / 1.40s、HTTP 200**（同机对照：`/api/health` 首跳 3.09s 是冷 isolate+TLS，不是库），3 条查询串行但不服务用户 ⇒ 无用户可感代价；改 ISR 需先把取数改走 `apps/web/lib/db.ts` 的 `getDb()` 回退（现直用 `getCloudflareContext()`，静态化后**构建期预渲染会报错**），且缓存窗口得进 `core/site-status.ts` 单一真源 —— 收益不值这些改动，规模路径仍按 §10.1（cron 预生成 → R2 分片 + 动态 index） |
 | robots | `apps/web/app/robots.ts`（disallow `/account` `/cart` `/checkout` `/api` + sitemap 挂载） | ✅ |
 | 面包屑/404/错误边界 | `not-found.tsx` / `error.tsx` / `global-error.tsx` | ✅ |
 | 安全响应头 | `scripts/security-headers.mjs`（单一真源）供 web/admin 共用：nosniff / X-Frame-Options / Referrer-Policy / Permissions-Policy / HSTS（`images.unoptimized`，**CSP 未加**需 nonce）。web `SAMEORIGIN`；**admin 取 `DENY`（审查 H-2，此前 admin 零头→/signin 可被任意站点 iframe 点击劫持、无 HSTS）** | ✅ |
@@ -240,7 +240,7 @@ onestarry.com/
 | 项 | 位置 | 状态 |
 |---|---|---|
 | CSV | `core/csv.ts` `parseCsv`/`csvToObjects` → `apps/admin/app/products/import/{page,ImportForm,actions}.ts`（按 SKU upsert、`imageUrl` 自动下载转存 R2、行数上限、末尾 `runRelayBatch` 重算全包价） | ✅ |
-| URL 抓品 provider | `apps/admin/lib/importProviders.ts`：`detectSource`（taobao/tmall/1688/alibaba → `taobao`；`*.myshopify.com` → `shopify`；其余 `generic`）+ `fetchProductFromUrl`（Shopify `/product.json`、JSON-LD `schema.org/Product`、OpenGraph 三级解析）→ `ProductImportDraft`；**淘宝/1688 返回 `needsProvider`**（反爬+登录墙，留专用 API 插槽）+ `enrichWithLlm` 插槽 | ✅ 抓自身 PDP 验证：标题/价格/图/SKU 全对 |
+| URL 抓品 provider | `apps/admin/lib/importProviders.ts`：`detectSource`（taobao/tmall/1688/alibaba → `taobao`；`*.myshopify.com` → `shopify`；其余 `generic`）+ `fetchProductFromUrl`（Shopify `/product.json`、JSON-LD `schema.org/Product`、OpenGraph 三级解析）→ `ProductImportDraft`；**淘宝/1688 返回 `needsProvider`**（反爬+登录墙，留专用 API 插槽）+ `enrichWithLlm` 插槽 | ✅ 抓自身 PDP 验证：标题/价格/图/SKU 全对。**审查 L-4 已修（2026-10-29）**：解析外部 JSON 的 3 处 `any` 全换成 `unknown` + 两个收窄助手 `obj()`/`text()`（本仓代码里的 `any` 现为零，`paypal.test.ts` 里最后一处也已转 `unknown`）。不是风格问题而是 type-lie：旧 `(i: any) => i?.src` 实测把 `{src:123}` 的 **数字放进声明为 `string[]` 的 images** 喂给上层当 URL 拉；旧 `String(n.name)` 还会把对象拼成 `"[object Object]"` **当商品名继续导入**（真建出空标题商品）。现在：非文本字段一律 null，无可用标题的 Product 节点直接判为解析失败。取证：一次性探针跑畸形体/正常体/旧写法对照四组（探针已删，长期保证由 tsc 收窄承担 —— 想写回 `any` 就编译不过） |
 | 落地 | `importFromUrlAction`（`requirePermission(productWrite)`）→ 建 draft 草稿 → 抓图转存 R2 → 返回 productId 跳编辑页人工审核 | ✅ |
 | 自动分类 | `categoryHint` 已抓但**未挂到我们的 categories** | ⏳ |
 

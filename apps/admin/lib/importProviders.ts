@@ -60,21 +60,19 @@ async function tryShopify(url: string): Promise<ProductImportDraft | null> {
         // safeFetch 会拒掉私网/元数据/非标准端口，且逐跳重判（旧写法直连 fetch 无上限无超时）。
         const res = await safeFetch(jsonUrl);
         if (!res.ok) return null;
-        const j = JSON.parse(await readCappedText(res, MAX_PAGE_BYTES)) as Record<string, any>;
-        const p = j?.product;
-        if (!p?.title) return null;
-        const images: string[] = Array.isArray(p.images)
-            ? p.images.map((i: any) => (typeof i === "string" ? i : i?.src)).filter(Boolean)
-            : [];
-        const variant = Array.isArray(p.variants) ? p.variants[0] : null;
+        const p = obj(obj(JSON.parse(await readCappedText(res, MAX_PAGE_BYTES)))?.product);
+        const title = text(p?.title);
+        if (!p || !title) return null;
+        const variant = obj(Array.isArray(p.variants) ? p.variants[0] : undefined);
+        const body = text(p.body_html);
         return {
-            title: String(p.title),
-            description: p.body_html ? stripHtml(String(p.body_html)).slice(0, 4000) : null,
+            title,
+            description: body ? stripHtml(body).slice(0, 4000) : null,
             basePriceCents: toCents(variant?.price),
-            currency: String(p.currency || variant?.currency || "USD"),
-            images,
-            sku: variant?.sku ? String(variant.sku) : null,
-            categoryHint: p.product_type ? String(p.product_type) : null,
+            currency: text(p.currency) ?? text(variant?.currency) ?? "USD",
+            images: normImages(p.images, "src"),
+            sku: text(variant?.sku),
+            categoryHint: text(p.product_type),
             sourceUrl: url,
         };
     } catch {
@@ -118,18 +116,25 @@ function extractJsonLdProduct(html: string): ProductImportDraft | null {
             continue;
         }
         for (const node of flattenLd(data)) {
-            const n = node as Record<string, any>;
-            const types = Array.isArray(n?.["@type"]) ? n["@type"] : [n?.["@type"]];
+            const n = obj(node);
+            if (!n) continue;
+            const types = Array.isArray(n["@type"]) ? n["@type"] : [n["@type"]];
             if (!types.includes("Product")) continue;
-            const offer = Array.isArray(n.offers) ? n.offers[0] : n.offers;
+            const offer = obj(Array.isArray(n.offers) ? n.offers[0] : n.offers);
+            const title = text(n.name);
+            // 连可用标题都没有的 Product 节点不算解析成功：旧写法 `String(n.name)` 会造出
+            // "[object Object]" 当商品名并继续导入，真建出一个空标题商品比报错难发现得多。
+            if (!title) continue;
+            const description = text(n.description);
+            const category = text(n.category);
             return {
-                title: String(n.name || ""),
-                description: n.description ? String(n.description).slice(0, 4000) : null,
+                title,
+                description: description ? description.slice(0, 4000) : null,
                 basePriceCents: toCents(offer?.price),
-                currency: String(offer?.priceCurrency || "USD"),
-                images: normImages(n.image),
-                sku: n.sku ? String(n.sku) : n.mpn ? String(n.mpn) : null,
-                categoryHint: n.category ? String(n.category).slice(0, 120) : null,
+                currency: text(offer?.priceCurrency) ?? "USD",
+                images: normImages(n.image, "url", "content"),
+                sku: text(n.sku) ?? text(n.mpn),
+                categoryHint: category ? category.slice(0, 120) : null,
                 sourceUrl: "",
             };
         }
@@ -138,6 +143,22 @@ function extractJsonLdProduct(html: string): ProductImportDraft | null {
 }
 
 // —— 小工具 ——
+/**
+ * 把外部 JSON 的值收窄成普通对象（不是对象/是数组都给 null）。
+ * 为什么不用 `as Record<string, any>`（审查 L-4）：那是把**别人服务器返什么形状都不保证**的东西当作已知类型，
+ * 旧的 `(i: any) => i?.src` 就能把 `{src: 123}` 里的 **数字塞进声明为 `string[]` 的 images**，直接交给上层当 URL 拉。
+ * 现在类型上不成立：不过这道闸就编译不过。
+ */
+function obj(v: unknown): Record<string, unknown> | null {
+    return typeof v === "object" && v !== null && !Array.isArray(v) ? (v as Record<string, unknown>) : null;
+}
+
+/** 取字段并强制成文本：只接受字符串与有限数，其它一律 null（不再出现 "[object Object]" 这种拼接垃圾）。 */
+function text(v: unknown): string | null {
+    if (typeof v === "string") return v;
+    if (typeof v === "number" && Number.isFinite(v)) return String(v);
+    return null;
+}
 function flattenLd(data: unknown): unknown[] {
     if (!data) return [];
     if (Array.isArray(data)) return data.flatMap(flattenLd);
@@ -146,13 +167,25 @@ function flattenLd(data: unknown): unknown[] {
     return [data];
 }
 
-function normImages(img: unknown): string[] {
+/** 图片字段归一：商品源里 image/images 既可以是字符串、也可以是对象数组，而且字段名不一（Shopify 用 src，LD 用 url/content）。 */
+function normImages(img: unknown, ...fields: string[]): string[] {
     if (!img) return [];
-    const arr = Array.isArray(img) ? img : [img];
-    return arr
-        .map((x) => (typeof x === "string" ? x : (x as Record<string, unknown>)?.url || (x as Record<string, unknown>)?.content))
-        .filter(Boolean)
-        .map(String);
+    const out: string[] = [];
+    for (const x of Array.isArray(img) ? img : [img]) {
+        if (typeof x === "string") {
+            out.push(x);
+            continue;
+        }
+        const o = obj(x);
+        for (const f of fields) {
+            const v = text(o?.[f]);
+            if (v) {
+                out.push(v);
+                break;
+            }
+        }
+    }
+    return out;
 }
 
 function metaContent(html: string, key: string): string | null {
