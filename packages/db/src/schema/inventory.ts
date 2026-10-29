@@ -34,7 +34,13 @@ export const stockMovements = pgTable(
     {
         ...timestamps(),
         id: id(),
-        variantId: uuid("variant_id").notNull().references(() => productVariants.id, { onDelete: "cascade" }),
+        // 审查 M1：`variant_id` 旧为 `ON DELETE CASCADE` —— 删一个变体会把它的全部库存流水一起带走，
+        // 而 PG 的**级联删除不看子表权限**，所以光 `REVOKE DELETE ON stock_movements` 挡不住它（父表 REVOKE 也挡不住）。
+        // 改 RESTRICT 后，有流水的变体删不掉（只能下线/标不清售）；配套的手改迁移见 manual/0017。
+        // ⚠ 跑 `db:generate` 会围这条改动重复吐一个迁移（DROP/ADD 名为 stock_movements_variant_id_product_variants_id_fk），
+        //   **删掉它、不要提交**：现网那条叫 `sm_variant_fk`（0014 重建分区时手改的名），生成件对现有库跑会撞 42704，
+        //   等于把生产升级路径弄断。FK 的真正变更只走 manual/0017（已在生产应用并复核）。
+        variantId: uuid("variant_id").notNull().references(() => productVariants.id, { onDelete: "restrict" }),
         type: stockMovementTypeEnum("type").notNull(),
         quantity: integer("quantity").notNull(), // 对 on_hand 的带符号增量（receive +, sale/damage -）
         onHandAfter: integer("on_hand_after"), // 记账后快照，便于对账

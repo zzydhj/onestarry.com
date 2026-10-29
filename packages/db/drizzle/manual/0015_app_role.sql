@@ -35,4 +35,7 @@ ALTER DEFAULT PRIVILEGES FOR ROLE neondb_owner IN SCHEMA public
     GRANT USAGE, SELECT ON SEQUENCES TO app_rw;
 
 -- 3) 只追加表：禁 UPDATE/DELETE（注意 transactional_outbox 不在此列——relay 每分钟要 UPDATE 它）
+-- ⚠ 本段覆盖面**不完整**（审查 M1/M-9）：`ledger_transactions`（凭证头，带 reference_id）、
+--   `invoices` / `credit_notes`（已开具凭证）当时都没列进来；而 REVOKE 父表**不传导到分区叶**。
+--   补齐见 manual/0017_append_only_hardening.sql + 本仓 0014 末尾的逐叶重申循环，两者均已在生产复核过。
 REVOKE UPDATE, DELETE ON ledger_entries, stock_movements FROM app_rw;

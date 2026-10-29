@@ -14,6 +14,7 @@
         "db:migrate": "drizzle-kit migrate",
         "db:push": "drizzle-kit push",
         "db:partition": "tsx scripts/apply-partition.ts",
+        "db:hardening": "tsx scripts/apply-hardening.ts",
         "db:studio": "drizzle-kit studio",
         "smoke": "tsx src/smoke.ts",
         "smoke:catalog": "tsx src/smoke-catalog.ts",
