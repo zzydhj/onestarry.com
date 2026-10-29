@@ -1,6 +1,6 @@
 import { and, eq, inArray, sql, type SQL } from "drizzle-orm";
 import { CART_MAX_LINES, CART_MAX_QTY, computeSellability, genOrderAccessToken, genOrderNumber } from "@onestarry/core";
-import { inventory, orders, productVariants, products, variantMarketPrices } from "../schema";
+import { inventory, orders, productTranslations, productVariants, products, variantMarketPrices } from "../schema";
 import { uuidv7 } from "../uuid7";
 import type { Db, Tx } from "../client";
 
@@ -123,6 +123,8 @@ export async function createOrder(db: Db | Tx, input: CreateOrderInput): Promise
             blocked: variantMarketPrices.blocked,
             productStatus: products.status,
             availabilityPolicy: productVariants.availabilityPolicy,
+            // 审查 M3：下单时就取标题，写进 order_items.snapshot 固化（同一个查询顺带 join，不多一次跨洋往返）
+            title: productTranslations.title,
             available: sql<number>`coalesce(${inventory.available}, 0)::int`,
             denied: deniedSql,
         })
@@ -130,6 +132,13 @@ export async function createOrder(db: Db | Tx, input: CreateOrderInput): Promise
         .innerJoin(productVariants, eq(productVariants.id, variantMarketPrices.variantId))
         .innerJoin(products, eq(products.id, productVariants.productId))
         .leftJoin(inventory, eq(inventory.variantId, variantMarketPrices.variantId))
+        .leftJoin(
+            productTranslations,
+            and(
+                eq(productTranslations.productId, productVariants.productId),
+                eq(productTranslations.locale, input.locale ?? "en"),
+            ),
+        )
         .where(and(inArray(variantMarketPrices.variantId, variantIds), eq(variantMarketPrices.marketId, input.marketId)));
     const priceMap = new Map(prices.map((p) => [p.variantId, p]));
 
@@ -165,7 +174,9 @@ export async function createOrder(db: Db | Tx, input: CreateOrderInput): Promise
             variantId: it.variantId,
             quantity: it.quantity,
             unitPriceCents: price!.goodsCents,
-            snapshot: { currency: price!.currency, listPriceCents: price!.listPriceCents, allInCents: price!.allInCents },
+            // 标题必须在这里固化：读侧以前是 left join product_translations 拿**当前**标题，
+            // 运营改一次商品名就会把所有历史订单的确认页/后台详情/以后的发票邮件一起改掉（与 EU 凭证口径冲突）。
+            snapshot: { currency: price!.currency, listPriceCents: price!.listPriceCents, allInCents: price!.allInCents, title: price!.title ?? null },
         });
     }
 
@@ -354,7 +365,7 @@ export interface OrderItemRow {
 }
 
 /**
- * 按单号读订单 + 明细行 + 商品行（带当前标题，前台确认页用）。
+ * 按单号读订单 + 明细行 + 商品行（标题优先用下单时冻结的 snapshot，旧单才回退当前译文）。
  * **一条 SQL 拿齐三块**：旧写法是订单头→（行‖商品）2 步串行往返，而确认页正是用户下完单
  * 第一眼看到的页。子聚合用 json_agg + 显式驼峰键（实测 postgres-js 会把 JSON 里的 bigint 解成 number，
  * 而裸 select bigint 列会解成字符串 → 页面金额乘法出 NaN，这点已在 smoke:queries 断言）。
@@ -372,9 +383,13 @@ export async function getOrderByNumber(db: Db | Tx, orderNumber: string) {
                     'taxRate', ol.tax_rate, 'dutyQuoteSnapshot', ol.duty_quote_snapshot))
                 from order_lines ol where ol.order_id = "orders"."id"
             ), '[]'::json)`,
+            // 标题优先用下单时固化的 snapshot，旧单（本改动之前建的）里没有 → 才回退到当前译文（审查 M3）。
+            // nullif 是为了挡住空串标题：实测 JSON null 经 `->>` 直接得到 SQL NULL（is_sql_null=true，2026-10-29 量过），
+            // 但 `{"title":""}` 这种脏值会赢下 coalesce ⇒ 宁可让读侧回退到译文也不能显示空白。
             itemsJson: sql<unknown>`coalesce((
                 select json_agg(json_build_object(
-                    'id', oi.id, 'quantity', oi.quantity, 'unitPriceCents', oi.unit_price_cents, 'title', pt.title))
+                    'id', oi.id, 'quantity', oi.quantity, 'unitPriceCents', oi.unit_price_cents,
+                    'title', coalesce(nullif(oi.snapshot->>'title', ''), pt.title)))
                 from order_items oi
                 left join product_variants pv on pv.id = oi.variant_id
                 left join product_translations pt on pt.product_id = pv.product_id and pt.locale = "orders"."locale"
