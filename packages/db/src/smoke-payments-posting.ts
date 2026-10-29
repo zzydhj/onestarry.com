@@ -65,10 +65,26 @@ async function main() {
             assert.equal(noBadPay.length, 0, "抛错应发生在写入前，不应留下任何 payment 行");
             console.log("✅ M-8 前提：金额不符抛 PAYMENT_AMOUNT_MISMATCH 且零写入（webhook 据此分类为不可恢复）");
 
+            // —— 审查 L1：币种闸 ——
+            // 金额对了不等于钱对了：0 位小数币种（JPY/KRW/VND）下“10000”是两种钱。
+            // PSP 报的币种与订单币种不符必须抛 PAYMENT_CURRENCY_MISMATCH（webhook 据此归不可恢复：落档+停投）。
+            let curMsg = "";
+            try {
+                await recordPaymentSucceeded(tx, { orderId: order!.id, provider: "stripe", providerRef: `badcur_${suffix}`, jurisdiction: "US", currency: "JPY" });
+            } catch (e) {
+                curMsg = e instanceof Error ? e.message : String(e);
+            }
+            assert.match(curMsg, /PAYMENT_CURRENCY_MISMATCH/, `币种不符必须抛 PAYMENT_CURRENCY_MISMATCH（实际：${curMsg || "没报错——币种闸失效"}）`);
+            const noBadCur = await tx.select({ id: payments.id }).from(payments).where(eq(payments.providerRef, `badcur_${suffix}`));
+            assert.equal(noBadCur.length, 0, "币种不符的落账不得留下 payment 行");
+            console.log("✅ L1：币种不符抛 PAYMENT_CURRENCY_MISMATCH 且零写入");
+
             const res = await recordPaymentSucceeded(tx, {
                 orderId: order!.id,
                 provider: "stripe",
                 providerRef: `pi_${suffix}`,
+                // 用小写对照：闸必须是大写归一比较，否则库里合法的 "usd" 会把真钱拒在门外。
+                currency: "usd",
                 jurisdiction: "US",
             });
 

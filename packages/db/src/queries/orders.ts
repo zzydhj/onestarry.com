@@ -25,7 +25,11 @@ export interface CreateOrderInput {
     email: string;
     customerId?: string | null;
     marketId: string;
-    currency: string;
+    /**
+     * 币种**不是入参**（审查 L1）：它由给出这些金额的那一行 `variant_market_prices.currency` 派生。
+     * 旧写法由调用方传入（前台写死 "USD"），于是「市场改价成 EUR、订单头仍写 USD」没人能发现：
+     * 金额是别的币种算的、币种是猜的，而 0 位小数币种下同一串数字就是两种钱（账本/发票/PSP 全跟着错）。
+     */
     locale?: string;
     shippingAddress: CreateOrderAddressInput;
     items: CreateOrderItemInput[];
@@ -84,6 +88,7 @@ function assertQuantity(variantId: string, quantity: number): void {
  *   最后 `select exists(...)` 返回 false → 照旧抛 `IDEMPOTENT_REPLAY`。不可售/缺价仍在 JS 里先报错，不会进入写。
  * - 子 CTE 之间靠“读对方输出”强制排序（`from ins_addr` / `from ins_items`），FK 不会因执行顺序不确定而失败。
  * - id 必须显式给：主键默认值是应用侧 `$defaultFn(uuidv7)`，数据库没有 default，故 JS 预生成。
+ * - 订单币种从价格行派生（上面已说明理由）；多个价格行币种不一致时直接拒单，不猜。
  * ⚠ 枚举列（address_type / order_line_type）必须写 `'x'::枚举名` 字面量：参数字贴成 ::text 后
  * 在 INSERT ... SELECT 里不会隐式转成枚举（实测报“column address_type is of type address_type but
  * expression is of type text”）。枚举名是本文件内的固定常量，无注入面。
@@ -98,6 +103,8 @@ export async function createOrder(db: Db | Tx, input: CreateOrderInput): Promise
     let tax = 0;
     let duty = 0;
     const built: { id: string; lineId: string; variantId: string; quantity: number; unitPriceCents: number; snapshot: Record<string, unknown> }[] = [];
+    // 订单币种 = 这些金额实际所在的币种（取自价格行，大写归一）；一张单只允许一种币种。
+    const currencies = new Set<string>();
     // H-2 预留快照：variantId → 本次占位量（仅 in_stock_only 行），随单写入 orders.reservation 供后续精确回退。
     const reservations: Record<string, number> = {};
 
@@ -165,6 +172,7 @@ export async function createOrder(db: Db | Tx, input: CreateOrderInput): Promise
         }
         // JS 预检（读快照）拦掉常见缺货；真正的并发安全靠下面单条 CTE 里的原子占位。
         if (inStockOnly) reservations[it.variantId] = (reservations[it.variantId] ?? 0) + it.quantity;
+        currencies.add(price!.currency.toUpperCase());
         subtotal += price!.goodsCents * it.quantity;
         tax += price!.taxCents * it.quantity;
         duty += price!.dutyCents * it.quantity;
@@ -183,6 +191,11 @@ export async function createOrder(db: Db | Tx, input: CreateOrderInput): Promise
     const discount = input.discountCents ?? 0;
     const shipping = input.shippingCents;
     const total = subtotal + tax + duty + shipping - discount;
+    // 币种唯一性：items 非空（顶部已挡）且每个 item 都贡献一个币种 ⇒ 正常就恰好一个。
+    // 多于一个 = 同一单里混进了不同币种的价格行（脏数据或市场配错）：这些分加起来根本不是钱，
+    // 宁可直接拒单，也不能挑“第一条”的币种写进订单头（挑错就是整单金额换了种钱）。
+    if (currencies.size !== 1) throw new Error(`CURRENCY_MIXED:${[...currencies].join("|") || "NO_PRICE"}`);
+    const orderCurrency = [...currencies][0]!;
     // 金额底线：数量已校，但运费/优惠仍可能把总额压负（负数单入库 = 账本与发票垃圾）。
     if (!Number.isSafeInteger(total) || total < 0) throw new Error(`INVALID_TOTAL:${String(total)}`);
 
@@ -228,7 +241,7 @@ export async function createOrder(db: Db | Tx, input: CreateOrderInput): Promise
             insert into orders (id, order_number, public_token, customer_id, email, market_id, locale, currency, shipping_address_id, address_snapshot,
                                 subtotal_cents, discount_cents, shipping_cents, tax_cents, duty_cents, total_cents)
             select ${pUuid(orderId)}, ${pTxt(orderNumber)}, ${pTxt(publicToken)}, ${pTxt(input.customerId)}, ${pTxt(input.email)}, ${pUuid(input.marketId)},
-                   ${pTxt(input.locale ?? "en")}, ${pTxt(input.currency)}, a.id, ${pJson({ ...input.shippingAddress })},
+                   ${pTxt(input.locale ?? "en")}, ${pTxt(orderCurrency)}, a.id, ${pJson({ ...input.shippingAddress })},
                    ${pBig(subtotal)}, ${pBig(discount)}, ${pBig(shipping)}, ${pBig(tax)}, ${pBig(duty)}, ${pBig(total)}
             from ins_addr a
             returning id

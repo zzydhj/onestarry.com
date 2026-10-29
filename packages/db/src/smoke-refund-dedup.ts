@@ -35,7 +35,7 @@ async function main() {
             };
             await recomputeVariantMarketPrice(tx, priceInput);
             const order = await createOrder(tx, {
-                idempotencyKey: `rd-${suffix}`, email: "buyer@example.com", marketId: mk!.id, currency: "USD",
+                idempotencyKey: `rd-${suffix}`, email: "buyer@example.com", marketId: mk!.id,
                 shippingAddress: { recipient: "Jane Doe", line1: "1 Main St", country: "US" },
                 items: [{ variantId: variant!.id, quantity: 2 }], shippingCents: 500,
             });

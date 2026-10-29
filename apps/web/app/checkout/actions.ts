@@ -68,7 +68,7 @@ export async function checkoutAction(formData: FormData): Promise<void> {
             email,
             customerId,
             marketId: market.id,
-            currency: "USD",
+            // 不传币种（审查 L1）：createOrder 从价格行派生，前台/本处都不可能再“猜一个 USD”。
             locale: "en",
             shippingAddress: { recipient, phone, country, region, city, line1, line2, postalCode },
             items,

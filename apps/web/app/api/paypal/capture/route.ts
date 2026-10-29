@@ -13,7 +13,8 @@ export const dynamic = "force-dynamic";
  * 所以这里三道闸：
  *   ① 递来的 PayPal 单必须等于我们为该订单存过的那张；
  *   ② capture 响应里的 `custom_id` 必须等于我方单号（PSP 侧被改过就断）；
- *   ③ 金额必须等于订单应付（不等就 409，绝不按 PayPal 的数字改我们的账）。
+ *   ③ 金额必须等于订单应付（不等就 409，绝不按 PayPal 的数字改我们的账）；
+ *   ③b 币种也必须一致 —— 只比分不比币种，在 0 位小数币种（JPY/KRW/VND）下「10000」是两种钱。
  * 落账本身再兜一道：`recordPaymentSucceeded` 里同单重复落账会抛 `PAYMENT_ALREADY_RECORDED`，
  * 与 webhook 撞车时谁先到谁算，第二个当幂等重放处理。
  */
@@ -86,6 +87,12 @@ export async function POST(req: Request): Promise<Response> {
     if (capture.amountCents !== order.totalCents) {
         return json({ error: `AMOUNT_MISMATCH:${String(capture.amountCents)}!=${order.totalCents}` }, { status: 409 });
     }
+    // ③b 币种闸（审查 L1）：与金额闸同一个问题——“这笔钱是不是这张单的那笔钱”。
+    // PayPal 没给出币种也按不符拒（fail-closed），绝不“不知道就当作对”。
+    // 这里给 409（而不是等下面落账时报错）：钱已经被 PSP 扣了，必须给前端一个确定的、可人工处置的信号。
+    if ((capture.currency ?? "").toUpperCase() !== order.currency.toUpperCase()) {
+        return json({ error: `CURRENCY_MISMATCH:${String(capture.currency)}!=${order.currency}` }, { status: 409 });
+    }
 
     try {
         await db.transaction((tx) =>
@@ -94,6 +101,8 @@ export async function POST(req: Request): Promise<Response> {
                 provider: "paypal",
                 providerRef: capture.captureId,
                 amountCents: capture.amountCents ?? undefined,
+                // 带下去让 DB 层那道权威闸也跑一遍（与 webhook 入口同一口径，不是冗余：上面那道只负责给 409）。
+                currency: capture.currency,
             }),
         );
     } catch (e) {

@@ -92,6 +92,15 @@ export function paypalCentsFromValue(value: unknown, currency: unknown): number 
     return ZERO_DECIMAL.has(cur) ? Number(value) : Math.round(Number(value) * 100);
 }
 
+/**
+ * PSP 体里的币种码 → 我们内部用的大写形式；不是非空字符串就 null（上层当作“对不上”拒掉）。
+ * 大写而非原样：`markets.currency` 是无约束 text，而 PayPal 永远回大写 —— 不归一就会把
+ * 库里合法的 "usd" 和响应里的 "USD" 比成两种钱（capture/webhook 的币种闸靠它）。
+ */
+export function paypalCurrencyCode(v: unknown): string | null {
+    return typeof v === "string" && v.trim() ? v.trim().toUpperCase() : null;
+}
+
 export interface PaypalOrderBodyInput {
     /** 我方可读单号：同时进 custom_id 与 invoice_id。 */
     orderNumber: string;
@@ -187,7 +196,7 @@ export function extractPaypalCapture(json: unknown): PaypalCaptureResult | null 
         captureId: capture.id,
         status: typeof capture.status === "string" ? capture.status : "UNKNOWN",
         amountCents: paypalCentsFromValue(amount?.value, amount?.currency_code),
-        currency: typeof amount?.currency_code === "string" ? amount.currency_code.toUpperCase() : null,
+        currency: paypalCurrencyCode(amount?.currency_code),
         orderNumber: typeof unit.custom_id === "string" ? unit.custom_id : null,
     };
 }
@@ -385,6 +394,8 @@ export function mapPaypalWebhookEvent(json: unknown): NormalizedWebhookEvent {
         type: eventType,
         providerRef: typeof resource.id === "string" ? resource.id : null,
         amountCents,
+        // 币种与金额成对上交：落账侧（`recordPaymentSucceeded`）拿它比订单币种，审查 L1。
+        currency: paypalCurrencyCode(amount?.currency_code),
         // 两个口径必须一致：`succeeded` 就等 outcome==="paid"。留两个字段是为了读侧不用改，
         // 但如果它们能各自乱填，就是一个「一个说已付一个说没付」的隐形歧义源。
         succeeded: outcome === "paid",

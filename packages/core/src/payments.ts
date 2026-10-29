@@ -41,6 +41,12 @@ export interface NormalizedWebhookEvent {
     /** 事件主体自己的交易号：capture 事件是 capture id，退款事件是**退款 id**。 */
     providerRef: string | null;
     amountCents: number | null;
+    /**
+     * PSP 报的币种（大写 ISO 码；体里没有就是 null）。
+     * 必须和 `amountCents` 成对交给落账侧：0 位小数币种（JPY/KRW/VND）下「10000」是两种钱，
+     * 只比金额就是在拿别的币种的数字过我们的账（审查 L1）。
+     */
+    currency: string | null;
     succeeded: boolean;
     /** 见 `PaymentOutcome`：落账与冲账都按它分派。 */
     outcome: PaymentOutcome;
@@ -155,6 +161,7 @@ export class FakePaymentProvider implements PaymentProvider {
             type: body.type,
             providerRef: body.providerRef ?? null,
             amountCents: body.amountCents ?? null,
+            currency: body.currency ?? null,
             succeeded,
             // 假回调也要能驱动反向链路，否则「退款落账」在本地与冒烟里根本测不到；
             // 缺省按 succeeded 推，显式给了就以显式为准。

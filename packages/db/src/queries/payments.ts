@@ -23,6 +23,12 @@ export interface RecordPaymentInput {
     providerRef?: string;
     /** 实际收款分；默认取订单 totalCents。 */
     amountCents?: number;
+    /**
+     * 对方报的币种（大写 ISO 码）。给了就必须等于订单币种（审查 L1）：
+     * 只比金额不比币种，在 0 位小数币种（JPY/KRW/VND）下会把「一万日元」当「一万分美元」落账。
+     * 做成可选是为了允许不带币种的内部补录；两个真实入口（capture 路由、webhook）都带。
+     */
+    currency?: string | null;
     /** 发票号前缀（法人辖区）；默认 "XX"。 */
     jurisdiction?: string;
 }
@@ -88,6 +94,12 @@ export async function recordPaymentSucceeded(db: Db | Tx, input: RecordPaymentIn
     // 同一订单不得出现两笔“成功支付”：幂等只按 (provider, event_id) 去重，挡不住
     // 换了 event_id 的重复回调 —— 那会多生一份 payment + 一张发票 + 一组分录，账本虚增。
     if (order.paymentStatus === "paid") throw new Error(`PAYMENT_ALREADY_RECORDED:${order.orderNumber}`);
+    // 审查 L2：已取消（未付过期回收走过）的单不得再被落成已付。交互路径靠 orderAccess 的
+    // `payable`（包含 status!=='cancelled'）拦住了，但 **webhook 路径不经过那道闸**：
+    // 钱确实被 PSP 扣了、而预留早已释放并把货卖给了别人 → 静默置 paid 就是超卖一件 + 一张“已付的取消单”。
+    // 这里故意报错而不是“反正钱到了就记下”：账本里多一笔无法履约的已付款，比拒接更难收拾。
+    // webhook 侧把它归为不可恢复（durably 落档 + ack 停投），由人工退款处理（退款通道未接，见 §9）。
+    if (order.status === "cancelled") throw new Error(`ORDER_CANCELLED:${order.orderNumber}`);
 
     // 辖区从 market → legalEntity 带出来：发票号前缀是财务凭证语义，不能写死 "XX"。
     const entity = await resolveLegalEntity(db, order.marketId);
@@ -97,6 +109,11 @@ export async function recordPaymentSucceeded(db: Db | Tx, input: RecordPaymentIn
     // 金额必须与订单应付额一致：不一致时旧实现会照写不误（借贷平衡校验只能报错，不能防错）。
     // 部分支付本身是合法业务，但本站无 partial 状态位 —— 接了真 PSP 后要拆成独立设计，不能默默记账。
     if (amount !== order.totalCents) throw new Error(`PAYMENT_AMOUNT_MISMATCH:${amount}!=${order.totalCents}`);
+    // 币种闸（审查 L1，与上面的金额闸同一个口径）：这里才是真权威 —— capture 路由与 webhook 两条入口
+    // 都必须过本函数，而 webhook 那条没有任何前置 `payable` 闸。不匹配就抛，由上层归为不可恢复（落档+停投）。
+    // 入参为空串也当不符拒（fail-closed：空串不是一个合法币种）。
+    if (input.currency != null && input.currency.toUpperCase() !== order.currency.toUpperCase())
+        throw new Error(`PAYMENT_CURRENCY_MISMATCH:${input.currency}!=${order.currency}`);
     const currency = order.currency;
 
     const [accPsp, accDep, accTax, accDuty] = await Promise.all([
@@ -196,6 +213,11 @@ export interface RecordReversalInput {
     kind: "revoked" | "refunded";
     /** 本次冲销额。revoked 一律按**全额**处理，不看这里（PayPal 给的回撤事件仍携原额）。 */
     amountCents?: number | null;
+    /**
+     * 对方报的币种（大写 ISO 码）。给了就必须等于**原收款**的币种（审查 L1 的反向那一半）：
+     * 退款事件的 amount 是退款体里的，拿另一币种的数字来冲这笔收款会错摊到 `refunded_cents` 与红字凭证。
+     */
+    currency?: string | null;
     /** PSP 侧退款交易号：进 `refunds.provider_ref`，并参与同额重放去重。 */
     refundRef?: string | null;
     reason?: string;
@@ -261,6 +283,11 @@ export async function recordPaymentReversal(db: Db | Tx, input: RecordReversalIn
             .limit(1);
         if (dup[0]) throw new Error(`PAYMENT_ALREADY_REVERSED:${input.refundRef}`);
     }
+
+    // 币种闸（与正向落账同一口径）：冲的钱必须与收的钱是同一种钱，否则下面的摊分与红字凭证都是在写错数。
+    // 位置在去重之后、金额判定之前：照抄上面那条顺序规则（先把“重放”消化成 200，再报真错误）。
+    if (input.currency != null && input.currency.toUpperCase() !== payment.currency.toUpperCase())
+        throw new Error(`REVERSAL_CURRENCY_MISMATCH:${input.currency}!=${payment.currency}`);
 
     // 本次金额：revoked 拿剩余全部（整笔作废），refunded 尊重事件给的额
     const amount = input.kind === "revoked" ? remaining : (input.amountCents ?? remaining);

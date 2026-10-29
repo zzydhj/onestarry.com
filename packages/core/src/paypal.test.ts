@@ -159,6 +159,26 @@ test("回调映射：capture 完成才算成功，单号来自 custom_id", () =>
     assert.equal(e.orderNumber, "SO-MVKG-ABCD1234");
     assert.equal(e.orderId, null);
     assert.equal(e.amountCents, 26680);
+    assert.equal(e.currency, "USD", "币种必须与金额成对上交：只比金额就是在拿别的币种的数字过账（审查 L1）");
+});
+
+test("回调映射：0 位小数币种按该币种规则解析，币种大写归一后上交", () => {
+    const jpy = mapPaypalWebhookEvent({
+        id: "WH-JPY",
+        event_type: "PAYMENT.CAPTURE.COMPLETED",
+        resource: { id: "7X123456A1234567B", status: "COMPLETED", custom_id: "SO-JPY", amount: { currency_code: "jpy", value: "1000" } },
+    });
+    assert.equal(jpy.currency, "JPY", "库里/回调的大小写不得造成“看起来不是同一种钱”的假不匹配");
+    assert.equal(jpy.amountCents, 1000, "JPY 无小数：收到“1000”就是 1000 分，而不是 10.00");
+
+    // 体里没金额（订单级事件）→ 币种 null：上层把它当“没给”，不能当“对得上”
+    const noAmount = mapPaypalWebhookEvent({
+        id: "WH-NA",
+        event_type: "PAYMENT.CAPTURE.COMPLETED",
+        resource: { id: "7X123456A1234567C", status: "COMPLETED", custom_id: "SO-NA" },
+    });
+    assert.equal(noAmount.currency, null);
+    assert.equal(noAmount.amountCents, null, "没金额也没币种：两个都未知才是诚实的归一结果");
 });
 
 test("回调映射：未完成/被拒的事件 succeeded=false 且归到 revoked", () => {

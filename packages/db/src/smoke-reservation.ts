@@ -4,7 +4,7 @@ config({ path: "../../.env.local" });
 import assert from "node:assert/strict";
 import { eq } from "drizzle-orm";
 import { createDb, type Tx } from "./client";
-import { inventory, legalEntities, markets, orders, products, productVariants } from "./schema";
+import { inventory, legalEntities, markets, orders, payments, products, productVariants } from "./schema";
 import {
     createOrder,
     recordPaymentReversal,
@@ -76,7 +76,6 @@ async function main() {
                 idempotencyKey: key,
                 email: "r@example.com",
                 marketId: mk!.id,
-                currency: "USD",
                 shippingAddress: { recipient: "R", line1: "1 St", country: "US" },
                 items: [{ variantId, quantity: qty }],
                 shippingCents: 0,
@@ -131,6 +130,23 @@ async function main() {
             await releaseExpiredReservations(tx, { ttlMinutes: 60, limit: 50 });
             assert.equal((await stock(vC.id))?.reserved, 0, "二次回收不得把 reserved 减成负（幂等）");
             console.log(`✅ H-2 过期回收：释放 ${released} 张、reserved 归零、单转 cancelled、二次回收幂等`);
+
+            // ── 4b) 审查 L2：已取消（预留已释放）的单不得再被落成已付 ──
+            // 交互路径有 orderAccess.payable 挡着，但 **webhook 路径不经过那道闸**：钱被 PSP 收到了、
+            // 货已卖给别人 → 静默置 paid 就是超卖一件。守卫必须落在落账函数本身，所以这里直接调它。
+            let cancelMsg = "";
+            try {
+                await tx.transaction(async (sp) => {
+                    await recordPaymentSucceeded(sp, { orderId: oC.orderId, provider: "paypal", providerRef: `rs_late_${suffix}`, jurisdiction: "US" });
+                });
+            } catch (e) {
+                cancelMsg = e instanceof Error ? e.message : String(e);
+            }
+            assert.match(cancelMsg, /ORDER_CANCELLED/, `已取消单的落账必须被拒（实际：${cancelMsg || "没报错——守卫失效"}）`);
+            assert.equal((await orderRow(oC.orderId))?.paymentStatus, "unpaid", "被拒后不得把单标成已付");
+            const latePays = await tx.select({ id: payments.id }).from(payments).where(eq(payments.providerRef, `rs_late_${suffix}`));
+            assert.equal(latePays.length, 0, "被拒的落账不得留下任何 payment 行");
+            console.log("✅ L2：cancelled 单落账被 ORDER_CANCELLED 拒、零写入（webhook 路径不再有静默超卖）");
 
             // ── 5) 整笔退款（撤销）释放预留 ──
             const vD = await mkVariant("RSD", "in_stock_only", 5);

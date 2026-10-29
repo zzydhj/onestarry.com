@@ -50,7 +50,6 @@ async function main() {
         idempotencyKey: key,
         email: "buyer@example.com",
         marketId: "", // 下方按 mk 覆盖
-        currency: "USD",
         shippingAddress: { recipient: "Jane Doe", line1: "1 Main St", country: "US" },
         items: [{ variantId, quantity: qty }],
         shippingCents: 500,

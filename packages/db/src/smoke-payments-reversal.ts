@@ -91,6 +91,25 @@ async function main() {
             const payA = await recordPaymentSucceeded(tx, { orderId: a.order.id, provider: "paypal", providerRef: `CAP-${suffix}A` });
             assert.ok((await tx.select().from(invoices).where(eq(invoices.orderId, a.order.id)))[0], "正向落账应已生发票");
 
+            // 审查 L1（反向那一半）：退款事件报的币种与原收款不同 → 必须 REVERSAL_CURRENCY_MISMATCH。
+            // 拿另一币种的数字冲这笔收款，错的是 refunded_cents 与红字凭证上的金额（钱数被换了种）。
+            await assert.rejects(
+                () =>
+                    tx.transaction(async (sp) => {
+                        await recordPaymentReversal(sp, {
+                            provider: "paypal",
+                            orderId: a.order.id,
+                            captureRef: `CAP-${suffix}A`,
+                            kind: "refunded",
+                            amountCents: 100,
+                            refundRef: `REF-${suffix}CUR`,
+                            currency: "JPY",
+                        });
+                    }),
+                /REVERSAL_CURRENCY_MISMATCH/,
+                "币种不符的冲销必须被拒（否则就是在拿另一种钱的数字冲这笔收款）",
+            );
+
             const half = await recordPaymentReversal(tx, {
                 provider: "paypal",
                 orderId: a.order.id,

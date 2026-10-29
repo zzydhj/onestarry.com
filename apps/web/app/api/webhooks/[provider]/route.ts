@@ -118,6 +118,9 @@ export async function POST(req: Request, ctx: { params: Promise<{ provider: stri
                         provider: providerName,
                         providerRef: normalized.providerRef ?? undefined,
                         amountCents: normalized.amountCents ?? undefined,
+                        // 币种与金额成对上交（审查 L1）：PSP 说“收了一万”，还必须说“收的是什么钱”；
+                        // 对不上就由下面的不可恢复分支落档停投，而不是拿别人币种的数字过我们的账。
+                        currency: normalized.currency,
                     });
                 } else {
                     status = "failed";
@@ -138,6 +141,8 @@ export async function POST(req: Request, ctx: { params: Promise<{ provider: stri
                         captureRef: normalized.captureRef,
                         kind: normalized.outcome,
                         amountCents: normalized.outcome === "refunded" ? normalized.amountCents : null,
+                        // 冲账也要比币种（与正向落账同一口径）。
+                        currency: normalized.currency,
                         refundRef: normalized.outcome === "refunded" ? normalized.providerRef : null,
                         reason: normalized.type,
                     });
@@ -160,6 +165,23 @@ export async function POST(req: Request, ctx: { params: Promise<{ provider: stri
             msg.startsWith("PAYMENT_ALREADY_REVERSED") ||
             msg.startsWith("REVERSAL_ALREADY_SETTLED")
         ) {
+            // 审查 L5：旧写法直接 return，但上面的事务已连同 `webhook_events` 那次 INSERT 一起回滚
+            // → “PSP 拿另一个 event_id 告诉过我们一次”这个事实在库里零留痕（只能去挖日志）。
+            // 现补一条 durably 提交的收据（独立于已回滚的业务事务）：什么都没改是**结论**，不是事故，
+            // 所以 status=processed + error 记名；重投同一个 event_id 时会靠唯一索引幂等跳过。
+            console.warn(`[webhook:${providerName}] 重复回调（已落账过）：${msg}`);
+            await db
+                .insert(webhookEvents)
+                .values({
+                    provider: providerName,
+                    providerEventId: normalized.providerEventId,
+                    type: normalized.type,
+                    payload: normalized.raw,
+                    status: "processed",
+                    error: `DUPLICATE_REPLAY:${msg}`,
+                    processedAt: new Date(),
+                })
+                .onConflictDoNothing();
             return Response.json({ received: true, duplicate: true });
         }
         // 审查 M-8：把「重投一万次也不会好」的不可恢复错误，与「重投能补」的可恢复错误分开处理。
@@ -170,12 +192,20 @@ export async function POST(req: Request, ctx: { params: Promise<{ provider: stri
         // 确认收到（停掉 3 天重投），靠 status=failed（走 wh_status_idx）进运维视野。钱没落账、单仍 unpaid，不会误标已付。
         const UNRECOVERABLE = [
             "PAYMENT_AMOUNT_MISMATCH",
+            // 审查 L1：币种对不上也是“重投一万次也不会好”（PSP 报的币种不会因重投而变），
+            // 归不可恢复：落档 + 停投，由人工核。静默落成另一种钱就是账本错数。
+            "PAYMENT_CURRENCY_MISMATCH",
+            "REVERSAL_CURRENCY_MISMATCH",
             "LEDGER_IMBALANCE",
             "PAYMENT_INSERT_FAILED",
             "LEDGER_TXN_FAILED",
             "MARKET_NOT_FOUND",
             "PAYMENT_AMBIGUOUS",
             "REVERSAL_AMOUNT_OVER",
+            // 审查 L2：单已被未付过期回收置 cancelled（预留已释放）→ 重投一万次也不会变成可履约，
+            // 绝不能当成“可恢复错误”让 PSP 打三天重投，也绝不能静默置 paid（那是超卖）。
+            // 停投 + 落档后由人工退款（钱真的到了，但本仓还没有退款通道，见 §9）。
+            "ORDER_CANCELLED",
         ];
         if (UNRECOVERABLE.some((c) => msg.startsWith(c))) {
             console.error(`[webhook:${providerName}] 不可恢复错误，已落档并停投：${msg}`);

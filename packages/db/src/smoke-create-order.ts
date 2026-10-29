@@ -15,6 +15,7 @@ import {
     products,
     productVariants,
     transactionalOutbox,
+    variantMarketPrices,
 } from "./schema";
 import { createOrder, getOrderByNumber, recomputeVariantMarketPrice, type RecomputeInput } from "./queries";
 
@@ -23,6 +24,8 @@ import { createOrder, getOrderByNumber, recomputeVariantMarketPrice, type Recomp
  *
  * 另带一段 M3 回归（标题固化）：下单时把商品名写进 order_items.snapshot，之后运营改名不得拖动历史单；
  * 并用一条“无 title 的旧形状 snapshot”验证读侧的回退分支仍然工作（向后兼容不得被新逻辑关掉）。
+ *
+ * 还带一段 L1 回归（币种）：订单币种由价格行派生（调用方传不了），同一单混进两种币种必须拒单。
  * 运行：pnpm --filter @onestarry/db smoke:create-order
  */
 const ROLLBACK = Symbol("rollback");
@@ -70,7 +73,6 @@ async function main() {
                 idempotencyKey: `idem-${suffix}`,
                 email: "buyer@example.com",
                 marketId: mk!.id,
-                currency: "USD",
                 shippingAddress: { recipient: "Jane Doe", line1: "1 Main St", country: "US" },
                 items: [{ variantId: variant!.id, quantity: 2 }],
                 shippingCents: 500,
@@ -96,7 +98,6 @@ async function main() {
                 idempotencyKey: `idem-${suffix}`,
                 email: "buyer@example.com",
                 marketId: mk!.id,
-                currency: "USD",
                 shippingAddress: { recipient: "Jane Doe", line1: "1 Main St", country: "US" },
                 items: [{ variantId: variant!.id, quantity: 2 }],
                 shippingCents: 500,
@@ -146,6 +147,69 @@ async function main() {
             console.log(
                 `✅ M3：标题已固化（改名后历史单仍为“${ORIGINAL}”，无 title 的旧行回退为当前译文）`,
             );
+
+            /* ---------------- L1：订单币种从价格行派生；混币种必须拒单 ---------------- */
+            // 1) 派生：另开一个 EUR 市场并算好 EUR 价 → 下单不传任何币种，orders.currency 必须跟着变 EUR。
+            //    旧写法由调用方写死 "USD"：市场改成 EUR 后金额按 EUR 算、币种写 USD，全站没人会发现。
+            const [mkEur] = await tx
+                .insert(markets)
+                .values({ code: `co_eur_${suffix}`, name: "CO EUR", currency: "EUR", legalEntityId: le!.id })
+                .returning();
+            const [prodEur] = await tx.insert(products).values({ status: "active" }).returning();
+            const [variantEur] = await tx
+                .insert(productVariants)
+                .values({ productId: prodEur!.id, sku: `CO-EUR-${suffix}`, basePriceCents: 10000, baseCurrency: "EUR" })
+                .returning();
+            await tx.insert(inventory).values({ variantId: variantEur!.id, onHand: 10, reserved: 0 });
+            await recomputeVariantMarketPrice(tx, { ...priceInput, marketId: mkEur!.id, baseCurrency: "EUR", marketCurrency: "EUR", variantId: variantEur!.id });
+
+            const eurOrder = await createOrder(tx, {
+                idempotencyKey: `idem-eur-${suffix}`,
+                email: "buyer@example.com",
+                marketId: mkEur!.id,
+                shippingAddress: { recipient: "Jane Doe", line1: "1 Main St", country: "DE" },
+                items: [{ variantId: variantEur!.id, quantity: 1 }],
+                shippingCents: 0,
+            });
+            const [eurRow] = await tx.select({ currency: orders.currency }).from(orders).where(eq(orders.id, eurOrder.orderId)).limit(1);
+            assert.equal(eurRow?.currency, "EUR", `币种必须由价格行派生成 EUR，实际 ${String(eurRow?.currency)}`);
+            console.log("✅ L1：订单币种跟价格行走（EUR 市场下单 → orders.currency=EUR，调用方无权指定）");
+
+            // 2) 负向：同一张单里混进两种币种的价格行（脏数据/市场配错）→ 必须拒单。
+            //    手工插一行“EUR 市场里的 USD 价格行”来造这个脏数据（重算路径不会产生，但库层无约束）。
+            await tx.insert(variantMarketPrices).values({
+                variantId: variant!.id,
+                marketId: mkEur!.id,
+                currency: "USD",
+                goodsCents: 10000,
+                listPriceCents: 12000,
+                allInCents: 12000,
+                pricingMode: "fixed_gross",
+                dutyPresentation: "included_in_price",
+                inputsHash: `smoke-mixed-${suffix}`,
+            });
+            let mixedMsg = "";
+            try {
+                await tx.transaction(async (sp) => {
+                    await createOrder(sp, {
+                        idempotencyKey: `idem-mixed-${suffix}`,
+                        email: "buyer@example.com",
+                        marketId: mkEur!.id,
+                        shippingAddress: { recipient: "Jane Doe", line1: "1 Main St", country: "DE" },
+                        items: [
+                            { variantId: variantEur!.id, quantity: 1 },
+                            { variantId: variant!.id, quantity: 1 },
+                        ],
+                        shippingCents: 0,
+                    });
+                });
+            } catch (e) {
+                mixedMsg = e instanceof Error ? e.message : String(e);
+            }
+            assert.match(mixedMsg, /CURRENCY_MIXED/, `混币种必须拒单（实际：${mixedMsg || "没报错——币种闸失效"}）`);
+            const eurOrders = await tx.select({ id: orders.id }).from(orders).where(eq(orders.marketId, mkEur!.id));
+            assert.equal(eurOrders.length, 1, "被拒的那次不得留下任何订单（只留下上面那 1 张 EUR 单）");
+            console.log("✅ L1：同单混币种被 CURRENCY_MIXED 拒掉、零悬挂单");
 
             console.log(
                 `✅ 结账：建单 ${result.orderNumber} 总=${result.totalCents}，4 明细求和一致，已发 order.created，` +
