@@ -92,7 +92,10 @@ export default {
         const db = createDb(env.HYPERDRIVE.connectionString);
         if (event.cron === RETENTION_CRON) {
             const r = await runDataRetention(db);
-            console.log(`[retention] idempotencyKeys=${r.idempotencyKeys} outbox=${r.outbox} webhookEvents=${r.webhookEvents}`);
+            console.log(
+                `[retention] idempotencyKeys=${r.idempotencyKeys} outbox=${r.outbox} webhookEvents=${r.webhookEvents}` +
+                    (r.capped ? " capped=1（本次抵达批数上界，积压留给下次；要么调大 MAX_BATCHES，要么查为什么积这么多）" : ""),
+            );
             // 每次部署都换一个 buildId 前缀，旧构建的成品页没人删（线上实测积了 43 个前缀/571 个对象）。
             // 清理放在每日这一条里，不进 5 分钟那条：删除要避开刚部署完的窗口。
             const pruned = await pruneStaleIsrCache(env.ISR_CACHE);
