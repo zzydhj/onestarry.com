@@ -1,16 +1,22 @@
-import { and, eq, inArray, lt } from "drizzle-orm";
+import { and, eq, inArray, isNotNull, isNull, lt, ne, or, sql } from "drizzle-orm";
 import { idempotencyKeys, transactionalOutbox, webhookEvents } from "../schema";
 import type { Db, Tx } from "../client";
 
 /**
  * 数据保留清理（架构 §11 数据保留策略 / §15.1 计划 5b）。只删「已过临时窗口」的行，
  * 幂等可反复跑，绝不碰业务主数据、账本/库存只追加表、Better Auth 会话表。
+ * 例外：webhook 的「证据行」过窗也不删（见下方 L6 注）——它们的保留口径与凭证一致，不是临时数据。
  * 由 jobs Worker 每日 cron 触发（见 apps/jobs）。app_rw 对这三张表有 DELETE 权（仅 ledger/stock 被 REVOKE）。
  */
 export interface RetentionResult {
     idempotencyKeys: number;
     outbox: number;
     webhookEvents: number;
+    /**
+     * 已过窗口但因带审计价值而**被留下**的 webhook 事件行数（审查 L6）。
+     * 豁免不能变成看不见的积压：这个数字得每天在 jobs 日志里看得见，否则“不删”会悄悄长成没人查的大表。
+     */
+    webhookEvidenceHeld: number;
     /** 至少一张表抵达了本次运行的批数上界 ⇒ 还有积压，明天接着删（这就是幂等的意义）。 */
     capped: boolean;
 }
@@ -91,6 +97,17 @@ export async function runDataRetention(
     );
 
     // Webhook 接收记录：幂等窗口（唯一约束防重放）过后，超期历史删除。
+    //
+    // ⚠ 但「status='failed' 或 error 非空」的行过窗也不删（审查 L6，2026-10-29）。
+    // 这类行是「钱到了但没落账」在库里**唯一**的留痕：正向落账成功会留下 payments + 账本分录（那才是真凭证，
+    // 本函数根本不碰），而 ORDER_UNRESOLVED / PAYMENT_CURRENCY_MISMATCH / ORDER_CANCELLED / DUPLICATE_REPLAY /
+    // UNASSOCIATED 这些分支的业务事务要么回滚要么刻意没写，event 行是它们存世的唯一记录 —— 90 天后一删，
+    // 对账时看到的就是“什么都没发生过”。error 为空的 processed / ignored（PSP 的 PENDING、未知类型刷屏）照旧清掉。
+    // 增长有界吗：`(provider, provider_event_id)` 唯一 ⇒ 每个 PSP 事件最多一行，异常事件本就应是少数；
+    // 真大面积长起来是事故（靠 webhookEvidenceHeld 在日志里显形后人去修），而不是靠删数据把它藏起来。
+    const webhookCutoff = new Date(now.getTime() - webhookKeepDays * DAY);
+    // NULL 陷阱：写成 `not(or(eq(status,'failed'), isNotNull(error)))` 时，error 为 NULL 的行整个谓词求值为 NULL
+    // ⇒ 一行都删不掉（幂等键/outbox 都在删、webhook 却静默零删除）。所以这里用**正向条件**表达“无留证”。
     const webhook = await drain((limit) =>
         db
             .delete(webhookEvents)
@@ -100,17 +117,25 @@ export async function runDataRetention(
                     db
                         .select({ id: webhookEvents.id })
                         .from(webhookEvents)
-                        .where(lt(webhookEvents.createdAt, new Date(now.getTime() - webhookKeepDays * DAY)))
+                        .where(and(lt(webhookEvents.createdAt, webhookCutoff), ne(webhookEvents.status, "failed"), isNull(webhookEvents.error)))
                         .limit(limit),
                 ),
             )
             .returning({ id: webhookEvents.id }),
     );
 
+    // 过窗但被豁免下来的证据行：只数不删，给运维一个可见量。
+    // 这条谓词是上面删除条件的**补集**，两处口径必须对着读才能确认没交集。
+    const held = await db
+        .select({ n: sql<number>`count(*)::int` })
+        .from(webhookEvents)
+        .where(and(lt(webhookEvents.createdAt, webhookCutoff), or(eq(webhookEvents.status, "failed"), isNotNull(webhookEvents.error))));
+
     return {
         idempotencyKeys: idem.deleted,
         outbox: outbox.deleted,
         webhookEvents: webhook.deleted,
+        webhookEvidenceHeld: Number(held[0]?.n ?? 0),
         capped: idem.capped || outbox.capped || webhook.capped,
     };
 }

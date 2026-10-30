@@ -94,6 +94,8 @@ export default {
             const r = await runDataRetention(db);
             console.log(
                 `[retention] idempotencyKeys=${r.idempotencyKeys} outbox=${r.outbox} webhookEvents=${r.webhookEvents}` +
+                    // 审查 L6：证据行（failed 或带 error）不过窗删除，只报量不删——积压得在日志里看得见。
+                    ` webhookEvidenceHeld=${r.webhookEvidenceHeld}` +
                     (r.capped ? " capped=1（本次抵达批数上界，积压留给下次；要么调大 MAX_BATCHES，要么查为什么积这么多）" : ""),
             );
             // 每次部署都换一个 buildId 前缀，旧构建的成品页没人删（线上实测积了 43 个前缀/571 个对象）。
