@@ -1,15 +1,11 @@
 import { PrefetchLink } from "@/components/PrefetchLink";
 import { listRecentOrders } from "@onestarry/db";
 import { getRequestDb } from "@/lib/db";
-import { PERMISSIONS } from "@onestarry/core";
+import { PERMISSIONS, formatMoney } from "@onestarry/core";
 import { requirePermission } from "@/lib/auth";
 import { TableFrame, THead, Th, Tr, Td } from "@onestarry/ui";
 
 export const dynamic = "force-dynamic";
-
-function money(cents: number, cur: string): string {
-    return new Intl.NumberFormat("en-US", { style: "currency", currency: cur }).format(cents / 100);
-}
 
 /** 后台订单列表（受保护）：最近订单，点进详情。 */
 export default async function AdminOrders() {
@@ -43,7 +39,7 @@ export default async function AdminOrders() {
                                     </PrefetchLink>
                                 </Td>
                                 <Td>{o.email}</Td>
-                                <Td>{money(o.totalCents, o.currency)}</Td>
+                                <Td>{formatMoney(o.totalCents, o.currency)}</Td>
                                 <Td>{o.paymentStatus}</Td>
                                 <Td>{o.fulfillmentStatus}</Td>
                                 <Td className="text-xs text-muted">{o.createdAt?.toISOString?.().slice(0, 16).replace("T", " ")}</Td>

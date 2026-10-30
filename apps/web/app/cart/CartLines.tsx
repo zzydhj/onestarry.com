@@ -1,7 +1,7 @@
 "use client";
 
 import { useOptimistic, useTransition } from "react";
-import { CART_MAX_QTY } from "@onestarry/core";
+import { CART_MAX_QTY, formatMoney } from "@onestarry/core";
 import { Button, Input } from "@onestarry/ui";
 import { removeItemAction, setQtyAction } from "./actions";
 
@@ -18,10 +18,6 @@ export interface CartLineView {
 }
 
 type QtyMap = Record<string, number>;
-
-function money(cents: number, cur: string): string {
-    return new Intl.NumberFormat("en-US", { style: "currency", currency: cur }).format(cents / 100);
-}
 
 /**
  * 购物车行编辑（乐观 UI）。
@@ -102,16 +98,16 @@ export function CartLines({ lines, qty, shippingCents }: { lines: CartLineView[]
                                     ✕
                                 </Button>
                             </div>
-                            <div className="w-24 text-right font-medium">{money(l.unitCents * q, l.currency)}</div>
+                            <div className="w-24 text-right font-medium">{formatMoney(l.unitCents * q, l.currency)}</div>
                         </li>
                     );
                 })}
             </ul>
 
             <div className="mt-6 space-y-1 text-right text-sm">
-                <div>Subtotal {money(subtotal, currency)}</div>
-                <div>Shipping {money(shippingCents, currency)}</div>
-                <div className="pt-1 text-lg font-bold text-brand">Total {money(subtotal + shippingCents, currency)}</div>
+                <div>Subtotal {formatMoney(subtotal, currency)}</div>
+                <div>Shipping {formatMoney(shippingCents, currency)}</div>
+                <div className="pt-1 text-lg font-bold text-brand">Total {formatMoney(subtotal + shippingCents, currency)}</div>
             </div>
             {/* 提交中提示：不遮挡已变的数字，只说明"正在写入" */}
             {pending && <p className="mt-2 text-right text-xs text-muted">Saving…</p>}

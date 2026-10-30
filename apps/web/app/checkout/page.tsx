@@ -2,7 +2,7 @@ import Link from "next/link";
 import type { Metadata } from "next";
 import { getCloudflareContext } from "@opennextjs/cloudflare";
 import { createDb, getCartLines } from "@onestarry/db";
-import { PLACEHOLDER_SHIPPING_CENTS } from "@onestarry/core";
+import { PLACEHOLDER_SHIPPING_CENTS, formatMoney } from "@onestarry/core";
 import { Button, Input, Label } from "@onestarry/ui";
 import { readCart } from "@/lib/cart";
 import { checkoutAction } from "./actions";
@@ -10,10 +10,6 @@ import { checkoutAction } from "./actions";
 export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = { title: "Checkout", robots: { index: false, follow: false } };
-
-function money(cents: number, cur: string): string {
-    return new Intl.NumberFormat("en-US", { style: "currency", currency: cur }).format(cents / 100);
-}
 
 /** 结账页：订单摘要 + 收货地址表单 → checkoutAction 建单。 */
 export default async function Checkout({ searchParams }: { searchParams: Promise<{ error?: string }> }) {
@@ -59,15 +55,15 @@ export default async function Checkout({ searchParams }: { searchParams: Promise
                                 {l.title} × {qty}
                                 {isUnavailable(l) && <span className="ml-2 text-xs text-red-600">No longer available</span>}
                             </span>
-                            <span>{money(l.unitCents * qty, l.currency)}</span>
+                            <span>{formatMoney(l.unitCents * qty, l.currency)}</span>
                         </li>
                     );
                 })}
             </ul>
             <div className="mt-2 space-y-1 text-right text-sm">
-                <div>Subtotal {money(subtotal, currency)}</div>
-                <div>Shipping {money(PLACEHOLDER_SHIPPING_CENTS, currency)}</div>
-                <div className="text-lg font-bold text-brand">Total {money(total, currency)}</div>
+                <div>Subtotal {formatMoney(subtotal, currency)}</div>
+                <div>Shipping {formatMoney(PLACEHOLDER_SHIPPING_CENTS, currency)}</div>
+                <div className="text-lg font-bold text-brand">Total {formatMoney(total, currency)}</div>
             </div>
 
             <form action={checkoutAction} className="mt-6">

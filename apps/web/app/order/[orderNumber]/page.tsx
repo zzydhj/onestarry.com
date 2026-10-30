@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { formatMoney } from "@onestarry/core";
 import { resolveOrderAccess } from "@/lib/orderAccess";
 
 export const dynamic = "force-dynamic";
@@ -17,10 +18,6 @@ export const metadata: Metadata = {
     title: "Order confirmation",
     robots: { index: false, follow: false },
 };
-
-function money(cents: number, currency: string): string {
-    return new Intl.NumberFormat("en-US", { style: "currency", currency }).format(cents / 100);
-}
 
 /** j.doe@example.com → j***@example.com（够人对上自己那单，不足以转卖别人身份）。 */
 function maskEmail(email: string | null): string {
@@ -80,19 +77,19 @@ export default async function OrderPage({
                         <span>
                             {it.title ?? "Item"} × {it.quantity}
                         </span>
-                        <span>{money(it.unitPriceCents * it.quantity, order.currency)}</span>
+                        <span>{formatMoney(it.unitPriceCents * it.quantity, order.currency)}</span>
                     </li>
                 ))}
             </ul>
             <div className="mt-2 space-y-1 text-right text-sm text-muted">
-                {order.discountCents > 0 && <div>Discount -{money(order.discountCents, order.currency)}</div>}
-                <div>Shipping {money(order.shippingCents, order.currency)}</div>
-                {order.taxCents > 0 && <div>Tax {money(order.taxCents, order.currency)}</div>}
-                {order.dutyCents > 0 && <div>Duty {money(order.dutyCents, order.currency)}</div>}
+                {order.discountCents > 0 && <div>Discount -{formatMoney(order.discountCents, order.currency)}</div>}
+                <div>Shipping {formatMoney(order.shippingCents, order.currency)}</div>
+                {order.taxCents > 0 && <div>Tax {formatMoney(order.taxCents, order.currency)}</div>}
+                {order.dutyCents > 0 && <div>Duty {formatMoney(order.dutyCents, order.currency)}</div>}
             </div>
             <div className="mt-2 flex justify-between text-lg font-bold text-brand">
                 <span>Total</span>
-                <span>{money(order.totalCents, order.currency)}</span>
+                <span>{formatMoney(order.totalCents, order.currency)}</span>
             </div>
 
             <p className="mt-8">

@@ -3,7 +3,7 @@ import { cache } from "react";
 import Link from "next/link";
 import { notFound, permanentRedirect } from "next/navigation";
 import { getDb } from "@/lib/db";
-import { jsonLdScript, mediaUrl, SITE_ORIGIN } from "@onestarry/core";
+import { jsonLdScript, mediaUrl, SITE_ORIGIN, formatMoney } from "@onestarry/core";
 import { getProductById, getSeoMeta, listActiveProductSlugs, listApprovedReviews, listProductImages, resolveSlug } from "@onestarry/db";
 import { Button, Input } from "@onestarry/ui";
 import { addToCartAction } from "../../cart/actions";
@@ -38,10 +38,6 @@ export async function generateStaticParams(): Promise<Array<{ slug: string }>> {
 }
 
 const SITE = SITE_ORIGIN;
-
-function money(cents: number, currency: string): string {
-    return new Intl.NumberFormat("en-US", { style: "currency", currency }).format(cents / 100);
-}
 
 /** 按 slug 解析商品（含 redirect/notfound 三态）。用 React cache 去重：generateMetadata 与页面同请求只查一次。 */
 const resolveProduct = cache(async (slug: string) => {
@@ -147,7 +143,7 @@ export default async function ProductPage({ params }: { params: Promise<{ slug: 
 
             <h1 className="mt-5 text-2xl font-semibold tracking-tight">{p.title}</h1>
             {p.description && <p className="mt-2 text-muted">{p.description}</p>}
-            <div className="mt-3 text-2xl font-bold text-accent">{money(p.priceCents, p.currency)}</div>
+            <div className="mt-3 text-2xl font-bold text-accent">{formatMoney(p.priceCents, p.currency)}</div>
             <p className={`mt-2 text-sm ${p.available > 0 ? "text-green-600" : "text-red-600"}`}>
                 {p.available > 0 ? `In stock · ${p.available} available` : "Out of stock"}
             </p>

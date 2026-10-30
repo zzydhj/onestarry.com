@@ -2,15 +2,12 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { createDb, listOrdersByCustomer } from "@onestarry/db";
+import { formatMoney } from "@onestarry/core";
 import { readCustomerSession } from "@/lib/session";
 
 export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = { title: "My Orders", robots: { index: false, follow: false } };
-
-function money(cents: number, cur: string): string {
-    return new Intl.NumberFormat("en-US", { style: "currency", currency: cur }).format(cents / 100);
-}
 
 /** 我的订单（前台，需客户登录）：按 customerId 列订单，点进确认页。 */
 export default async function AccountOrders() {
@@ -45,7 +42,7 @@ export default async function AccountOrders() {
                                 <td className="py-2 pr-2">
                                     <Link href={`/order/${o.orderNumber}`} className="font-mono text-xs text-accent hover:underline">{o.orderNumber}</Link>
                                 </td>
-                                <td className="py-2 pr-2">{money(o.totalCents, o.currency)}</td>
+                                <td className="py-2 pr-2">{formatMoney(o.totalCents, o.currency)}</td>
                                 <td className="py-2 pr-2">{o.paymentStatus}</td>
                                 <td className="py-2 pr-2">{o.fulfillmentStatus}</td>
                                 <td className="py-2 text-muted">{o.createdAt?.toISOString?.().slice(0, 10)}</td>

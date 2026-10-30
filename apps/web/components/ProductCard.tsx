@@ -1,7 +1,6 @@
 import Link from "next/link";
-import { mediaUrl } from "@onestarry/core";
+import { mediaUrl, formatMoney } from "@onestarry/core";
 import type { CatalogListItem } from "@onestarry/db";
-import { money } from "@/lib/format";
 
 /** 单个商品卡片（首页 / 列表 / 类目 / 品牌页共用）。priority=首屏可见卡片 → 图 eager + fetchPriority high（优化 LCP）。 */
 export function ProductCard({ item, priority = false }: { item: CatalogListItem; priority?: boolean }) {
@@ -27,7 +26,7 @@ export function ProductCard({ item, priority = false }: { item: CatalogListItem;
                 <div className="p-3">
                     <h2 className="truncate text-sm font-medium">{item.title}</h2>
                     <p className="mt-1 line-clamp-1 text-xs text-muted">{item.description}</p>
-                    <div className="mt-2 text-sm font-semibold text-accent">{money(item.priceCents, item.currency)}</div>
+                    <div className="mt-2 text-sm font-semibold text-accent">{formatMoney(item.priceCents, item.currency)}</div>
                 </div>
             </Link>
         </li>

@@ -286,6 +286,20 @@ onestarry.com/
 `/`（首页 Hero/分类入口/精选/信任条）· `/products` `/products/[slug]` · `/review/[slug]`（发表评价，force-dynamic；2026-10-29 审查 M2 从 `/products/[slug]/review` 搬出，理由见 §3.13）· `/search` · `/categories` `/categories/[slug]` · `/brands` `/brands/[slug]` · `/blog` `/blog/[slug]` · `/[slug]`（page/landing）· `/cart` · `/checkout` · `/order/[orderNumber]` · `/pay/[orderNumber]`（带访问凭证的支付页）· `/account/orders` · `/signin` · `/legal/[type]`（terms/privacy/returns/withdrawal）· `/api/{health,auth/[...all],webhooks/[provider],internal/invalidate}` · `/api/paypal/{orders,capture}` · `/integration/*`
 
 > 逐路由的**缓存窗口/渲染策略/失效方式**不再写在这里 —— 单一真源是 `packages/core/src/site-status.ts`，后台 `/status` 页与漂移守卫单测共用它。
+
+> **金额展示的单一真源是 `packages/core/src/money.ts` 的 `formatMoney`（审查 L7 已修，2026-10-29）**。
+> 原来 `new Intl.NumberFormat("en-US", { style: "currency", … })` 在 **9 个页面各抄一份逐字相同**的实现
+> （7 个 web：PDP/支付页/确认页/购物车页/购物车行/结账页/我的订单；2 个 admin：订单列表/订单详情），
+> 另有 `apps/web/lib/format.ts` 只给 `ProductCard` 用 —— 同一条口径写十一遍，下次要改（本地化/小数位/取整）
+> 必然只改到一份，剩下的会安静地显示旧格式且不报错。现在十一处全改指 core；`lib/format.ts` 已删。
+> 顺手补了一件旧副本没做的事：**非法币种码不再把页面打成 500** —— `markets.currency` 是无约束 text，
+> 实测 `XY`/`US Dollars`/`""` 直接让 `Intl` 抛 RangeError（`undefined` 抛 TypeError），现在退成「两位小数 + 原始码」。
+> 守卫：`money.test.ts` 钉住排版口径（含“原生 Intl 必须抛”这条对照前提，否则退路分支就是在测空气），
+> 并扫 `apps/*` 禁止再出现自写的 `style: "currency"`（反空转：先断言至少扫到 30 个文件；
+> 实测插入一个临时副本时守卫立即变红、删掉后转绿）。
+> ⚠ **已知分叉、本次故意不动**：0 位小数币种（JPY/KRW/VND）本站仍按「分」建模，展示会除以 100，
+> 而 `paypalAmountValue` 把同样的 cents 当整数发出 —— 两面理解不同，属“接真多币种/FX 时连定价一起定口径”（N2）；
+> 单独改展示层只会让两侧更不一致，所以 `formatMoney` 与旧代码行为逐字相同。
 缺：收藏/心愿单、退货 RMA、订单取消、地址簿、多语言路径。
 
 ### 3.18 后台会话边缘缓存与保活（2026-10-25 上线）

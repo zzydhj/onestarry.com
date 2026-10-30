@@ -2,7 +2,7 @@ import Link from "next/link";
 import type { Metadata } from "next";
 import { getCloudflareContext } from "@opennextjs/cloudflare";
 import { createDb, getCartLines } from "@onestarry/db";
-import { PLACEHOLDER_SHIPPING_CENTS } from "@onestarry/core";
+import { PLACEHOLDER_SHIPPING_CENTS, formatMoney } from "@onestarry/core";
 import { buttonVariants } from "@onestarry/ui";
 import { readCart } from "@/lib/cart";
 import { CartLines } from "./CartLines";
@@ -10,10 +10,6 @@ import { CartLines } from "./CartLines";
 export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = { title: "Cart", robots: { index: false, follow: false } };
-
-function money(cents: number, cur: string): string {
-    return new Intl.NumberFormat("en-US", { style: "currency", currency: cur }).format(cents / 100);
-}
 
 /** 购物车页：读 cookie → 按 DB 重新取价/库存（一条查询）→ 行编辑交给乐观组件 → 去结账。 */
 export default async function CartPage() {
@@ -53,7 +49,7 @@ export default async function CartPage() {
                         </div>
                     )}
                     <p className="mt-2 text-right text-xs text-muted">
-                        {money(total, currency)} due at checkout
+                        {formatMoney(total, currency)} due at checkout
                     </p>
                 </>
             )}
